@@ -1,0 +1,138 @@
+"use client";
+
+import Link from "next/link";
+import Image from "next/image";
+import { motion, useReducedMotion } from "motion/react";
+import { ArrowRight, BarChart3, CheckCircle2, FileUp, ShieldCheck, Target, Users } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+
+const features = [
+  { icon: Users, title: "Roster", text: "Maintain a single source of truth for reps, managers, and locations." },
+  { icon: FileUp, title: "Imports", text: "Validate ATT and T-Fiber uploads before they reach reporting." },
+  { icon: BarChart3, title: "Reporting", text: "Track sales, knocks, goals, and performance from one command center." },
+  { icon: Target, title: "Onboarding", text: "Keep first-week setup structured and auditable." },
+];
+
+export function LandingPage() {
+  const reducedMotion = useReducedMotion();
+
+  return (
+    <main className="relative overflow-hidden">
+      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,.14),transparent_35%),radial-gradient(circle_at_right_20%_top_20%,rgba(14,165,233,.12),transparent_30%),linear-gradient(180deg,var(--background),color-mix(in_oklch,var(--background)_90%,white))]" />
+      <div className="absolute inset-x-0 top-0 -z-10 h-96 bg-[linear-gradient(135deg,rgba(37,99,235,.08),transparent_55%)]" />
+      <header className="mx-auto flex w-full max-w-[1440px] items-center justify-between px-4 py-5 sm:px-6 lg:px-8">
+        <Link href="/" className="inline-flex items-center gap-3 text-sm font-semibold tracking-wide">
+          <Image src="/legacy-assets/ab-logo.png" alt="AB Marketing" width={42} height={42} className="rounded-xl" />
+          AB Marketing
+        </Link>
+        <Button asChild variant="outline">
+          <Link href="/sign-in">
+            Sign in
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </Button>
+      </header>
+
+      <section className="mx-auto grid w-full max-w-[1440px] gap-10 px-4 pb-16 pt-6 sm:px-6 lg:grid-cols-[1.05fr_.95fr] lg:px-8 lg:pb-24 lg:pt-14">
+        <motion.div initial={reducedMotion ? false : { opacity: 0, y: 20 }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }} className="max-w-2xl">
+          <Badge variant="outline" className="mb-5 w-fit">AB Sales Operations</Badge>
+          <h1 className="text-5xl font-semibold tracking-tight sm:text-6xl">Your field data, working together.</h1>
+          <p className="mt-6 max-w-xl text-lg text-muted-foreground">
+            A premium command center for roster accuracy, sales reporting, onboarding, imports, and the operational work that keeps the team moving.
+          </p>
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            <Button asChild size="lg">
+              <Link href="/sign-in">
+                Open workspace
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+            <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <ShieldCheck className="h-4 w-4 text-success" />
+              Secure team access
+            </div>
+          </div>
+          <div className="mt-8 flex flex-wrap gap-3 text-sm text-muted-foreground">
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-card/70 px-3 py-2">
+              <CheckCircle2 className="h-4 w-4 text-success" />
+              Live data
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-card/70 px-3 py-2">
+              <CheckCircle2 className="h-4 w-4 text-success" />
+              Role-based access
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-card/70 px-3 py-2">
+              <CheckCircle2 className="h-4 w-4 text-success" />
+              Audit-friendly workflows
+            </div>
+          </div>
+        </motion.div>
+
+        <motion.div initial={reducedMotion ? false : { opacity: 0, y: 20 }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }} transition={{ delay: 0.08 }} className="relative">
+          <div className="absolute inset-0 -z-10 rounded-[2rem] bg-[radial-gradient(circle_at_top,rgba(37,99,235,.22),transparent_48%)] blur-2xl" />
+          <Card className="relative overflow-hidden border-border/70 shadow-2xl">
+            <CardHeader>
+              <CardTitle>Command center preview</CardTitle>
+              <CardDescription>Overview cards, validation status, and team alerts in a single glance.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                {[
+                  ["Weekly sales", "47", "+12.4%"],
+                  ["Total knocks", "684", "+8.7%"],
+                  ["Active reps", "18", "2 added"],
+                  ["Data freshness", "Fresh", "Both sources processed"],
+                ].map(([label, value, detail]) => (
+                  <div key={label} className="rounded-2xl border border-border/70 bg-muted/25 p-4">
+                    <p className="text-sm text-muted-foreground">{label}</p>
+                    <p className="mt-2 text-2xl font-semibold">{value}</p>
+                    <p className="mt-2 text-sm text-muted-foreground">{detail}</p>
+                  </div>
+                ))}
+              </div>
+              <Separator />
+              <div className="grid gap-3">
+                {[
+                  "Review unmatched rows before they enter reporting.",
+                  "Upload ATT and T-Fiber files from the import center.",
+                  "Track onboarding and backfill work with audited actions.",
+                ].map((item) => (
+                  <div key={item} className="flex items-start gap-3 rounded-2xl border border-border/70 p-3">
+                    <div className="rounded-full bg-primary/10 p-2 text-primary">
+                      <CheckCircle2 className="h-4 w-4" />
+                    </div>
+                    <p className="text-sm text-muted-foreground">{item}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </section>
+
+      <section className="mx-auto w-full max-w-[1440px] px-4 pb-20 sm:px-6 lg:px-8">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {features.map((feature, index) => {
+            const Icon = feature.icon;
+            return (
+              <motion.div key={feature.title} initial={reducedMotion ? false : { opacity: 0, y: 16 }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }} transition={{ delay: 0.12 + index * 0.04 }}>
+                <Card className="h-full border-border/70">
+                  <CardContent className="p-5">
+                    <div className="inline-flex rounded-2xl bg-primary/10 p-3 text-primary">
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <h2 className="mt-4 text-lg font-semibold">{feature.title}</h2>
+                    <p className="mt-2 text-sm text-muted-foreground">{feature.text}</p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            );
+          })}
+        </div>
+      </section>
+    </main>
+  );
+}

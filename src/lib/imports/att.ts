@@ -1,4 +1,5 @@
 import { FieldValue } from "firebase-admin/firestore";
+import Papa from "papaparse";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { matchImportRowToRep } from "@/src/lib/matching/matchRep";
 import { formatImportedName } from "@/src/lib/matching/display-name";
@@ -6,8 +7,6 @@ import type { Rep } from "@/src/types/rep";
 
 type RawRow = Record<string, string | null | undefined>;
 type ServiceName = "Video" | "Internet" | "Voice";
-const Papa = require("papaparse") as { parse: <T>(input: string, config: { header: boolean; skipEmptyLines: boolean }) => { data: T[]; errors: Array<{ message: string }> } };
-
 const services: Array<{ name: ServiceName; modernPackage: string; modernStatus: string; legacyPackage: string; legacyStatus: string }> = [
   { name: "Video", modernPackage: "Video_Package", modernStatus: "Video_CurrentStatus", legacyPackage: "Video Package", legacyStatus: "Video Status" },
   { name: "Internet", modernPackage: "Internet_Package", modernStatus: "Internet_CurrentStatus", legacyPackage: "Internet Package", legacyStatus: "Internet Status" },
@@ -47,7 +46,7 @@ export async function importATTRows({ rows, uploadId, actorUid, fileName, storag
   const reps = (await db.collection("reps").where("status", "==", "active").get()).docs.map((document) => document.data() as Rep);
   const existing = new Map((await orderCollection().get()).docs.map((document) => [document.id, document.data()]));
   const canonical = new Map<string, { orderUid: string; data: Record<string, unknown>; unmatched: boolean }>();
-  let skipped = 0; let matched = 0;
+  let skipped = 0;
   for (const row of rows) {
     const orderId = rowOrderId(row); const orderDateId = dateId(rowDate(row));
     if (!orderId || !orderDateId) { skipped++; continue; }
@@ -57,7 +56,7 @@ export async function importATTRows({ rows, uploadId, actorUid, fileName, storag
       const orderUid = documentId(orderId, service.name); const previous = existing.get(orderUid);
       const rawRepName = formatImportedName(rowRepName(row));
       const result = previous?.lockedAssignment ? { repUid: previous.matchedRepUid as string | null, method: previous.matchMethod as string | null } : matchImportRowToRep({ rawRepName }, reps);
-      const isMatched = Boolean(result.repUid); if (isMatched) matched++;
+      const isMatched = Boolean(result.repUid);
       canonical.set(orderUid, { orderUid, unmatched: !isMatched, data: {
         orderUid, orderId, provider: "att", serviceType: service.name.toLowerCase(), packageName, sourceUploadId: uploadId,
         orderDate: rowDate(row), orderDateId, saleCount: 1, rawRepName, rawSalesId: "", rawManagerName: "",

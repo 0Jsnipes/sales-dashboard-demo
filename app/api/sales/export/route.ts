@@ -5,7 +5,6 @@ import type { Rep } from "@/src/types/rep";
 import { formatImportedName } from "@/src/lib/matching/display-name";
 import * as XLSX from "xlsx";
 
-const dateId = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 const isoWeek = (dateIdValue: string) => { const [year, month, day] = dateIdValue.split("-").map(Number); const value = new Date(Date.UTC(year, month - 1, day)); value.setUTCDate(value.getUTCDate() + 4 - (value.getUTCDay() || 7)); const yearStart = new Date(Date.UTC(value.getUTCFullYear(), 0, 1)); const week = Math.ceil((((value.valueOf() - yearStart.valueOf()) / 86400000) + 1) / 7); return value.getUTCFullYear() + "-W" + String(week).padStart(2, "0"); };
 
 export async function GET(request: Request) {
