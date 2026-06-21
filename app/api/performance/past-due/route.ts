@@ -1,0 +1,22 @@
+import { NextResponse } from "next/server";
+import { getAdminDb } from "@/src/lib/firebase/admin";
+import { requireActor } from "@/src/lib/firebase/server-auth";
+
+const classify = (status: unknown) => { const value = String(status || "").toLowerCase(); return value.includes("cancel") ? "cancelled" : value.includes("active") || value.includes("install") ? "active" : value.includes("schedul") || value.includes("pending") ? "pending" : "other"; };
+const toDateId = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+const csvCell = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+
+export async function GET(request: Request) {
+  try {
+    await requireActor(request);
+    const url = new URL(request.url); const start = url.searchParams.get("start"); const end = url.searchParams.get("end");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start ?? "") || !/^\d{4}-\d{2}-\d{2}$/.test(end ?? "") || start! > end!) return NextResponse.json({ error: "VALID_DATE_RANGE_REQUIRED" }, { status: 400 });
+    const db = getAdminDb(); const manager = url.searchParams.get("manager") || "all"; const location = url.searchParams.get("location") || "all"; const repFilter = url.searchParams.get("rep") || "all"; const providerFilter = url.searchParams.get("provider") || "both";
+    const ordersFor = (provider: string) => db.collection("salesOrders").doc(provider).collection("orders").where("orderDateId", ">=", start!).where("orderDateId", "<=", end!).get(); const [att, tfiber, manual, repsSnapshot] = await Promise.all([ordersFor("att"), ordersFor("tfiber"), ordersFor("manual"), db.collection("reps").where("status", "==", "active").get()]);
+    const reps = new Map(repsSnapshot.docs.map((document) => [document.id, document.data()])); const providerName = (order: Record<string, unknown>) => String(order.provider) === "att" ? "ATT" : String(order.provider) === "tfiber" ? "T-Fiber" : String(order.provider) === "frontier" ? "Frontier" : "Manual";
+    const today = toDateId(new Date()); const all = [...att.docs, ...tfiber.docs, ...manual.docs].map((document) => ({ id: document.id, ...(document.data() as Record<string, unknown>) })) as Array<Record<string, unknown> & { id: string }>;
+    const rows = all.filter((order) => { const rep = order.matchedRepUid ? reps.get(String(order.matchedRepUid)) : undefined; const provider = providerName(order); const installDate = String(order.installationDateId || ""); const status = classify(order.accountStatus); return /^\d{4}-\d{2}-\d{2}$/.test(installDate) && installDate < today && status !== "active" && status !== "cancelled" && (providerFilter === "both" || provider === providerFilter) && (manager === "all" || String(rep?.managerName || order.rawManagerName || "") === manager) && (location === "all" || String(rep?.locationName || "") === location) && (repFilter === "all" || String(rep?.repUid || "") === repFilter); }).map((order) => { const rep = order.matchedRepUid ? reps.get(String(order.matchedRepUid)) : undefined; const raw = order.rawData as Record<string, unknown> | undefined; return { "Install Date": order.installationDateId, "Days Past Due": Math.floor((new Date(`${today}T12:00:00`).getTime() - new Date(`${String(order.installationDateId)}T12:00:00`).getTime()) / 86400000), "Order Date": order.orderDateId, "Order Number": order.orderId || order.orderUid || order.id, "Customer / Address": raw?.["Customer Name"] || raw?.["Street Address"] || "", Representative: rep?.displayName || order.rawRepName || "Not on roster", Manager: rep?.managerName || order.rawManagerName || "", Location: rep?.locationName || "", Provider: providerName(order), "Account Status": order.accountStatus || "" }; }).sort((a, b) => String(a["Install Date"]).localeCompare(String(b["Install Date"])));
+    const headers = ["Install Date", "Days Past Due", "Order Date", "Order Number", "Customer / Address", "Representative", "Manager", "Location", "Provider", "Account Status"]; const csv = [headers.map(csvCell).join(","), ...rows.map((row) => headers.map((header) => csvCell(row[header as keyof typeof row])).join(","))].join("\n");
+    return new NextResponse(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="past-due-installs-${start}-to-${end}.csv"` } });
+  } catch (error) { const message = error instanceof Error ? error.message : "EXPORT_FAILED"; return NextResponse.json({ error: message }, { status: message === "UNAUTHENTICATED" ? 401 : 500 }); }
+}

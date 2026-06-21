@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function isAdmin() {
+      return signedIn() && (profile().role == 'admin' || profile().role == 'superAdmin');
+    }
+    function isOwner(repUid) { return signedIn() && profile().repUid == repUid; }
+    function manages(repUid) {
+      return signedIn() && profile().role == 'manager'
+        && get(/databases/$(database)/documents/reps/$(repUid)).data.managerUid == profile().repUid;
+    }
+
+    // App profiles are created and managed only by an Admin SDK route.
+    match /users/{userId} {
+      allow read: if signedIn() && (userId == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    match /reps/{repUid} {
+      allow read: if isAdmin() || isOwner(repUid) || manages(repUid);
+      allow write: if isAdmin();
+    }
+
+    match /weeklyReports/{weekISO}/reps/{repUid} {
+      allow read: if isAdmin() || isOwner(repUid) || manages(repUid);
+      allow write: if false; // Admin SDK only; rebuild routes verify role server-side.
+    }
+
+    match /goals/{weekISO}/reps/{repUid} {
+      allow read: if isAdmin() || isOwner(repUid) || manages(repUid);
+      allow write: if false;
+    }
+
+    match /onboarding/{repUid} {
+      allow read: if isAdmin() || isOwner(repUid) || manages(repUid);
+      allow write: if false;
+    }
+
+    // Raw imports and audit records never go directly to the browser.
+    match /salesOrders/{provider}/{orderUid} { allow read, write: if false; }
+    match /knockDaily/{dateId}/reps/{repUid} { allow read, write: if false; }
+    match /uploadRuns/{uploadId} { allow read: if isAdmin(); allow write: if false; }
+    match /unmatchedImports/{unmatchedId} { allow read: if isAdmin(); allow write: if false; }
+    match /auditLogs/{auditId} { allow read: if isAdmin(); allow write: if false; }
+  }
+}

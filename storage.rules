@@ -1,0 +1,7 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Source imports must use a privileged API; temporary onboarding uploads are added later.
+    match /{allPaths=**} { allow read, write: if false; }
+  }
+}
