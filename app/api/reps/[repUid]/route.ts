@@ -11,30 +11,32 @@ import { z } from "zod";
 
 type Params = { params: Promise<{ repUid: string }> };
 const socials = z.object({ instagram: z.string().max(160).optional(), facebook: z.string().max(160).optional(), tiktok: z.string().max(160).optional(), linkedin: z.string().max(160).optional() }).default({});
-const updateRep = z.object({ displayName: z.string().min(2).max(120), email: z.union([z.string().email(), z.literal("")]).default(""), phone: z.string().max(40).optional(), managerUid: z.string().nullable().optional(), managerName: z.string().max(120).default(""), locationId: z.string().min(1).max(80), locationName: z.string().min(1).max(120), programIds: z.array(z.string().min(1).max(80)).default([]), vendorType: z.enum(["organic", "subVendor"]).default("organic"), weeklySalesGoal: z.number().int().min(0).max(10000).default(0), salesIds: z.array(z.string().min(1).max(80)).default([]), aliases: z.array(z.string().min(1).max(120)).default([]), socials });
+const updateRep = z.object({ displayName: z.string().min(2).max(120), email: z.union([z.string().email(), z.literal("")]).default(""), phone: z.string().max(40).optional(), managerUid: z.string().nullable().optional(), managerName: z.string().max(120).default(""), locationId: z.string().min(1).max(80), locationName: z.string().min(1).max(120), programIds: z.array(z.string().min(1).max(80)).default([]), vendorType: z.enum(["organic", "subVendor"]).default("organic"), weeklySalesGoal: z.number().int().min(0).max(10000).default(0), weeklyKnocksGoal: z.number().int().min(0).max(10000).default(0), salesIds: z.array(z.string().min(1).max(80)).default([]), aliases: z.array(z.string().min(1).max(120)).default([]), socials });
 
 export async function PATCH(request: Request, { params }: Params) {
   try {
     const actor = await requireActor(request);
     if (!canManageRoster(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     const { repUid } = await params;
-    const body = await request.json() as { action?: "terminate" | "restore" | "addAlias" | "update" | "setGoal"; sendTerminationEmail?: boolean; alias?: string; weeklySalesGoal?: unknown; rep?: unknown };
+    const body = await request.json() as { action?: "terminate" | "restore" | "addAlias" | "update" | "setGoal"; goalType?: "sales" | "knocks"; sendTerminationEmail?: boolean; alias?: string; weeklySalesGoal?: unknown; weeklyKnocksGoal?: unknown; rep?: unknown };
     if (body.action !== "terminate" && body.action !== "restore" && body.action !== "addAlias" && body.action !== "update" && body.action !== "setGoal") return NextResponse.json({ error: "INVALID_ACTION" }, { status: 400 });
     const reference = getAdminDb().collection("reps").doc(repUid);
     const snapshot = await reference.get();
     if (!snapshot.exists) return NextResponse.json({ error: "REP_NOT_FOUND" }, { status: 404 });
     const rep = snapshot.data() as Rep;
     if (body.action === "setGoal") {
-      const weeklySalesGoal = z.number().int().min(0).max(10000).safeParse(body.weeklySalesGoal);
-      if (!weeklySalesGoal.success) return NextResponse.json({ error: "INVALID_WEEKLY_SALES_GOAL" }, { status: 400 });
-      await reference.update({ weeklySalesGoal: weeklySalesGoal.data, updatedAt: FieldValue.serverTimestamp(), updatedBy: actor.token.uid });
-      return NextResponse.json({ weeklySalesGoal: weeklySalesGoal.data });
+      const goalType = body.goalType === "knocks" ? "knocks" : "sales";
+      const goalValue = goalType === "knocks" ? body.weeklyKnocksGoal : body.weeklySalesGoal;
+      const parsed = z.number().int().min(0).max(10000).safeParse(goalValue);
+      if (!parsed.success) return NextResponse.json({ error: goalType === "knocks" ? "INVALID_WEEKLY_KNOCKS_GOAL" : "INVALID_WEEKLY_SALES_GOAL" }, { status: 400 });
+      await reference.update({ [goalType === "knocks" ? "weeklyKnocksGoal" : "weeklySalesGoal"]: parsed.data, updatedAt: FieldValue.serverTimestamp(), updatedBy: actor.token.uid });
+      return NextResponse.json(goalType === "knocks" ? { weeklyKnocksGoal: parsed.data } : { weeklySalesGoal: parsed.data });
     }
     if (body.action === "update") {
       const input = updateRep.safeParse(body.rep);
       if (!input.success) return NextResponse.json({ error: input.error.flatten() }, { status: 400 });
       const [firstName = "", ...rest] = input.data.displayName.trim().split(/\s+/);
-      const updated = { ...rep, displayName: input.data.displayName.trim(), firstName, lastName: rest.join(" "), email: input.data.email.trim(), emailNormalized: normalizeEmail(input.data.email), phone: input.data.phone?.trim() || "", salesIds: input.data.salesIds.map(normalizeSalesId), aliases: input.data.aliases.map((alias) => alias.trim()), managerUid: input.data.managerUid ?? null, managerName: input.data.managerName.trim(), locationId: input.data.locationId.trim(), locationName: input.data.locationName.trim(), programIds: input.data.programIds.map((program) => program.trim()), vendorType: input.data.vendorType, weeklySalesGoal: input.data.weeklySalesGoal, socials: input.data.socials };
+      const updated = { ...rep, displayName: input.data.displayName.trim(), firstName, lastName: rest.join(" "), email: input.data.email.trim(), emailNormalized: normalizeEmail(input.data.email), phone: input.data.phone?.trim() || "", salesIds: input.data.salesIds.map(normalizeSalesId), aliases: input.data.aliases.map((alias) => alias.trim()), managerUid: input.data.managerUid ?? null, managerName: input.data.managerName.trim(), locationId: input.data.locationId.trim(), locationName: input.data.locationName.trim(), programIds: input.data.programIds.map((program) => program.trim()), vendorType: input.data.vendorType, weeklySalesGoal: input.data.weeklySalesGoal, weeklyKnocksGoal: input.data.weeklyKnocksGoal, socials: input.data.socials };
       await reference.update({ ...updated, search: { displayName: normalizeName(updated.displayName), aliases: updated.aliases.map(normalizeName), salesIds: updated.salesIds.map(normalizeSalesId) }, updatedAt: FieldValue.serverTimestamp(), updatedBy: actor.token.uid });
       const [rematchedTFiberOrders, rematchedATTOrders] = await Promise.all([rematchTFiberOrdersForRep(updated), rematchATTOrdersForRep(updated)]);
       return NextResponse.json({ rep: updated, rematchedTFiberOrders, rematchedATTOrders });

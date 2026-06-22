@@ -6,6 +6,18 @@ import { parseCommonFilters, parseDateRangeParams } from "@/src/lib/api/report-f
 const addDays = (date: Date, days: number) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 const salesTotal = (orders: Record<string, unknown>[]) => orders.reduce((sum, order) => sum + Number(order.saleCount || 1), 0);
 const dateId = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+const orderDedupeKey = (order: Record<string, unknown>) => `${String(order.orderId || order.orderUid || "").trim()}::${String(order.orderDateId || "").trim()}`;
+
+function dedupeOrders<T extends Record<string, unknown>>(orders: T[]) {
+  const seen = new Set<string>();
+  return orders.filter((order) => {
+    const key = orderDedupeKey(order);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export async function GET(request: Request) {
   try {
     await requireActor(request);
@@ -27,7 +39,7 @@ export async function GET(request: Request) {
       const endId = dateId(end);
       const get = (provider: string) => db.collection("salesOrders").doc(provider).collection("orders").where("orderDateId", ">=", startId).where("orderDateId", "<=", endId).get();
       const [att, tfiber, manual] = await Promise.all([get("att"), get("tfiber"), get("manual")]);
-      return [...att.docs, ...tfiber.docs, ...manual.docs].map((document) => document.data());
+      return dedupeOrders([...att.docs, ...tfiber.docs, ...manual.docs].map((document) => document.data()));
     };
     const [currentOrders, comparisonOrders, previousOrders, repsSnapshot, uploadRuns] = await Promise.all([
       getOrders(monday, lastDay),
@@ -37,13 +49,13 @@ export async function GET(request: Request) {
       db.collection("uploadRuns").orderBy("uploadedAt", "desc").limit(30).get(),
     ]);
     const repMap = new Map(repsSnapshot.docs.map((document) => [document.id, document.data()]));
-    const filteredCurrentOrders = currentOrders.filter((order) => {
+    const filteredCurrentOrders = dedupeOrders(currentOrders.filter((order) => {
       const rep = order.matchedRepUid ? repMap.get(String(order.matchedRepUid)) : undefined;
       return (!common.manager || common.manager === "all" || String(rep?.managerName || order.rawManagerName || "") === common.manager)
         && (!common.location || common.location === "all" || String(rep?.locationName || "") === common.location)
         && (!common.repId || String(rep?.repUid || "") === common.repId)
         && (!common.rep || common.rep === "all" || String(rep?.displayName || order.rawRepName || "") === common.rep);
-    });
+    }));
     const repTotals = new Map<string, number>();
     for (const order of filteredCurrentOrders) if (order.matchedRepUid) repTotals.set(String(order.matchedRepUid), (repTotals.get(String(order.matchedRepUid)) || 0) + Number(order.saleCount || 1));
     const topReps = [...repTotals.entries()].map(([repUid, sales]) => ({ repUid, displayName: String(repMap.get(repUid)?.displayName || "Unassigned"), sales })).sort((a, b) => b.sales - a.sales).slice(0, 10);

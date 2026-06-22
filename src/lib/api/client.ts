@@ -12,7 +12,7 @@ export async function authedFetch(input: RequestInfo | URL, init?: RequestInit) 
   if (!headers.has("Content-Type") && init?.body && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
-  return fetch(input, { ...init, headers });
+  return fetch(input, { cache: "no-store", ...init, headers });
 }
 
 export async function authedJson<T>(input: RequestInfo | URL, init?: RequestInit) {

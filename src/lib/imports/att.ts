@@ -27,10 +27,9 @@ const dateId = (value: unknown) => {
   const parsed = new Date(source);
   return Number.isNaN(parsed.valueOf()) ? "" : `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
 };
-const rowOrderId = (row: RawRow) => text(row.OrderID ?? row["Order ID"]);
+const rowOrderId = (row: RawRow) => text(row.STIOrderNum ?? row["STI Order Num"] ?? row.OrderID ?? row["Order ID"]);
 const rowDate = (row: RawRow) => text(row.OrderDate ?? row["Order Date"]);
 const rowRepName = (row: RawRow) => text(row.SalespersonName ?? row.Salesperson ?? row.UserName ?? row["User Name"]);
-const documentId = (orderId: string, service: ServiceName) => `${encodeURIComponent(orderId)}--${service.toLowerCase()}`;
 
 export function parseATTReport(buffer: Buffer): RawRow[] {
   const result = Papa.parse<RawRow>(buffer.toString("utf8"), { header: true, skipEmptyLines: true });
@@ -50,21 +49,33 @@ export async function importATTRows({ rows, uploadId, actorUid, fileName, storag
   for (const row of rows) {
     const orderId = rowOrderId(row); const orderDateId = dateId(rowDate(row));
     if (!orderId || !orderDateId) { skipped++; continue; }
-    for (const service of services) {
-      const packageName = valueFor(row, service.modernPackage, service.legacyPackage);
-      if (!packageName) continue;
-      const orderUid = documentId(orderId, service.name); const previous = existing.get(orderUid);
-      const rawRepName = formatImportedName(rowRepName(row));
-      const result = previous?.lockedAssignment ? { repUid: previous.matchedRepUid as string | null, method: previous.matchMethod as string | null } : matchImportRowToRep({ rawRepName }, reps);
-      const isMatched = Boolean(result.repUid);
-      canonical.set(orderUid, { orderUid, unmatched: !isMatched, data: {
-        orderUid, orderId, provider: "att", serviceType: service.name.toLowerCase(), packageName, sourceUploadId: uploadId,
-        orderDate: rowDate(row), orderDateId, saleCount: 1, rawRepName, rawSalesId: "", rawManagerName: "",
-        matchedRepUid: result.repUid, matchStatus: isMatched ? (result.method === "manual" ? "manual" : "matched") : "unmatched", matchMethod: result.method ?? null, lockedAssignment: Boolean(previous?.lockedAssignment),
-        accountStatus: valueFor(row, service.modernStatus, service.legacyStatus), installationDateId: dateId(row[`${service.name}_InstallDate`] ?? row[`${service.name} Install Date`]), cancellationDateId: dateId(row[`${service.name}_CancelDate`] ?? row[`${service.name} Cancel Date`]), rawData: serializableRow(row),
-        createdAt: previous?.createdAt ?? FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
-      }});
-    }
+    const serviceDetails = services
+      .map((service) => ({
+        name: service.name,
+        packageName: valueFor(row, service.modernPackage, service.legacyPackage),
+        status: valueFor(row, service.modernStatus, service.legacyStatus),
+        installationDateId: dateId(row[`${service.name}_InstallDate`] ?? row[`${service.name} Install Date`]),
+        cancellationDateId: dateId(row[`${service.name}_CancelDate`] ?? row[`${service.name} Cancel Date`]),
+      }))
+      .filter((item) => Boolean(item.packageName || item.status));
+    if (!serviceDetails.length) continue;
+    const orderUid = orderId;
+    if (!orderUid) { skipped++; continue; }
+    const previous = existing.get(orderUid);
+    const rawRepName = formatImportedName(rowRepName(row));
+    const result = previous?.lockedAssignment ? { repUid: previous.matchedRepUid as string | null, method: previous.matchMethod as string | null } : matchImportRowToRep({ rawRepName }, reps);
+    const isMatched = Boolean(result.repUid);
+    const packageName = serviceDetails.map((item) => item.packageName).filter(Boolean).join(" | ");
+    const accountStatus = serviceDetails.map((item) => item.status).filter(Boolean).join(" | ") || "Unknown";
+    const installationDateId = serviceDetails.find((item) => item.installationDateId)?.installationDateId ?? "";
+    const cancellationDateId = serviceDetails.find((item) => item.cancellationDateId)?.cancellationDateId ?? "";
+    canonical.set(orderUid, { orderUid, unmatched: !isMatched, data: {
+      orderUid, orderId, provider: "att", serviceType: "att", packageName, sourceUploadId: uploadId,
+      orderDate: rowDate(row), orderDateId, saleCount: 1, rawRepName, rawSalesId: "", rawManagerName: "",
+      matchedRepUid: result.repUid, matchStatus: isMatched ? (result.method === "manual" ? "manual" : "matched") : "unmatched", matchMethod: result.method ?? null, lockedAssignment: Boolean(previous?.lockedAssignment),
+      accountStatus, installationDateId, cancellationDateId, rawData: serializableRow(row),
+      createdAt: previous?.createdAt ?? FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+    }});
   }
   const orders = [...canonical.values()];
   // ATT rows carry a wide audit payload. Keep commits deliberately small so a historical export

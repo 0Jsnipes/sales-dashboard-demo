@@ -50,6 +50,7 @@ type RepForm = {
   programIds: string;
   vendorType: "organic" | "subVendor";
   weeklySalesGoal: string;
+  weeklyKnocksGoal: string;
   instagram: string;
   facebook: string;
   tiktok: string;
@@ -71,6 +72,7 @@ const blankForm: RepForm = {
   programIds: "",
   vendorType: "organic",
   weeklySalesGoal: "0",
+  weeklyKnocksGoal: "0",
   instagram: "",
   facebook: "",
   tiktok: "",
@@ -292,7 +294,8 @@ export function RosterPage() {
     { accessorKey: "locationName", header: "Location", cell: ({ row }) => row.original.locationName || "—" },
     { accessorKey: "vendorType", header: "Program / vendor", cell: ({ row }) => <Badge variant="outline">{row.original.vendorType}</Badge> },
     { accessorKey: "salesIds", header: "IDs / aliases", cell: ({ row }) => <span>{row.original.salesIds.length} / {row.original.aliases.length}</span> },
-    { accessorKey: "weeklySalesGoal", header: "Weekly goal", cell: ({ row }) => <span>{row.original.weeklySalesGoal || 0}</span> },
+    { accessorKey: "weeklySalesGoal", header: "Sales goal", cell: ({ row }) => <span>{row.original.weeklySalesGoal || 0}</span> },
+    { accessorKey: "weeklyKnocksGoal", header: "Knocks goal", cell: ({ row }) => <span>{(row.original as Rep & { weeklyKnocksGoal?: number }).weeklyKnocksGoal || 0}</span> },
     { accessorKey: "status", header: "Status", cell: ({ row }) => <Badge variant={row.original.status === "active" ? "success" : "warning"}>{row.original.status}</Badge> },
     { id: "readiness", header: "Account readiness", cell: ({ row }) => <Badge variant={readinessVariant(readiness(row.original))}>{readinessLabel(readiness(row.original))}</Badge> },
     { accessorKey: "updatedAt", header: "Last updated", cell: ({ row }) => <span className="text-sm text-muted-foreground">{formatDateTime(row.original.updatedAt as string | Date | null | undefined)}</span> },
@@ -354,6 +357,7 @@ export function RosterPage() {
       programIds: rep.programIds.join(", "),
       vendorType: rep.vendorType ?? "organic",
       weeklySalesGoal: String(rep.weeklySalesGoal ?? 0),
+      weeklyKnocksGoal: String((rep as Rep & { weeklyKnocksGoal?: number }).weeklyKnocksGoal ?? 0),
       instagram: rep.socials?.instagram ?? "",
       facebook: rep.socials?.facebook ?? "",
       tiktok: rep.socials?.tiktok ?? "",
@@ -380,6 +384,7 @@ export function RosterPage() {
         programIds: split(form.programIds),
         vendorType: form.vendorType,
         weeklySalesGoal: Number(form.weeklySalesGoal || 0),
+        weeklyKnocksGoal: Number(form.weeklyKnocksGoal || 0),
         salesIds: split(form.salesIds),
         aliases: split(form.aliases),
         socials: { instagram: form.instagram, facebook: form.facebook, tiktok: form.tiktok, linkedin: form.linkedin },
@@ -649,7 +654,7 @@ export function RosterPage() {
                       {row.getVisibleCells().map((cell) => <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>)}
                     </TableRow>
                   )) : (
-                    <TableRow><TableCell colSpan={10}><EmptyState title="No matching reps" description="Try clearing filters or adding a new representative." action={<Button onClick={() => { setEditorOpen(true); setEditing(null); setForm(blankForm); }}>Add rep</Button>} /></TableCell></TableRow>
+                    <TableRow><TableCell colSpan={11}><EmptyState title="No matching reps" description="Try clearing filters or adding a new representative." action={<Button onClick={() => { setEditorOpen(true); setEditing(null); setForm(blankForm); }}>Add rep</Button>} /></TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
@@ -669,8 +674,9 @@ export function RosterPage() {
                   <div className="grid gap-2 text-sm text-muted-foreground">
                     <p>Manager: {rep.managerName || "—"}</p>
                     <p>Location: {rep.locationName || "—"}</p>
-                    <p>Weekly goal: {rep.weeklySalesGoal || 0}</p>
-                    <p>Readiness: {readinessLabel(readiness(rep))}</p>
+                <p>Sales goal: {rep.weeklySalesGoal || 0}</p>
+                <p>Knocks goal: {(rep as Rep & { weeklyKnocksGoal?: number }).weeklyKnocksGoal || 0}</p>
+                <p>Readiness: {readinessLabel(readiness(rep))}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button size="sm" variant="outline" onClick={() => setSelectedRep(rep)}>Profile</Button>
@@ -720,7 +726,8 @@ export function RosterPage() {
                   </div>
                 </ProfileCard>
                 <ProfileCard title="Goals">
-                  <p>Weekly goal: {selectedRep.weeklySalesGoal || 0}</p>
+                  <p>Sales goal: {selectedRep.weeklySalesGoal || 0}</p>
+                  <p>Knocks goal: {(selectedRep as Rep & { weeklyKnocksGoal?: number }).weeklyKnocksGoal || 0}</p>
                   <p className="text-sm text-muted-foreground">Monthly goal: placeholder until backend supports a dedicated monthly field.</p>
                 </ProfileCard>
                 <ProfileCard title="Account access">
@@ -796,7 +803,8 @@ export function RosterPage() {
             </section>
             <section className="grid gap-3 md:grid-cols-2">
               <Field label="Programs"><Input value={form.programIds} onChange={(event) => setForm({ ...form, programIds: event.target.value })} /></Field>
-              <Field label="Weekly goal"><Input type="number" min={0} value={form.weeklySalesGoal} onChange={(event) => setForm({ ...form, weeklySalesGoal: event.target.value })} /></Field>
+              <Field label="Weekly sales goal"><Input type="number" min={0} value={form.weeklySalesGoal} onChange={(event) => setForm({ ...form, weeklySalesGoal: event.target.value })} /></Field>
+              <Field label="Weekly knocks goal"><Input type="number" min={0} value={form.weeklyKnocksGoal} onChange={(event) => setForm({ ...form, weeklyKnocksGoal: event.target.value })} /></Field>
             </section>
             <section className="grid gap-3 md:grid-cols-2">
               <Field label="Instagram"><Input value={form.instagram} onChange={(event) => setForm({ ...form, instagram: event.target.value })} /></Field>

@@ -18,6 +18,7 @@ export interface Rep {
   programIds: string[];
   vendorType: VendorType;
   weeklySalesGoal: number;
+  weeklyKnocksGoal: number;
   status: RepStatus;
   authUid: string | null;
   accountStatus: "none" | "invited" | "active" | "disabled";

@@ -24,6 +24,7 @@ export type SalesRepGroup = {
   programName: string;
   vendorType: "organic" | "subVendor" | "unassigned";
   weeklySalesGoal: number;
+  weeklyKnocksGoal: number;
   matchStatus: "matched" | "unmatched";
   total: number;
   installed: number;
@@ -163,6 +164,7 @@ export function groupSalesByRep(records: RawSalesOrder[], week: { start: string;
   programName: string;
   vendorType: "organic" | "subVendor" | "unassigned";
   weeklySalesGoal: number;
+  weeklyKnocksGoal: number;
   matchStatus: "matched" | "unmatched";
   dayIndex: (dateId: string) => number;
 }>) {
@@ -191,6 +193,7 @@ export function groupSalesByRep(records: RawSalesOrder[], week: { start: string;
       programName: meta?.programName ?? clean(orders[0]?.provider),
       vendorType: meta?.vendorType ?? "unassigned",
       weeklySalesGoal: meta?.weeklySalesGoal ?? 0,
+      weeklyKnocksGoal: meta?.weeklyKnocksGoal ?? 0,
       matchStatus: meta?.matchStatus ?? (orders[0]?.matchedRepUid ? "matched" : "unmatched"),
       days,
       week,

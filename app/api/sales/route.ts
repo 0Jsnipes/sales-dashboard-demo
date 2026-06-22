@@ -30,6 +30,7 @@ type SalesGroup = {
   programName: string;
   vendorType: "organic" | "subVendor" | "unassigned";
   weeklySalesGoal: number;
+  weeklyKnocksGoal: number;
   managerName: string;
   locationName: string;
   days: number[];
@@ -50,9 +51,18 @@ function currentWeek(weekStart?: string | null) {
   return { monday, sunday };
 }
 
-function buildRange(searchParams: URLSearchParams) {
+function currentMonth() {
+  const today = new Date();
+  return { start: new Date(today.getFullYear(), today.getMonth(), 1), end: today };
+}
+
+function buildRange(searchParams: URLSearchParams, rangeMode: string | null) {
   const dateRange = parseDateRangeParams(searchParams);
   if (dateRange.from && dateRange.to) return { start: dateRange.from, end: dateRange.to };
+  if (rangeMode === "mtd") {
+    const { start, end } = currentMonth();
+    return { start: dateId(start), end: dateId(end), monday: start };
+  }
   const { monday, sunday } = currentWeek(dateRange.weekStart ?? searchParams.get("weekStart"));
   return { start: dateRange.weekStart ?? dateId(monday), end: dateId(sunday), monday, sunday };
 }
@@ -66,12 +76,16 @@ function normalizeProvider(value: unknown) {
   return source;
 }
 
+function orderDedupeKey(order: SalesOrder) {
+  return `${String(order.orderId || order.orderUid || "").trim()}::${String(order.orderDateId || "").trim()}`;
+}
+
 export async function GET(request: Request) {
   try {
     await requireActor(request);
     const url = new URL(request.url);
     const filters = parseCommonFilters(url.searchParams);
-    const range = buildRange(url.searchParams);
+    const range = buildRange(url.searchParams, url.searchParams.get("range"));
     const includeOrders = url.searchParams.get("includeOrders") === "true";
     const db = getAdminDb();
     const [tfiberSnapshot, attSnapshot, manualSnapshot, repsSnapshot, assignmentsSnapshot] = await Promise.all([
@@ -83,6 +97,7 @@ export async function GET(request: Request) {
     ]);
     const roster = new Map(repsSnapshot.docs.map((document) => [document.id, document.data() as Rep]));
     const selectedWeek = range.monday ? dateId(range.monday) : range.start;
+    const dayCount = Math.max(1, Math.floor((new Date(`${range.end}T12:00:00`).getTime() - new Date(`${range.start}T12:00:00`).getTime()) / 86_400_000) + 1);
     const resolveLocation = (rep: Rep | undefined) => {
       if (!rep) return "";
       const assignments = assignmentsSnapshot.docs.map((document) => document.data()).filter((item) => item.repUid === rep.repUid);
@@ -117,12 +132,21 @@ export async function GET(request: Request) {
       if (filters.status && filters.status !== "all" && String(order.accountStatus || "") !== filters.status) return false;
       return true;
     });
+    const uniqueOrders = (() => {
+      const seen = new Set<string>();
+      return filteredOrders.filter((order) => {
+        const key = orderDedupeKey(order);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    })();
 
     const grouped = new Map<string, SalesGroup>();
-    for (const order of filteredOrders) {
+    for (const order of uniqueOrders) {
       const [year, month, day] = String(order.orderDateId).split("-").map(Number);
       const anchor = range.monday ?? new Date(`${range.start}T12:00:00`);
-      const dayIndex = Math.max(0, Math.min(6, Math.round((Date.UTC(year, month - 1, day) - Date.UTC(anchor.getFullYear(), anchor.getMonth(), anchor.getDate())) / 86_400_000)));
+      const dayIndex = Math.max(0, Math.min(dayCount - 1, Math.round((Date.UTC(year, month - 1, day) - Date.UTC(anchor.getFullYear(), anchor.getMonth(), anchor.getDate())) / 86_400_000)));
       const rep = order.matchedRepUid ? roster.get(order.matchedRepUid) : undefined;
       const isATT = normalizeProvider(order.provider) === "att";
       const rawName = isATT ? formatImportedName(order.rawRepName || "Unassigned representative") : String(order.rawRepName || "Unassigned representative").trim();
@@ -135,9 +159,10 @@ export async function GET(request: Request) {
         programName: isATT ? "ATT" : "T-Fiber",
         vendorType: rep?.vendorType ?? "unassigned",
         weeklySalesGoal: Number(rep?.weeklySalesGoal ?? 0),
+        weeklyKnocksGoal: Number(rep?.weeklyKnocksGoal ?? 0),
         managerName: rep?.managerName ?? (isATT ? "" : String(order.rawManagerName || "")),
         locationName: resolveLocation(rep),
-        days: [0, 0, 0, 0, 0, 0, 0],
+        days: Array.from({ length: dayCount }, () => 0),
         total: 0,
         accountStatuses: {},
       };

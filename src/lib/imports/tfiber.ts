@@ -36,13 +36,15 @@ export async function importTFiberRows({ rows, uploadId, actorUid, fileName, sto
   const orders: Array<{ orderUid: string; data: Record<string, unknown>; unmatched: boolean }> = [];
   let skipped = 0; let matched = 0;
   for (const row of rows) {
-    const orderUid = String(row["Alt Order ID"] || row["Order #"] || "").trim();
-    if (!orderUid) { skipped++; continue; }
+    const orderId = String(row["Alt Order ID"] || row["Order #"] || "").trim();
+    const orderDateId = dateId(row["Order Date"]);
+    if (!orderId || !orderDateId) { skipped++; continue; }
+    const orderUid = `${orderId}::${orderDateId}`;
     const previous = existing.get(orderUid);
     const result = previous?.lockedAssignment ? { repUid: previous.matchedRepUid as string | null, method: previous.matchMethod as string | null, confidence: 1, reason: "Locked manual assignment" } : matchImportRowToRep({ rawSalesId: String(row["Rep ID"] ?? ""), rawRepName: String(row.dealername ?? "") }, reps);
     const isMatched = Boolean(result.repUid);
     if (isMatched) matched++;
-    const data = { orderUid, provider: "tfiber", sourceUploadId: uploadId, orderDate: dateId(row["Order Date"]), orderDateId: dateId(row["Order Date"]), saleCount: 1, rawRepName: String(row.dealername ?? ""), rawSalesId: String(row["Rep ID"] ?? ""), rawManagerName: String(row.Manager ?? row["Manager Name"] ?? ""), matchedRepUid: result.repUid, matchStatus: isMatched ? (result.method === "manual" ? "manual" : "matched") : "unmatched", matchMethod: result.method, lockedAssignment: Boolean(previous?.lockedAssignment), accountStatus: String(row["Account Status"] ?? ""), installationDateId: dateId(row["Est. Installation Date"]), cancellationDateId: dateId(row["Order Cancellation Date"]), rawData: serializable(row), legacyPath: null, createdAt: previous?.createdAt ?? FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() };
+    const data = { orderUid, orderId, provider: "tfiber", sourceUploadId: uploadId, orderDate: orderDateId, orderDateId, saleCount: 1, rawRepName: String(row.dealername ?? ""), rawSalesId: String(row["Rep ID"] ?? ""), rawManagerName: String(row.Manager ?? row["Manager Name"] ?? ""), matchedRepUid: result.repUid, matchStatus: isMatched ? (result.method === "manual" ? "manual" : "matched") : "unmatched", matchMethod: result.method, lockedAssignment: Boolean(previous?.lockedAssignment), accountStatus: String(row["Account Status"] ?? ""), installationDateId: dateId(row["Est. Installation Date"]), cancellationDateId: dateId(row["Order Cancellation Date"]), rawData: serializable(row), legacyPath: null, createdAt: previous?.createdAt ?? FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() };
     orders.push({ orderUid, data, unmatched: !isMatched });
   }
   for (const group of chunks(orders, 350)) {

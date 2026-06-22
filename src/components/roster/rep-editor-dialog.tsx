@@ -22,6 +22,7 @@ export type RepEditorForm = {
   programIds: string;
   vendorType: "organic" | "subVendor";
   weeklySalesGoal: string;
+  weeklyKnocksGoal: string;
   instagram: string;
   facebook: string;
   tiktok: string;
@@ -41,6 +42,7 @@ export const blankRepEditorForm: RepEditorForm = {
   programIds: "",
   vendorType: "organic",
   weeklySalesGoal: "0",
+  weeklyKnocksGoal: "0",
   instagram: "",
   facebook: "",
   tiktok: "",
@@ -133,8 +135,13 @@ export function RepEditorDialog({ open, title, description, saveLabel, saving, f
             <Field label="Programs">
               <Input value={form.programIds} onChange={(event) => setForm({ ...form, programIds: event.target.value })} />
             </Field>
-            <Field label="Weekly goal">
+            <Field label="Weekly sales goal">
               <Input type="number" min={0} value={form.weeklySalesGoal} onChange={(event) => setForm({ ...form, weeklySalesGoal: event.target.value })} />
+            </Field>
+          </section>
+          <section className="grid gap-3 md:grid-cols-2">
+            <Field label="Weekly knocks goal">
+              <Input type="number" min={0} value={form.weeklyKnocksGoal} onChange={(event) => setForm({ ...form, weeklyKnocksGoal: event.target.value })} />
             </Field>
           </section>
           <section className="grid gap-3 md:grid-cols-2">

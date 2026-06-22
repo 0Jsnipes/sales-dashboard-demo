@@ -6,7 +6,8 @@
     "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "dedupe:sales-orders": "node scripts/dedupe-sales-orders.mjs"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",

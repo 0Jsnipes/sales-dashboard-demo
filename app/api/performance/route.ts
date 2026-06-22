@@ -9,6 +9,16 @@ type QuerySnapshotLike = { docs: QueryDoc[] };
 const classify = (status: unknown) => { const value = String(status || "").toLowerCase(); return value.includes("cancel") ? "cancelled" : value.includes("active") || value.includes("install") ? "active" : value.includes("schedul") || value.includes("pending") ? "pending" : "other"; };
 const toDate = (value: string) => new Date(`${value}T12:00:00`);
 const shiftRange = (start: string, end: string, days: number) => { const first = toDate(start); const last = toDate(end); first.setDate(first.getDate() + days); last.setDate(last.getDate() + days); return { start: toDateId(first), end: toDateId(last) }; };
+const saleKey = (order: Order) => `${String(order.orderId || order.id || "").trim()}::${String(order.orderDateId || "").trim()}`;
+const dedupeOrders = (orders: Order[]) => {
+  const seen = new Set<string>();
+  return orders.filter((order) => {
+    const key = saleKey(order);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
 
 export async function GET(request: Request) {
   try {
@@ -33,11 +43,11 @@ export async function GET(request: Request) {
       const get = (provider: string) => db.collection("salesOrders").doc(provider).collection("orders").where(dateField, ">=", range.start).where(dateField, "<=", range.end).get();
       const empty: QuerySnapshotLike = { docs: [] };
       const [att, tfiber, manual] = await Promise.all([get("att"), get("tfiber"), mode === "sales" ? get("manual") : Promise.resolve(empty)]);
-      return [
+      return dedupeOrders([
         ...att.docs.map((document) => ({ id: document.id, providerKey: "att", ...(document.data() as Record<string, unknown>) })),
         ...tfiber.docs.map((document) => ({ id: document.id, providerKey: "tfiber", ...(document.data() as Record<string, unknown>) })),
         ...manual.docs.map((document) => ({ id: document.id, providerKey: "manual", ...(document.data() as Record<string, unknown>) })),
-      ] as Order[];
+      ] as Order[]);
     };
     const dayCount = Math.max(1, Math.floor((toDate(computed.end).getTime() - toDate(computed.start).getTime()) / 86400000) + 1);
     const [current, previous, priorMonth, priorYear, repsSnapshot] = await Promise.all([readRange(computed), readRange(shiftRange(computed.start, computed.end, -dayCount)), readRange(shiftRange(computed.start, computed.end, -30)), readRange(shiftRange(computed.start, computed.end, -365)), db.collection("reps").where("status", "==", "active").get()]);

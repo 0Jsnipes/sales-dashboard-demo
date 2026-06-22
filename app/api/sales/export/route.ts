@@ -30,7 +30,7 @@ export async function GET(request: Request) {
       const source = text(value); const iso = source.match(/^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/); if (iso) return `${Number(iso[2])}-${Number(iso[3])}-${iso[1]}`;
       const slash = source.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return slash ? `${Number(slash[1])}-${Number(slash[2])}-${slash[3]}` : value;
     };
-    const sourceRows = (provider: "ATT" | "T-Fiber") => { const seen = new Set<string>(); return exported.filter((row) => row.provider === provider && !seen.has(row.orderId) && Boolean(seen.add(row.orderId))).map((row) => {
+    const sourceRows = (provider: "ATT" | "T-Fiber") => { const seen = new Set<string>(); return exported.filter((row) => { const key = `${row.orderId}::${row.orderDate}`; return row.provider === provider && !seen.has(key) && Boolean(seen.add(key)); }).map((row) => {
       const raw = Object.fromEntries(Object.entries(row.rawData).map(([key, value]) => [key, exportDate(value)]));
       if (provider === "ATT") {
         const statuses = [["Video", raw["Video Status"]], ["Internet", raw["Internet Status"]], ["Voice", raw["Voice Status"]]].filter(([, status]) => text(status)).map(([service, status]) => `${service}: ${text(status)}`).join(" | ");

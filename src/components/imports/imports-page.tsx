@@ -1,17 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { motion, useReducedMotion } from "motion/react";
-import { AlertCircle, FileSpreadsheet, FileUp, PackageSearch, RefreshCcw, ShieldAlert, UploadCloud } from "lucide-react";
+import { AlertCircle, FileSpreadsheet, FileUp, PackageSearch, RefreshCcw, ShieldAlert, Trash2, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { authedFetch } from "@/src/lib/api/client";
 import { useAuth } from "@/src/components/auth-provider";
@@ -34,6 +36,21 @@ type UploadHistoryRow = {
   unmatched: number;
   createdAt: string;
   notes?: string;
+};
+
+type ServerUploadRow = {
+  uploadId: string;
+  type: "attSales" | "tfiberSales";
+  fileName: string;
+  storagePath: string;
+  uploadedBy: string;
+  uploadedAt: string | null;
+  status: string;
+  rowsRead: number;
+  rowsValid: number;
+  rowsSkipped: number;
+  rowsMatched: number;
+  rowsUnmatched: number;
 };
 
 function SourceCard({
@@ -223,22 +240,74 @@ export function ImportsPage() {
   const reducedMotion = useReducedMotion();
   const [history, setHistory] = useState<UploadHistoryRow[]>([]);
   const [latestSummary, setLatestSummary] = useState<Summary | null>(null);
+  const [uploads, setUploads] = useState<ServerUploadRow[]>([]);
+  const [loadingUploads, setLoadingUploads] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState<{ kind: "single"; upload: ServerUploadRow } | { kind: "all" } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const allowed = profile?.role === "superAdmin" || (profile?.role === "admin" && profile.permissions.canEditSales);
 
   const steps = useMemo(() => ["Upload", "Validate", "Match", "Review", "Commit"], []);
 
+  const loadUploads = useCallback(async () => {
+    if (!allowed) {
+      setUploads([]);
+      setLoadingUploads(false);
+      return;
+    }
+    setLoadingUploads(true);
+    try {
+      const response = await authedFetch("/api/imports");
+      const data = await response.json() as { uploads?: ServerUploadRow[]; error?: string };
+      if (!response.ok) throw new Error(data.error || "Unable to load uploads.");
+      setUploads(data.uploads ?? []);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Unable to load uploads.";
+      toast.error(message);
+    } finally {
+      setLoadingUploads(false);
+    }
+  }, [allowed]);
+
   const addHistory = useCallback((row: UploadHistoryRow) => {
     setHistory((current) => [row, ...current].slice(0, 8));
     if (row.status === "complete") {
       setLatestSummary({ rowsRead: row.rows, rowsImported: row.rows, rowsSkipped: 0, rowsMatched: row.matched, rowsUnmatched: row.unmatched });
+      void loadUploads();
     }
-  }, []);
+  }, [loadUploads]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadUploads();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadUploads]);
 
   const totalUnmatched = latestSummary?.rowsUnmatched ?? history[0]?.unmatched ?? 0;
   const warnings = history.filter((row) => row.status === "failed").length;
   const sourcesAvailable = 2;
   const lastSuccessful = history.find((row) => row.status === "complete");
+
+  const runDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const response = deleteTarget.kind === "single"
+        ? await authedFetch(`/api/imports/${deleteTarget.upload.uploadId}`, { method: "DELETE" })
+        : await authedFetch("/api/imports", { method: "DELETE", body: JSON.stringify({ all: true }) });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error || "Unable to delete upload.");
+      toast.success(deleteTarget.kind === "single" ? "Upload deleted." : "All sales uploads deleted.");
+      setDeleteTarget(null);
+      await loadUploads();
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Unable to delete upload.";
+      toast.error(message);
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleteTarget, loadUploads]);
 
   return (
     <motion.div initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }} className="space-y-6">
@@ -352,6 +421,99 @@ export function ImportsPage() {
         </Card>
       </section>
 
+      <section className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]">
+        <Card className="border-border/70">
+          <CardHeader className="flex-row items-center justify-between gap-4">
+            <div className="space-y-1">
+              <CardTitle>Sales uploads</CardTitle>
+              <CardDescription>Delete a bad ATT or T-Fiber upload, or clear the full upload set and re-import.</CardDescription>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="outline" onClick={() => void loadUploads()} disabled={loadingUploads}>
+                <RefreshCcw className="h-4 w-4" />
+                Refresh
+              </Button>
+              <Button type="button" variant="destructive" onClick={() => setDeleteTarget({ kind: "all" })} disabled={!allowed || !uploads.length}>
+                <Trash2 className="h-4 w-4" />
+                Delete all uploads
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ScrollArea className="max-h-[420px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Type</TableHead>
+                    <TableHead>File</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Rows</TableHead>
+                    <TableHead>Uploaded</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loadingUploads ? (
+                    Array.from({ length: 3 }).map((_, index) => (
+                      <TableRow key={index}>
+                        <TableCell colSpan={6}>
+                          <div className="h-10 animate-pulse rounded-2xl bg-muted/40" />
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : uploads.length ? uploads.map((row) => (
+                    <TableRow key={row.uploadId}>
+                      <TableCell>
+                        <Badge variant="outline">{row.type === "attSales" ? "ATT" : "T-Fiber"}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <p className="font-medium">{row.fileName}</p>
+                          <p className="text-xs text-muted-foreground">{row.uploadId}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={row.status === "complete" ? "success" : "secondary"}>{row.status}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          <p>Read {row.rowsRead}</p>
+                          <p className="text-muted-foreground">Matched {row.rowsMatched} / Unmatched {row.rowsUnmatched}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>{row.uploadedAt ? new Date(row.uploadedAt).toLocaleString() : "—"}</TableCell>
+                      <TableCell className="text-right">
+                        <Button type="button" variant="destructive" size="sm" onClick={() => setDeleteTarget({ kind: "single", upload: row })} disabled={!allowed}>
+                          <Trash2 className="h-4 w-4" />
+                          Delete
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )) : (
+                    <TableRow>
+                      <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                        No sales uploads found.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+        <Card className="border-border/70">
+          <CardHeader>
+            <CardTitle>Delete behavior</CardTitle>
+            <CardDescription>What happens when you remove a sales upload.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
+            <p>Imported sales rows tied to the upload ID are deleted from reporting.</p>
+            <p>Unmatched queue entries created by that upload are removed too.</p>
+            <p>The source file in storage is deleted when available.</p>
+          </CardContent>
+        </Card>
+      </section>
+
       <section className="grid gap-4 xl:grid-cols-[1.1fr_.9fr]">
         <Card>
           <CardHeader className="flex-row items-center justify-between gap-4">
@@ -450,6 +612,27 @@ export function ImportsPage() {
           </CardContent>
         </Card>
       </section>
+
+      <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{deleteTarget?.kind === "all" ? "Delete all sales uploads" : "Delete sales upload"}</DialogTitle>
+            <DialogDescription>
+              {deleteTarget?.kind === "all"
+                ? "This removes every ATT and T-Fiber upload, their imported rows, their unmatched queue items, and their stored source files."
+                : deleteTarget?.upload
+                  ? `This removes ${deleteTarget.upload.fileName}, the imported rows tied to this upload, the unmatched queue items, and the stored source file.`
+                  : "Choose an upload first."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => void runDelete()} disabled={deleting || !deleteTarget}>
+              {deleting ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }
