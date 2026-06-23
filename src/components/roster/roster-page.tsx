@@ -219,18 +219,26 @@ export function RosterPage() {
   const [locationMode, setLocationMode] = useState<"forward" | "single">("forward");
   const [locationId, setLocationId] = useState("");
   const [form, setForm] = useState<RepForm>(blankForm);
-  const [activeView, setActiveView] = useState<"active" | "terminated" | "all">("active");
+  const [managerFilter, setManagerFilter] = useState("all");
+  const [locationFilter, setLocationFilter] = useState("all");
+  const [vendorFilter, setVendorFilter] = useState("all");
   const [qualityFilter, setQualityFilter] = useState<string>("all");
 
   const canEdit = profile?.role === "superAdmin" || (profile?.role === "admin" && profile.permissions.canEditRoster);
 
   const request = useCallback((path: string, init?: RequestInit) => authedFetch(path, init), []);
 
-  const loadRoster = useCallback(async (nextStatus = status) => {
+  const loadRoster = useCallback(async (nextStatus = status, nextFilters?: { manager?: string; location?: string; vendor?: string; search?: string }) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await authedJson<{ reps: Rep[] }>(`/api/reps?status=${nextStatus}`);
+      const params = new URLSearchParams();
+      params.set("status", nextStatus);
+      if (nextFilters?.manager && nextFilters.manager !== "all") params.set("manager", nextFilters.manager);
+      if (nextFilters?.location && nextFilters.location !== "all") params.set("location", nextFilters.location);
+      if (nextFilters?.vendor && nextFilters.vendor !== "all") params.set("vendor", nextFilters.vendor);
+      if (nextFilters?.search?.trim()) params.set("search", nextFilters.search.trim());
+      const response = await authedJson<{ reps: Rep[] }>(`/api/reps?${params.toString()}`);
       setReps(response.reps ?? []);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Unable to load roster.";
@@ -241,7 +249,7 @@ export function RosterPage() {
     }
   }, [status]);
 
-  useEffect(() => { void loadRoster(activeView); }, [loadRoster, activeView]);
+  useEffect(() => { void loadRoster(status, { manager: managerFilter, location: locationFilter, vendor: vendorFilter, search: query }); }, [loadRoster, status, managerFilter, locationFilter, vendorFilter, query]);
 
   useEffect(() => {
     Promise.all([
@@ -270,11 +278,17 @@ export function RosterPage() {
     const term = query.toLowerCase().trim();
     return repsSorted.filter((rep) => {
       const quality = readiness(rep);
-      return (activeView === "all" || rep.status === activeView)
+      const matchesQuality = qualityFilter === "all"
+        || (qualityFilter === "ready" && quality === "ready")
+        || (qualityFilter === "missing_email" && !rep.email.trim())
+        || (qualityFilter === "missing_manager" && hasMissingManager(rep))
+        || (qualityFilter === "missing_location" && hasMissingLocation(rep))
+        || (qualityFilter === "missing_sales_id" && hasMissingSalesId(rep));
+      return (status === "all" || rep.status === status)
         && (!term || [rep.displayName, rep.email, rep.phone, rep.managerName, rep.locationName, rep.vendorType, ...rep.salesIds, ...rep.aliases].join(" ").toLowerCase().includes(term))
-        && (qualityFilter === "all" || quality === qualityFilter);
+        && matchesQuality;
     });
-  }, [repsSorted, query, activeView, qualityFilter]);
+  }, [repsSorted, query, status, qualityFilter]);
 
   const columns = useMemo<ColumnDef<Rep>[]>(() => [
     {
@@ -303,25 +317,25 @@ export function RosterPage() {
       id: "actions",
       header: "",
       cell: ({ row }) => (
-        <div className="flex flex-wrap gap-2">
-          <Button size="xs" variant="outline" onClick={() => { setEditing(row.original); setForm(repToForm(row.original)); setEditorOpen(true); }}>
+        <div className="flex flex-wrap gap-1.5">
+          <Button size="xs" variant="outline" className="h-7 gap-1.5 px-2 text-[11px]" onClick={() => { setEditing(row.original); setForm(repToForm(row.original)); setEditorOpen(true); }}>
             <Pencil className="h-4 w-4" />
             Edit
           </Button>
-          <Button size="xs" variant="ghost" onClick={() => setLocationDialogRep(row.original)}>
+          <Button size="xs" variant="ghost" className="h-7 gap-1.5 px-2 text-[11px]" onClick={() => setLocationDialogRep(row.original)}>
             <MapPin className="h-4 w-4" />
             Assign location
           </Button>
-          <Button size="xs" variant="ghost" onClick={() => setSelectedRep(row.original)}>
+          <Button size="xs" variant="ghost" className="h-7 gap-1.5 px-2 text-[11px]" onClick={() => setSelectedRep(row.original)}>
             Details
           </Button>
           {row.original.status === "active" ? (
-            <Button size="xs" variant="ghost" onClick={() => setTerminateRep(row.original)}>
+            <Button size="xs" variant="ghost" className="h-7 gap-1.5 px-2 text-[11px]" onClick={() => setTerminateRep(row.original)}>
               <UserRoundX className="h-4 w-4" />
               Terminate
             </Button>
           ) : (
-            <Button size="xs" variant="ghost" onClick={() => setRestoreRep(row.original)}>
+            <Button size="xs" variant="ghost" className="h-7 gap-1.5 px-2 text-[11px]" onClick={() => setRestoreRep(row.original)}>
               <RotateCcw className="h-4 w-4" />
               Restore
             </Button>
@@ -399,7 +413,7 @@ export function RosterPage() {
       setEditorOpen(false);
       setEditing(null);
       setForm(blankForm);
-      await loadRoster(activeView);
+      await loadRoster(status);
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to save representative.");
     } finally {
@@ -420,7 +434,7 @@ export function RosterPage() {
       toast.success("Location assignment saved.");
       setLocationDialogRep(null);
       setLocationId("");
-      await loadRoster(activeView);
+      await loadRoster(status);
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to assign location.");
     } finally {
@@ -442,7 +456,7 @@ export function RosterPage() {
       toast.success(action === "terminate" ? "Representative terminated." : "Representative restored.");
       setTerminateRep(null);
       setRestoreRep(null);
-      await loadRoster(activeView);
+      await loadRoster(status);
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to update status.");
     } finally {
@@ -469,7 +483,7 @@ export function RosterPage() {
       toast.success("Alias added.");
       setAliasDraft("");
       setAddAliasTarget(null);
-      await loadRoster(activeView);
+      await loadRoster(status);
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to add alias.");
     } finally {
@@ -496,12 +510,12 @@ export function RosterPage() {
   }), [reps]);
 
   const kpis = [
-    { label: "Active reps", value: activeCount, icon: Users },
-    { label: "Terminated reps", value: terminatedCount, icon: UserRoundX },
-    { label: "Missing sales ID/alias", value: missingSalesIdCount, icon: CircleAlert },
-    { label: "Missing location", value: missingLocationCount, icon: MapPin },
-    { label: "Missing manager", value: missingManagerCount, icon: ShieldAlert },
-    { label: "Ready for account", value: readyCount, icon: BadgeCheck },
+    { label: "Active reps", value: activeCount, icon: Users, iconClass: "bg-emerald-500/15 text-emerald-600", borderClass: "border-emerald-500/20" },
+    { label: "Terminated reps", value: terminatedCount, icon: UserRoundX, iconClass: "bg-rose-500/15 text-rose-600", borderClass: "border-rose-500/20" },
+    { label: "Missing sales ID/alias", value: missingSalesIdCount, icon: CircleAlert, iconClass: "bg-amber-500/15 text-amber-600", borderClass: "border-amber-500/20" },
+    { label: "Missing location", value: missingLocationCount, icon: MapPin, iconClass: "bg-sky-500/15 text-sky-600", borderClass: "border-sky-500/20" },
+    { label: "Missing manager", value: missingManagerCount, icon: ShieldAlert, iconClass: "bg-violet-500/15 text-violet-600", borderClass: "border-violet-500/20" },
+    { label: "Ready for account", value: readyCount, icon: BadgeCheck, iconClass: "bg-teal-500/15 text-teal-600", borderClass: "border-teal-500/20" },
   ];
 
   if (loading && reps.length === 0) return <LoadingState />;
@@ -514,37 +528,37 @@ export function RosterPage() {
     <motion.div initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }} className="space-y-6">
       {error ? <Alert><AlertTriangle className="h-4 w-4" /><AlertTitle>Roster loaded with warnings</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
       <Card>
-        <CardHeader className="space-y-4">
+        <CardHeader className="space-y-3 p-4 sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <CardTitle>Roster Command Center</CardTitle>
+              <CardTitle className="text-xl sm:text-2xl">Roster Command Center</CardTitle>
               <CardDescription>Clean identity records for reps, aliases, readiness, and assignment workflows.</CardDescription>
             </div>
-            <Button onClick={() => { setEditing(null); setForm(blankForm); setEditorOpen(true); }} disabled={!canEdit}>
+            <Button size="sm" onClick={() => { setEditing(null); setForm(blankForm); setEditorOpen(true); }} disabled={!canEdit}>
               <Plus className="h-4 w-4" />
               Add rep
             </Button>
           </div>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             {kpis.map((kpi) => (
-              <div key={kpi.label} className="rounded-2xl border border-border/70 p-4">
+              <div key={kpi.label} className={`rounded-2xl border p-3 ${kpi.borderClass}`}>
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm text-muted-foreground">{kpi.label}</p>
-                    <p className="mt-2 text-3xl font-semibold">{kpi.value}</p>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">{kpi.label}</p>
+                    <p className="mt-1 text-2xl font-semibold">{kpi.value}</p>
                   </div>
-                  <div className="rounded-2xl bg-primary/10 p-3 text-primary"><kpi.icon className="h-5 w-5" /></div>
+                  <div className={`rounded-2xl p-2.5 ${kpi.iconClass}`}><kpi.icon className="h-4 w-4" /></div>
                 </div>
               </div>
             ))}
           </div>
-          <div className="grid gap-3 lg:grid-cols-[1.4fr_.6fr_.6fr_.6fr]">
+          <div className="grid gap-2 lg:grid-cols-[1.4fr_.6fr_.6fr_.6fr]">
             <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input className="pl-9" placeholder="Search rep name, email, phone, manager, location, alias, sales ID" value={query} onChange={(event) => setQuery(event.target.value)} />
+              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input className="h-10 pl-9" placeholder="Search rep name, email, phone, manager, location, alias, sales ID" value={query} onChange={(event) => setQuery(event.target.value)} />
             </div>
-            <Select value={activeView} onValueChange={(value) => setActiveView(value as typeof activeView)}>
-              <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
+            <Select value={status} onValueChange={(value) => setStatus(value as typeof status)}>
+              <SelectTrigger className="h-10"><SelectValue placeholder="Status" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="active">Active</SelectItem>
                 <SelectItem value="terminated">Terminated</SelectItem>
@@ -552,7 +566,7 @@ export function RosterPage() {
               </SelectContent>
             </Select>
             <Select value={qualityFilter} onValueChange={setQualityFilter}>
-              <SelectTrigger><SelectValue placeholder="Data quality" /></SelectTrigger>
+              <SelectTrigger className="h-10"><SelectValue placeholder="Data quality" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All quality states</SelectItem>
                 <SelectItem value="missing_sales_id">Missing sales ID</SelectItem>
@@ -569,23 +583,23 @@ export function RosterPage() {
               </TabsList>
             </Tabs>
           </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <Select value="all" onValueChange={() => undefined}>
-              <SelectTrigger><SelectValue placeholder="Manager" /></SelectTrigger>
+          <div className="grid gap-2 md:grid-cols-3">
+            <Select value={managerFilter} onValueChange={setManagerFilter}>
+              <SelectTrigger className="h-10"><SelectValue placeholder="Manager" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All managers</SelectItem>
                 {managerFilterOptions.map((manager) => <SelectItem key={manager} value={manager}>{manager}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Select value="all" onValueChange={() => undefined}>
-              <SelectTrigger><SelectValue placeholder="Location" /></SelectTrigger>
+            <Select value={locationFilter} onValueChange={setLocationFilter}>
+              <SelectTrigger className="h-10"><SelectValue placeholder="Location" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All locations</SelectItem>
                 {locationFilterOptions.map((location) => <SelectItem key={location} value={location}>{location}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Select value="all" onValueChange={() => undefined}>
-              <SelectTrigger><SelectValue placeholder="Vendor / program" /></SelectTrigger>
+            <Select value={vendorFilter} onValueChange={setVendorFilter}>
+              <SelectTrigger className="h-10"><SelectValue placeholder="Vendor / program" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All vendors</SelectItem>
                 {vendorFilterOptions.map((vendor) => <SelectItem key={vendor} value={vendor}>{vendor}</SelectItem>)}
@@ -597,11 +611,11 @@ export function RosterPage() {
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]">
         <Card>
-          <CardHeader>
-            <CardTitle>Roster cleanup</CardTitle>
+          <CardHeader className="p-4 sm:p-5">
+            <CardTitle className="text-base">Roster cleanup</CardTitle>
             <CardDescription>Click an issue to focus the roster on that cleanup task.</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-2">
+          <CardContent className="grid gap-2 p-4 pt-0 md:grid-cols-2 sm:p-5 sm:pt-0">
             <CleanupCard title="Missing sales IDs" count={cleanupIssues.missingSalesId.length} icon={CircleAlert} onClick={() => setQualityFilter("missing_sales_id")} />
             <CleanupCard title="Duplicate names" count={cleanupIssues.duplicateNames.length} icon={Users} onClick={() => setQualityFilter("all")} />
             <CleanupCard title="Duplicate aliases" count={cleanupIssues.duplicateAliases.length} icon={Link2} onClick={() => setQualityFilter("all")} />
@@ -610,14 +624,14 @@ export function RosterPage() {
           </CardContent>
         </Card>
         <Card>
-          <CardHeader>
-            <CardTitle>Account readiness</CardTitle>
+          <CardHeader className="p-4 sm:p-5">
+            <CardTitle className="text-base">Account readiness</CardTitle>
             <CardDescription>Frontend-only readiness state for account creation workflows.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="rounded-2xl border border-border/70 p-4">
+          <CardContent className="space-y-3 p-4 pt-0 sm:p-5 sm:pt-0">
+            <div className="rounded-2xl border border-border/70 p-3">
               <p className="text-sm text-muted-foreground">Ready reps</p>
-              <p className="mt-1 text-2xl font-semibold">{readyCount}</p>
+              <p className="mt-1 text-xl font-semibold">{readyCount}</p>
             </div>
             <Progress value={reps.length ? Math.round((readyCount / reps.length) * 100) : 0} />
             <p className="text-sm text-muted-foreground">A rep is ready when they have name, email, manager, location, and at least one sales ID or alias.</p>
@@ -626,20 +640,20 @@ export function RosterPage() {
       </section>
 
       <Card className="overflow-hidden">
-        <CardHeader className="flex-row items-center justify-between gap-4">
+        <CardHeader className="flex-row items-center justify-between gap-3 p-4 sm:p-5">
           <div>
-            <CardTitle>{status === "terminated" ? "Terminated reps" : status === "active" ? "Active reps" : "All reps"}</CardTitle>
+            <CardTitle className="text-base sm:text-lg">{status === "terminated" ? "Terminated reps" : status === "active" ? "Active reps" : "All reps"}</CardTitle>
             <CardDescription>{filtered.length} matching records.</CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setQualityFilter("all")}>Reset quality filter</Button>
-            <Button variant="outline" onClick={() => setQuery("")}>Clear search</Button>
+            <Button size="sm" variant="outline" onClick={() => setQualityFilter("all")}>Reset quality filter</Button>
+            <Button size="sm" variant="outline" onClick={() => setQuery("")}>Clear search</Button>
           </div>
         </CardHeader>
         <Separator />
         <CardContent className="p-0">
           <div className="hidden md:block">
-            <ScrollArea className="max-h-[780px]">
+            <div className="overflow-x-auto">
               <Table>
                 <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur">
                   {table.getHeaderGroups().map((headerGroup) => (
@@ -651,19 +665,19 @@ export function RosterPage() {
                 <TableBody>
                   {table.getRowModel().rows.length ? table.getRowModel().rows.map((row) => (
                     <TableRow key={row.id} className="cursor-pointer" onClick={() => setSelectedRep(row.original)}>
-                      {row.getVisibleCells().map((cell) => <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>)}
+                      {row.getVisibleCells().map((cell) => <TableCell key={cell.id} className="py-2.5 align-middle">{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>)}
                     </TableRow>
                   )) : (
                     <TableRow><TableCell colSpan={11}><EmptyState title="No matching reps" description="Try clearing filters or adding a new representative." action={<Button onClick={() => { setEditorOpen(true); setEditing(null); setForm(blankForm); }}>Add rep</Button>} /></TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
-            </ScrollArea>
+            </div>
           </div>
-          <div className="grid gap-3 p-4 md:hidden">
+          <div className="grid gap-2 p-4 md:hidden">
             {filtered.length ? filtered.map((rep) => (
               <Card key={rep.repUid}>
-                <CardContent className="space-y-3 p-4">
+                <CardContent className="space-y-2.5 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <button className="min-w-0 text-left" onClick={() => setSelectedRep(rep)}>
                       <p className="font-medium">{rep.displayName}</p>
@@ -918,7 +932,7 @@ function Field({ label, helper, children }: { label: string; helper?: string; ch
 function ProfileCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <Card>
-      <CardContent className="space-y-2 p-4">
+      <CardContent className="space-y-2 p-3">
         <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
         {children}
       </CardContent>
@@ -928,13 +942,13 @@ function ProfileCard({ title, children }: { title: string; children: React.React
 
 function CleanupCard({ title, count, icon: Icon, onClick }: { title: string; count: number; icon: React.ComponentType<{ className?: string }>; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="rounded-2xl border border-border/70 p-4 text-left transition-colors hover:bg-muted/40">
+    <button onClick={onClick} className="rounded-2xl border border-border/70 p-3 text-left transition-colors hover:bg-muted/40">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm text-muted-foreground">{title}</p>
-          <p className="mt-1 text-2xl font-semibold">{count}</p>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">{title}</p>
+          <p className="mt-1 text-xl font-semibold">{count}</p>
         </div>
-        <div className="rounded-2xl bg-primary/10 p-3 text-primary"><Icon className="h-5 w-5" /></div>
+        <div className="rounded-2xl bg-primary/10 p-2.5 text-primary"><Icon className="h-4 w-4" /></div>
       </div>
     </button>
   );
