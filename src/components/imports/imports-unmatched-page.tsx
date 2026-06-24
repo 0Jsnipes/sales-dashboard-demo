@@ -403,7 +403,7 @@ export function ImportsUnmatchedPage() {
       </section>
 
       <Dialog open={Boolean(aliasTarget)} onOpenChange={(open) => !open && setAliasTarget(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Add alias</DialogTitle>
             <DialogDescription>Confirm the imported name and choose the rep that should receive the alias.</DialogDescription>

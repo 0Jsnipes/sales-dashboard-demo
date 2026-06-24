@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryState, parseAsString } from "nuqs";
 import { motion, useReducedMotion } from "motion/react";
-import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, Download, Pencil, Plus, RefreshCcw, Search, UserPlus, Users } from "lucide-react";
+import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, Download, Pencil, RefreshCcw, Search, UserPlus, Users } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -839,15 +839,10 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                         <TableCell className="text-center font-semibold">{formatNumber(rep.total)}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex flex-wrap justify-end gap-2">
-                            {rep.repUid ? (
-                              <Button size="sm" variant="outline" className="h-9 rounded-full gap-1.5 px-3 shadow-sm" onClick={() => openAction(rep, "alias")}>
-                                <Pencil className="h-4 w-4" />
-                                Add alias
-                              </Button>
-                            ) : (
+                            {!rep.repUid && (
                               <>
                                 <Button size="sm" variant="outline" className="h-9 rounded-full gap-1.5 px-3 shadow-sm" onClick={() => openAction(rep, "alias")}>
-                                  <Plus className="h-4 w-4" />
+                                  <Pencil className="h-4 w-4" />
                                   Add alias
                                 </Button>
                                 <Button size="sm" variant="outline" className="h-9 rounded-full gap-1.5 px-3 shadow-sm" onClick={() => openAction(rep, "roster")}>

@@ -816,7 +816,7 @@ export function RosterPage() {
       </Dialog>
 
       <Dialog open={Boolean(addAliasTarget)} onOpenChange={(open) => !open && setAddAliasTarget(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Add alias</DialogTitle>
             <DialogDescription>{addAliasTarget ? `Add a new alias for ${addAliasTarget.displayName}.` : "Choose a rep first."}</DialogDescription>
