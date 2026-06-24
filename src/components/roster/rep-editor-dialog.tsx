@@ -59,6 +59,16 @@ type Props = {
   setForm: Dispatch<SetStateAction<RepEditorForm>>;
   managers: ManagerOption[];
   locations: Location[];
+  managerDraft: string;
+  locationDraft: string;
+  onCreateManager: () => void;
+  onCreateLocation: () => void;
+  managerCreating: boolean;
+  locationCreating: boolean;
+  canCreateManager: boolean;
+  canCreateLocation: boolean;
+  onManagerDraftChange: (value: string) => void;
+  onLocationDraftChange: (value: string) => void;
   onOpenChange: (open: boolean) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 };
@@ -73,7 +83,7 @@ function Field({ label, helper, children }: { label: string; helper?: string; ch
   );
 }
 
-export function RepEditorDialog({ open, title, description, saveLabel, saving, form, setForm, managers, locations, onOpenChange, onSubmit }: Props) {
+export function RepEditorDialog({ open, title, description, saveLabel, saving, form, setForm, managers, locations, managerDraft, locationDraft, onCreateManager, onCreateLocation, managerCreating, locationCreating, canCreateManager, canCreateLocation, onManagerDraftChange, onLocationDraftChange, onOpenChange, onSubmit }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl">
@@ -106,21 +116,33 @@ export function RepEditorDialog({ open, title, description, saveLabel, saving, f
           </section>
           <section className="grid gap-3 md:grid-cols-2">
             <Field label="Manager">
-              <Select value={form.managerUid || "__none__"} onValueChange={(value) => setForm({ ...form, managerUid: value === "__none__" ? "" : value, managerName: value === "__none__" ? "" : managers.find((item) => item.managerUid === value)?.name ?? "" })}>
-                <SelectTrigger><SelectValue placeholder="Manager" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">No manager</SelectItem>
-                  {managers.map((manager) => <SelectItem key={manager.managerUid} value={manager.managerUid}>{manager.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <div className="space-y-2">
+                <Select value={form.managerUid || "__none__"} onValueChange={(value) => setForm({ ...form, managerUid: value === "__none__" ? "" : value, managerName: value === "__none__" ? "" : managers.find((item) => item.managerUid === value)?.name ?? managerDraft.trim() })}>
+                  <SelectTrigger><SelectValue placeholder="Manager" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No manager</SelectItem>
+                    {managers.map((manager) => <SelectItem key={manager.managerUid} value={manager.managerUid}>{manager.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <div className="flex gap-2">
+                  <Input value={managerDraft} onChange={(event) => onManagerDraftChange(event.target.value)} placeholder="New manager name" />
+                  <Button type="button" variant="outline" onClick={onCreateManager} disabled={!canCreateManager || managerCreating}>{managerCreating ? "Adding..." : "Add"}</Button>
+                </div>
+              </div>
             </Field>
             <Field label="Location">
-              <Select value={form.locationId} onValueChange={(value) => setForm({ ...form, locationId: value, locationName: locations.find((item) => item.locationId === value)?.name ?? "" })}>
-                <SelectTrigger><SelectValue placeholder="Location" /></SelectTrigger>
-                <SelectContent>
-                  {locations.map((location) => <SelectItem key={location.locationId} value={location.locationId}>{location.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <div className="space-y-2">
+                <Select value={form.locationId} onValueChange={(value) => setForm({ ...form, locationId: value, locationName: locations.find((item) => item.locationId === value)?.name ?? locationDraft.trim() })}>
+                  <SelectTrigger><SelectValue placeholder="Location" /></SelectTrigger>
+                  <SelectContent>
+                    {locations.map((location) => <SelectItem key={location.locationId} value={location.locationId}>{location.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <div className="flex gap-2">
+                  <Input value={locationDraft} onChange={(event) => onLocationDraftChange(event.target.value)} placeholder="New location name" />
+                  <Button type="button" variant="outline" onClick={onCreateLocation} disabled={!canCreateLocation || locationCreating}>{locationCreating ? "Adding..." : "Add"}</Button>
+                </div>
+              </div>
             </Field>
           </section>
           <section className="grid gap-3 md:grid-cols-2">

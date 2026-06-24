@@ -6,11 +6,11 @@ import { formatImportedName } from "@/src/lib/matching/display-name";
 import type { Rep } from "@/src/types/rep";
 
 type RawRow = Record<string, string | null | undefined>;
-type ServiceName = "Video" | "Internet" | "Voice";
+type ServiceName = "Video" | "Internet" | "Wireless";
 const services: Array<{ name: ServiceName; modernPackage: string; modernStatus: string; legacyPackage: string; legacyStatus: string }> = [
   { name: "Video", modernPackage: "Video_Package", modernStatus: "Video_CurrentStatus", legacyPackage: "Video Package", legacyStatus: "Video Status" },
   { name: "Internet", modernPackage: "Internet_Package", modernStatus: "Internet_CurrentStatus", legacyPackage: "Internet Package", legacyStatus: "Internet Status" },
-  { name: "Voice", modernPackage: "Voice_Package", modernStatus: "Voice_CurrentStatus", legacyPackage: "Voice Package", legacyStatus: "Voice Status" },
+  { name: "Wireless", modernPackage: "Wireless_Package", modernStatus: "Wireless_CurrentStatus", legacyPackage: "Wireless Package", legacyStatus: "Wireless Status" },
 ];
 
 const orderCollection = () => getAdminDb().collection("salesOrders").doc("att").collection("orders");
@@ -30,13 +30,14 @@ const dateId = (value: unknown) => {
 const rowOrderId = (row: RawRow) => text(row.STIOrderNum ?? row["STI Order Num"] ?? row.OrderID ?? row["Order ID"]);
 const rowDate = (row: RawRow) => text(row.OrderDate ?? row["Order Date"]);
 const rowRepName = (row: RawRow) => text(row.SalespersonName ?? row.Salesperson ?? row.UserName ?? row["User Name"]);
+const packageCount = (serviceDetails: Array<{ packageName: string }>) => serviceDetails.filter((item) => Boolean(item.packageName)).length;
 
 export function parseATTReport(buffer: Buffer): RawRow[] {
   const result = Papa.parse<RawRow>(buffer.toString("utf8"), { header: true, skipEmptyLines: true });
   if (result.errors.length) throw new Error(`Unable to read ATT CSV: ${result.errors[0]?.message ?? "unknown CSV error"}.`);
   const first = result.data[0] ?? {};
   if (!("OrderID" in first || "Order ID" in first) || !("OrderDate" in first || "Order Date" in first)) throw new Error("This is not an ATT order export. Missing Order ID or Order Date.");
-  if (!services.some((service) => service.modernPackage in first || service.legacyPackage in first)) throw new Error("This ATT export does not include Video, Internet, or Voice package columns.");
+  if (!services.some((service) => service.modernPackage in first || service.legacyPackage in first)) throw new Error("This ATT export does not include Video, Internet, or Wireless package columns.");
   return result.data;
 }
 
@@ -65,19 +66,22 @@ export async function importATTRows({ rows, uploadId, actorUid, fileName, storag
     const rawRepName = formatImportedName(rowRepName(row));
     const result = previous?.lockedAssignment ? { repUid: previous.matchedRepUid as string | null, method: previous.matchMethod as string | null } : matchImportRowToRep({ rawRepName }, reps);
     const isMatched = Boolean(result.repUid);
+    const saleCount = packageCount(serviceDetails);
     const packageName = serviceDetails.map((item) => item.packageName).filter(Boolean).join(" | ");
     const accountStatus = serviceDetails.map((item) => item.status).filter(Boolean).join(" | ") || "Unknown";
     const installationDateId = serviceDetails.find((item) => item.installationDateId)?.installationDateId ?? "";
     const cancellationDateId = serviceDetails.find((item) => item.cancellationDateId)?.cancellationDateId ?? "";
     canonical.set(orderUid, { orderUid, unmatched: !isMatched, data: {
       orderUid, orderId, provider: "att", serviceType: "att", packageName, sourceUploadId: uploadId,
-      orderDate: rowDate(row), orderDateId, saleCount: 1, rawRepName, rawSalesId: "", rawManagerName: "",
+      orderDate: rowDate(row), orderDateId, saleCount, rawRepName, rawSalesId: "", rawManagerName: "",
       matchedRepUid: result.repUid, matchStatus: isMatched ? (result.method === "manual" ? "manual" : "matched") : "unmatched", matchMethod: result.method ?? null, lockedAssignment: Boolean(previous?.lockedAssignment),
       accountStatus, installationDateId, cancellationDateId, rawData: serializableRow(row),
       createdAt: previous?.createdAt ?? FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
     }});
   }
   const orders = [...canonical.values()];
+  const totalSales = orders.reduce((sum, order) => sum + Number(order.data.saleCount || 0), 0);
+  const matchedSales = orders.reduce((sum, order) => sum + (order.unmatched ? 0 : Number(order.data.saleCount || 0)), 0);
   // ATT rows carry a wide audit payload. Keep commits deliberately small so a historical export
   // remains below Firestore's 10 MiB atomic-write limit.
   for (const group of chunks(orders, 40)) {
@@ -91,9 +95,9 @@ export async function importATTRows({ rows, uploadId, actorUid, fileName, storag
     }
     await batch.commit();
   }
-  const unmatched = orders.filter((order) => order.unmatched).length;
-  await db.collection("uploadRuns").doc(uploadId).set({ uploadId, type: "attSales", fileName, storagePath, uploadedBy: actorUid, uploadedAt: FieldValue.serverTimestamp(), rowsRead: rows.length, rowsValid: orders.length, rowsSkipped: skipped, rowsMatched: orders.length - unmatched, rowsUnmatched: unmatched, selectedDateIds: [], status: "complete", errors: [], summary: { provider: "att", saleCount: orders.length } }, { merge: true });
-  return { rowsRead: rows.length, rowsImported: orders.length, rowsSkipped: skipped, rowsMatched: orders.length - unmatched, rowsUnmatched: unmatched };
+  const unmatchedSales = totalSales - matchedSales;
+  await db.collection("uploadRuns").doc(uploadId).set({ uploadId, type: "attSales", fileName, storagePath, uploadedBy: actorUid, uploadedAt: FieldValue.serverTimestamp(), rowsRead: rows.length, rowsValid: totalSales, rowsSkipped: skipped, rowsMatched: matchedSales, rowsUnmatched: unmatchedSales, selectedDateIds: [], status: "complete", errors: [], summary: { provider: "att", saleCount: totalSales } }, { merge: true });
+  return { rowsRead: rows.length, rowsImported: totalSales, rowsSkipped: skipped, rowsMatched: matchedSales, rowsUnmatched: unmatchedSales };
 }
 
 export async function rematchATTOrdersForRep(rep: Rep) {

@@ -228,6 +228,10 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const [locationId, setLocationId] = useState("");
   const [locationMode, setLocationMode] = useState<"forward" | "single">("forward");
   const [locationWeek, setLocationWeek] = useState("");
+  const [managerDraft, setManagerDraft] = useState("");
+  const [locationDraft, setLocationDraft] = useState("");
+  const [managerCreating, setManagerCreating] = useState(false);
+  const [locationCreating, setLocationCreating] = useState(false);
 
   const loadSales = useCallback(async (options?: { silent?: boolean }) => {
     const params = new URLSearchParams({
@@ -516,6 +520,52 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
       toast.error(cause instanceof Error ? cause.message : "Unable to create rep.");
     } finally {
       setActionSaving(false);
+    }
+  }
+
+  async function createManager() {
+    const name = managerDraft.trim();
+    if (!name) return;
+    setManagerCreating(true);
+    try {
+      const response = await authedFetch("/api/managers", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to create manager.");
+      const created = result.manager as SalesManagerOption;
+      setManagers((current) => [...current.filter((item) => item.managerUid !== created.managerUid), created].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewRepForm((current) => ({ ...current, managerUid: created.managerUid, managerName: created.name }));
+      setManagerDraft("");
+      toast.success(`Manager ${created.name} added.`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to create manager.");
+    } finally {
+      setManagerCreating(false);
+    }
+  }
+
+  async function createLocation() {
+    const name = locationDraft.trim();
+    if (!name) return;
+    setLocationCreating(true);
+    try {
+      const response = await authedFetch("/api/locations", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to create location.");
+      const created = result.location as LocationOption;
+      setLocations((current) => [...current.filter((item) => item.locationId !== created.locationId), created].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewRepForm((current) => ({ ...current, locationId: created.locationId, locationName: created.name }));
+      setLocationDraft("");
+      toast.success(`Location ${created.name} added.`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to create location.");
+    } finally {
+      setLocationCreating(false);
     }
   }
 
@@ -941,7 +991,22 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
         setForm={setNewRepForm}
         managers={managers}
         locations={locations}
-        onOpenChange={(open) => !open && setActionTarget(null)}
+        managerDraft={managerDraft}
+        locationDraft={locationDraft}
+        onCreateManager={() => void createManager()}
+        onCreateLocation={() => void createLocation()}
+        managerCreating={managerCreating}
+        locationCreating={locationCreating}
+        canCreateManager={Boolean(managerDraft.trim())}
+        canCreateLocation={Boolean(locationDraft.trim())}
+        onManagerDraftChange={setManagerDraft}
+        onLocationDraftChange={setLocationDraft}
+        onOpenChange={(open) => {
+          if (open) return;
+          setActionTarget(null);
+          setManagerDraft("");
+          setLocationDraft("");
+        }}
         onSubmit={(event) => {
           event.preventDefault();
           void createRep();
