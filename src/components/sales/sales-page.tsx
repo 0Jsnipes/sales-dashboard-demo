@@ -498,7 +498,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
           managerName: newRepForm.managerName.trim(),
           locationId: newRepForm.locationId.trim(),
           locationName: newRepForm.locationName.trim(),
-          programIds: newRepForm.programIds.split(",").map((item) => item.trim()).filter(Boolean),
+          programIds: newRepForm.programIds,
           vendorType: newRepForm.vendorType,
           weeklySalesGoal: Number(newRepForm.weeklySalesGoal || 0),
           weeklyKnocksGoal: Number(newRepForm.weeklyKnocksGoal || 0),

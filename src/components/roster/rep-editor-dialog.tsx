@@ -3,6 +3,7 @@
 import type { Dispatch, FormEvent, ReactNode, SetStateAction } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -17,9 +18,9 @@ export type RepEditorForm = {
   managerName: string;
   locationId: string;
   locationName: string;
+  programIds: string[];
   salesIds: string;
   aliases: string;
-  programIds: string;
   vendorType: "organic" | "subVendor";
   weeklySalesGoal: string;
   weeklyKnocksGoal: string;
@@ -37,9 +38,9 @@ export const blankRepEditorForm: RepEditorForm = {
   managerName: "",
   locationId: "",
   locationName: "",
+  programIds: [],
   salesIds: "",
   aliases: "",
-  programIds: "",
   vendorType: "organic",
   weeklySalesGoal: "0",
   weeklyKnocksGoal: "0",
@@ -82,6 +83,8 @@ function Field({ label, helper, children }: { label: string; helper?: string; ch
     </div>
   );
 }
+
+const PROGRAM_OPTIONS = ["ATT", "T-Fiber"] as const;
 
 export function RepEditorDialog({ open, title, description, saveLabel, saving, form, setForm, managers, locations, managerDraft, locationDraft, onCreateManager, onCreateLocation, managerCreating, locationCreating, canCreateManager, canCreateLocation, onManagerDraftChange, onLocationDraftChange, onOpenChange, onSubmit }: Props) {
   return (
@@ -155,7 +158,31 @@ export function RepEditorDialog({ open, title, description, saveLabel, saving, f
           </section>
           <section className="grid gap-3 md:grid-cols-2">
             <Field label="Programs">
-              <Input value={form.programIds} onChange={(event) => setForm({ ...form, programIds: event.target.value })} />
+              <div className="space-y-2 rounded-2xl border border-border/60 bg-background/80 p-3 shadow-sm">
+                <p className="text-xs text-muted-foreground">Select every program this rep works.</p>
+                <div className="grid gap-2">
+                  {PROGRAM_OPTIONS.map((program) => {
+                    const checked = form.programIds.includes(program);
+                    return (
+                      <label key={program} className="flex items-center gap-3 rounded-xl border border-border/50 bg-background px-3 py-2 text-sm">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(value) => {
+                            const nextChecked = value === true;
+                            setForm({
+                              ...form,
+                              programIds: nextChecked
+                                ? [...form.programIds, program]
+                                : form.programIds.filter((item) => item !== program),
+                            });
+                          }}
+                        />
+                        <span>{program}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
             </Field>
             <Field label="Weekly sales goal">
               <Input type="number" min={0} value={form.weeklySalesGoal} onChange={(event) => setForm({ ...form, weeklySalesGoal: event.target.value })} />
