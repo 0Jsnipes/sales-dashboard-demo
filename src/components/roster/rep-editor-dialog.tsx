@@ -24,10 +24,6 @@ export type RepEditorForm = {
   vendorType: "organic" | "subVendor";
   weeklySalesGoal: string;
   weeklyKnocksGoal: string;
-  instagram: string;
-  facebook: string;
-  tiktok: string;
-  linkedin: string;
 };
 
 export const blankRepEditorForm: RepEditorForm = {
@@ -44,10 +40,6 @@ export const blankRepEditorForm: RepEditorForm = {
   vendorType: "organic",
   weeklySalesGoal: "0",
   weeklyKnocksGoal: "0",
-  instagram: "",
-  facebook: "",
-  tiktok: "",
-  linkedin: "",
 };
 
 type Props = {
@@ -89,7 +81,7 @@ const PROGRAM_OPTIONS = ["ATT", "T-Fiber"] as const;
 export function RepEditorDialog({ open, title, description, saveLabel, saving, form, setForm, managers, locations, managerDraft, locationDraft, onCreateManager, onCreateLocation, managerCreating, locationCreating, canCreateManager, canCreateLocation, onManagerDraftChange, onLocationDraftChange, onOpenChange, onSubmit }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
@@ -191,22 +183,6 @@ export function RepEditorDialog({ open, title, description, saveLabel, saving, f
           <section className="grid gap-3 md:grid-cols-2">
             <Field label="Weekly knocks goal">
               <Input type="number" min={0} value={form.weeklyKnocksGoal} onChange={(event) => setForm({ ...form, weeklyKnocksGoal: event.target.value })} />
-            </Field>
-          </section>
-          <section className="grid gap-3 md:grid-cols-2">
-            <Field label="Instagram">
-              <Input value={form.instagram} onChange={(event) => setForm({ ...form, instagram: event.target.value })} />
-            </Field>
-            <Field label="Facebook">
-              <Input value={form.facebook} onChange={(event) => setForm({ ...form, facebook: event.target.value })} />
-            </Field>
-          </section>
-          <section className="grid gap-3 md:grid-cols-2">
-            <Field label="TikTok">
-              <Input value={form.tiktok} onChange={(event) => setForm({ ...form, tiktok: event.target.value })} />
-            </Field>
-            <Field label="LinkedIn">
-              <Input value={form.linkedin} onChange={(event) => setForm({ ...form, linkedin: event.target.value })} />
             </Field>
           </section>
           <DialogFooter>

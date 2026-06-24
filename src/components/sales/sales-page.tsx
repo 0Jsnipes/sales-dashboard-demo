@@ -434,7 +434,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   }
 
   async function saveAlias() {
-    if (!actionTarget?.rep.repUid || !aliasTargetRepUid) return;
+    if (!actionTarget || !aliasTargetRepUid) return;
     const rep = rosterOptions.find((item) => item.repUid === aliasTargetRepUid);
     if (!rep) return;
     setActionSaving(true);
@@ -447,6 +447,8 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
       if (!response.ok) throw new Error(result.error || "Unable to add alias.");
       toast.success(`Alias added to ${rep.displayName}.`);
       setActionTarget(null);
+      setAliasTargetRepUid("");
+      await loadSales({ silent: true });
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to add alias.");
     } finally {
@@ -504,12 +506,6 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
           weeklyKnocksGoal: Number(newRepForm.weeklyKnocksGoal || 0),
           salesIds: newRepForm.salesIds.split(",").map((item) => item.trim()).filter(Boolean),
           aliases: newRepForm.aliases.split(",").map((item) => item.trim()).filter(Boolean),
-          socials: {
-            instagram: newRepForm.instagram.trim(),
-            facebook: newRepForm.facebook.trim(),
-            tiktok: newRepForm.tiktok.trim(),
-            linkedin: newRepForm.linkedin.trim(),
-          },
         }),
       });
       const result = await response.json();

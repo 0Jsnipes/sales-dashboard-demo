@@ -17,6 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { authedFetch } from "@/src/lib/api/client";
 import { useAuth } from "@/src/components/auth-provider";
+import { KnockImportPreview } from "@/src/components/knocks/KnockImportPreview";
 
 type Summary = {
   rowsRead: number;
@@ -354,6 +355,8 @@ export function ImportsPage() {
         <AlertTitle>Review before reporting</AlertTitle>
         <AlertDescription>Low-confidence or unmatched rows should be reviewed before they are trusted in reports.</AlertDescription>
       </Alert>
+
+      <KnockImportPreview />
 
       {!allowed && (
         <Card className="border-warning/30 bg-warning/5">

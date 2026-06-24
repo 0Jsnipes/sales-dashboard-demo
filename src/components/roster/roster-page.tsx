@@ -51,10 +51,6 @@ type RepForm = {
   vendorType: "organic" | "subVendor";
   weeklySalesGoal: string;
   weeklyKnocksGoal: string;
-  instagram: string;
-  facebook: string;
-  tiktok: string;
-  linkedin: string;
 };
 
 type Readiness = "ready" | "missing_email" | "missing_manager" | "missing_location" | "missing_sales_id" | "unknown";
@@ -73,10 +69,6 @@ const blankForm: RepForm = {
   vendorType: "organic",
   weeklySalesGoal: "0",
   weeklyKnocksGoal: "0",
-  instagram: "",
-  facebook: "",
-  tiktok: "",
-  linkedin: "",
 };
 
 function split(value: string) {
@@ -372,10 +364,6 @@ export function RosterPage() {
       vendorType: rep.vendorType ?? "organic",
       weeklySalesGoal: String(rep.weeklySalesGoal ?? 0),
       weeklyKnocksGoal: String((rep as Rep & { weeklyKnocksGoal?: number }).weeklyKnocksGoal ?? 0),
-      instagram: rep.socials?.instagram ?? "",
-      facebook: rep.socials?.facebook ?? "",
-      tiktok: rep.socials?.tiktok ?? "",
-      linkedin: rep.socials?.linkedin ?? "",
     };
   }
 
@@ -401,7 +389,6 @@ export function RosterPage() {
         weeklyKnocksGoal: Number(form.weeklyKnocksGoal || 0),
         salesIds: split(form.salesIds),
         aliases: split(form.aliases),
-        socials: { instagram: form.instagram, facebook: form.facebook, tiktok: form.tiktok, linkedin: form.linkedin },
       };
       const response = await request(editing ? `/api/reps/${editing.repUid}` : "/api/reps", {
         method: editing ? "PATCH" : "POST",
@@ -819,14 +806,6 @@ export function RosterPage() {
               <Field label="Programs"><Input value={form.programIds} onChange={(event) => setForm({ ...form, programIds: event.target.value })} /></Field>
               <Field label="Weekly sales goal"><Input type="number" min={0} value={form.weeklySalesGoal} onChange={(event) => setForm({ ...form, weeklySalesGoal: event.target.value })} /></Field>
               <Field label="Weekly knocks goal"><Input type="number" min={0} value={form.weeklyKnocksGoal} onChange={(event) => setForm({ ...form, weeklyKnocksGoal: event.target.value })} /></Field>
-            </section>
-            <section className="grid gap-3 md:grid-cols-2">
-              <Field label="Instagram"><Input value={form.instagram} onChange={(event) => setForm({ ...form, instagram: event.target.value })} /></Field>
-              <Field label="Facebook"><Input value={form.facebook} onChange={(event) => setForm({ ...form, facebook: event.target.value })} /></Field>
-            </section>
-            <section className="grid gap-3 md:grid-cols-2">
-              <Field label="TikTok"><Input value={form.tiktok} onChange={(event) => setForm({ ...form, tiktok: event.target.value })} /></Field>
-              <Field label="LinkedIn"><Input value={form.linkedin} onChange={(event) => setForm({ ...form, linkedin: event.target.value })} /></Field>
             </section>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setEditorOpen(false)}>Cancel</Button>

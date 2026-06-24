@@ -2,7 +2,14 @@ import type { Rep } from "@/src/types/rep";
 
 const suffixes = /\b(sr|jr|ii|iii|iv)\b/g;
 export function normalizeName(value = "") {
-  return value.toLowerCase().replace(/\ba\s*b\s*marketing\b/g, "").replace(suffixes, "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  return value
+    .toLowerCase()
+    .replace(/\s*-\s*(?:a\s*b\s*)?(?:energy\s*)?marketing\s*$/g, "")
+    .replace(/\ba\s*b\s*marketing\b/g, "")
+    .replace(suffixes, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 export function normalizeEmail(value = "") { return value.trim().toLowerCase(); }
 export function normalizeSalesId(value = "") { return value.toUpperCase().replace(/[^A-Z0-9]/g, ""); }
