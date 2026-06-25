@@ -10,6 +10,8 @@ import { readFirstText, sanitizeOrderId } from "@/src/lib/sales/outcomes";
 import type { SaleOutcome, SalesOrderRecord } from "@/src/lib/sales/outcomes";
 import type { Rep } from "@/src/types/rep";
 
+export const runtime = "nodejs";
+
 type OrderDoc = Record<string, unknown> & {
   id: string;
   providerKey: string;

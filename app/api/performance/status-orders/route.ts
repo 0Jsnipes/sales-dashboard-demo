@@ -3,6 +3,8 @@ import { getAdminDb } from "@/src/lib/firebase/admin";
 import { requireActor } from "@/src/lib/firebase/server-auth";
 import { sanitizeOrderId } from "@/src/lib/sales/outcomes";
 
+export const runtime = "nodejs";
+
 type Order = Record<string, unknown> & {
   id: string;
   matchedRepUid?: string | null;

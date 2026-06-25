@@ -5,6 +5,8 @@ import { z } from "zod";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { canRunBackfill, requireActor } from "@/src/lib/firebase/server-auth";
 
+export const runtime = "nodejs";
+
 const input = z.object({ repUid: z.string().min(1), orderDateId: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), provider: z.enum(["att", "tfiber", "frontier"]), accountStatus: z.string().max(120).default("Manual entry"), orderId: z.string().max(120).optional(), notes: z.string().max(1000).optional() });
 
 export async function POST(request: Request) {

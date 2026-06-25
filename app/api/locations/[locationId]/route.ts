@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { canManageRoster, requireActor } from "@/src/lib/firebase/server-auth";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 
+export const runtime = "nodejs";
+
 export async function DELETE(request: Request, { params }: { params: Promise<{ locationId: string }> }) {
   try {
     const actor = await requireActor(request);

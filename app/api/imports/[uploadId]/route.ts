@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { canImportSales, requireActor } from "@/src/lib/firebase/server-auth";
 import { deleteSalesUpload } from "@/src/lib/imports/upload-admin";
 
+export const runtime = "nodejs";
+
 type Params = { params: Promise<{ uploadId: string }> };
 
 export async function DELETE(request: Request, { params }: Params) {

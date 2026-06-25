@@ -6,6 +6,8 @@ import { formatImportedName } from "@/src/lib/matching/display-name";
 import { applyOutcomeFilter, applyTextSearchFilter, parseCommonFilters, parseDateRangeParams, toDateId } from "@/src/lib/api/report-filters";
 import { sanitizeOrderId } from "@/src/lib/sales/outcomes";
 
+export const runtime = "nodejs";
+
 type SalesOrder = {
   orderUid: string;
   orderDateId: string;

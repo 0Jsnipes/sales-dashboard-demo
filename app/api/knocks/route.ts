@@ -13,6 +13,8 @@ import { getAdminApp } from "@/src/lib/firebase/admin";
 import { normalizeRepName } from "@/src/lib/knocks/matching";
 import { buildRepSearchIndex, normalizeEmail, normalizeSalesId, normalizeName } from "@/src/lib/matching/normalize";
 
+export const runtime = "nodejs";
+
 type KnockOrder = {
   orderUid: string;
   orderDateId: string;

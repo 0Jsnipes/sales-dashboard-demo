@@ -9,6 +9,8 @@ import { rematchATTOrdersForRep } from "@/src/lib/imports/att";
 import { normalizeEmail, normalizeSalesId } from "@/src/lib/matching/normalize";
 import { z } from "zod";
 
+export const runtime = "nodejs";
+
 type Params = { params: Promise<{ repUid: string }> };
 const socials = z.object({ instagram: z.string().max(160).optional(), facebook: z.string().max(160).optional(), tiktok: z.string().max(160).optional(), linkedin: z.string().max(160).optional() }).default({});
 const updateRep = z.object({ displayName: z.string().min(2).max(120), email: z.union([z.string().email(), z.literal("")]).default(""), phone: z.string().max(40).optional(), managerUid: z.string().nullable().optional(), managerName: z.string().max(120).default(""), locationId: z.string().min(1).max(80), locationName: z.string().min(1).max(120), programIds: z.array(z.string().min(1).max(80)).default([]), vendorType: z.enum(["organic", "subVendor"]).default("organic"), weeklySalesGoal: z.number().int().min(0).max(10000).default(0), weeklyKnocksGoal: z.number().int().min(0).max(10000).default(0), salesIds: z.array(z.string().min(1).max(80)).default([]), aliases: z.array(z.string().min(1).max(120)).default([]), socials });

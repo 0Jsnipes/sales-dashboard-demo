@@ -4,6 +4,8 @@ import { z } from "zod";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { canManageRoster, requireActor } from "@/src/lib/firebase/server-auth";
 
+export const runtime = "nodejs";
+
 const input = z.object({
   weekISO: z.string().regex(/^\d{4}-W\d{1,2}$/).transform((value) => {
     const [year, week] = value.split("-W");

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+export const runtime = "nodejs";
+
 const payload = z.object({ weekISO: z.string().regex(/^\d{4}-W\d{2}$/), repUids: z.array(z.string()).optional() });
 export async function POST(request: Request) {
   const input = payload.safeParse(await request.json());

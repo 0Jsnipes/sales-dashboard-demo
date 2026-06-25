@@ -3,6 +3,8 @@ import { getAdminDb } from "@/src/lib/firebase/admin";
 import { requireActor } from "@/src/lib/firebase/server-auth";
 import { sanitizeOrderId } from "@/src/lib/sales/outcomes";
 
+export const runtime = "nodejs";
+
 const classify = (status: unknown) => {
   const value = String(status || "").toLowerCase();
   return value.includes("cancel") ? "cancelled" : value.includes("active") || value.includes("install") ? "active" : value.includes("preorder") ? "preorder" : value.includes("schedul") || value.includes("pending") ? "pending" : "other";

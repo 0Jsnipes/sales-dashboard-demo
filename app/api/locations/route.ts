@@ -4,6 +4,8 @@ import { z } from "zod";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { canManageRoster, requireActor } from "@/src/lib/firebase/server-auth";
 
+export const runtime = "nodejs";
+
 const input = z.object({ name: z.string().min(2).max(120) });
 const idFor = (name: string) => name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 

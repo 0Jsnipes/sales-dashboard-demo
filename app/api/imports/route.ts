@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { canImportSales, requireActor } from "@/src/lib/firebase/server-auth";
 import { deleteAllSalesUploads, listSalesUploads } from "@/src/lib/imports/upload-admin";
 
+export const runtime = "nodejs";
+
 export async function GET(request: Request) {
   try {
     const actor = await requireActor(request);

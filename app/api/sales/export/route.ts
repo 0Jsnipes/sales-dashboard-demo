@@ -6,6 +6,8 @@ import { formatImportedName } from "@/src/lib/matching/display-name";
 import { sanitizeOrderId } from "@/src/lib/sales/outcomes";
 import * as XLSX from "xlsx";
 
+export const runtime = "nodejs";
+
 const isoWeek = (dateIdValue: string) => { const [year, month, day] = dateIdValue.split("-").map(Number); const value = new Date(Date.UTC(year, month - 1, day)); value.setUTCDate(value.getUTCDate() + 4 - (value.getUTCDay() || 7)); const yearStart = new Date(Date.UTC(value.getUTCFullYear(), 0, 1)); const week = Math.ceil((((value.valueOf() - yearStart.valueOf()) / 86400000) + 1) / 7); return value.getUTCFullYear() + "-W" + String(week).padStart(2, "0"); };
 
 export async function GET(request: Request) {

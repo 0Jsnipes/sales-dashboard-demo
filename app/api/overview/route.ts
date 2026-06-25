@@ -3,6 +3,8 @@ import { getAdminDb } from "@/src/lib/firebase/admin";
 import { requireActor } from "@/src/lib/firebase/server-auth";
 import { parseCommonFilters, parseDateRangeParams } from "@/src/lib/api/report-filters";
 
+export const runtime = "nodejs";
+
 const addDays = (date: Date, days: number) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 const salesTotal = (orders: Record<string, unknown>[]) => orders.reduce((sum, order) => sum + Number(order.saleCount || 1), 0);
 const dateId = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
