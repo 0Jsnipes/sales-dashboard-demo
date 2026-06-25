@@ -17,10 +17,28 @@ export async function authedFetch(input: RequestInfo | URL, init?: RequestInit) 
 
 export async function authedJson<T>(input: RequestInfo | URL, init?: RequestInit) {
   const response = await authedFetch(input, init);
-  const data = (await response.json()) as T;
+  const text = await response.text();
+  const contentType = response.headers.get("content-type") ?? "";
+  const requestLabel = typeof input === "string" ? input : response.url;
+  let data: T | null = null;
+  if (contentType.includes("application/json") && text) {
+    try {
+      data = JSON.parse(text) as T;
+    } catch {
+      const preview = text.replace(/\s+/g, " ").trim().slice(0, 180);
+      throw new Error(`Invalid JSON from ${requestLabel} (${response.status}): ${preview}`);
+    }
+  }
   if (!response.ok) {
-    const error = typeof data === "object" && data && "error" in data ? String((data as { error?: unknown }).error) : "REQUEST_FAILED";
+    const preview = text.replace(/\s+/g, " ").trim().slice(0, 180);
+    const error = typeof data === "object" && data && "error" in data
+      ? String((data as { error?: unknown }).error)
+      : `REQUEST_FAILED ${response.status}${preview ? `: ${preview}` : ""}`;
     throw new Error(error);
+  }
+  if (!data) {
+    const preview = text.replace(/\s+/g, " ").trim().slice(0, 180);
+    throw new Error(`Expected JSON from ${requestLabel} (${response.status}), got ${contentType || "unknown content type"}${preview ? `: ${preview}` : ""}`);
   }
   return data;
 }
