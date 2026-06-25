@@ -1,36 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { AlertTriangle, ArrowRight, FileUp, Gauge, Target, TrendingUp, Users } from "lucide-react";
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertTriangle, ArrowRight, BarChart3, CheckCircle2, Clock3, FileUp, Gauge, Target, TrendingUp, TriangleAlert, Users } from "lucide-react";
+import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { authedJson } from "@/src/lib/api/client";
-import { formatCompact, formatDelta, formatNumber } from "@/src/lib/formatters/number";
+import { toDateId, weekRangeLabel } from "@/src/lib/date/week";
 import { formatDateTime } from "@/src/lib/formatters/date";
-import { weekRangeLabel } from "@/src/lib/date/week";
-import { toast } from "sonner";
+import { formatCompact, formatDelta, formatNumber } from "@/src/lib/formatters/number";
 
 type OverviewResponse = {
   week: { start: string; end: string };
@@ -51,136 +38,170 @@ type OverviewResponse = {
   efficiency: { repUid: string; displayName: string; sales: number; knocks: number; conversion: number }[];
 };
 
-const colors = ["var(--primary)", "var(--info)", "var(--warning)", "var(--success)", "var(--danger)"];
 const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const providerColors: Record<string, string> = {
+  ATT: "#2563eb",
+  "T-Fiber": "#d946ef",
+  Frontier: "#f97316",
+  Manual: "#94a3b8",
+};
 
 function formatPercent(value: number) {
   return `${Math.round(value)}%`;
 }
 
-function ChartShell({ title, description, children, badge }: { title: string; description: string; children: React.ReactNode; badge?: string }) {
-  return (
-    <Card className="overflow-hidden">
-      <CardHeader className="flex-row items-start justify-between gap-4">
-        <div className="space-y-1">
-          <CardTitle>{title}</CardTitle>
-          <CardDescription>{description}</CardDescription>
-        </div>
-        {badge ? <Badge variant="outline" className="rounded-full">{badge}</Badge> : null}
-      </CardHeader>
-      <CardContent className="h-[320px]">{children}</CardContent>
-    </Card>
-  );
+function salesSharePercent(part: number, total: number) {
+  return total > 0 ? (part / total) * 100 : 0;
 }
 
-function MetricCard({
-  label,
-  value,
-  detail,
-  icon: Icon,
-  delta,
-  sublabel,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  icon: React.ComponentType<{ className?: string }>;
-  delta?: string;
-  sublabel?: string;
-}) {
-  return (
-    <Card className="overflow-hidden">
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-sm text-muted-foreground">{label}</p>
-            <div className="mt-2 text-3xl font-semibold tracking-tight">{value}</div>
-            <p className="mt-2 text-sm text-muted-foreground">{detail}</p>
-            {sublabel ? <p className="mt-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">{sublabel}</p> : null}
-            {delta ? (
-              <Badge variant={delta.startsWith("+") ? "success" : "warning"} className="mt-3 rounded-full">
-                {delta}
-              </Badge>
-            ) : null}
-          </div>
-          <div className="rounded-2xl bg-primary/10 p-3 text-primary">
-            <Icon className="h-5 w-5" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
+function providerColor(name: string) {
+  return providerColors[name] ?? "#94a3b8";
 }
 
-function MetricSkeleton() {
-  return (
-    <Card className="overflow-hidden">
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1 space-y-3">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-9 w-32" />
-            <Skeleton className="h-4 w-40" />
-            <Skeleton className="h-5 w-20 rounded-full" />
-          </div>
-          <Skeleton className="h-11 w-11 rounded-2xl" />
-        </div>
-      </CardContent>
-    </Card>
-  );
+function addDays(start: string, days: number) {
+  const date = new Date(`${start}T12:00:00`);
+  date.setDate(date.getDate() + days);
+  return date;
 }
 
-function ChartSkeleton() {
+function LoadingState() {
   return (
-    <Card className="overflow-hidden">
-      <CardHeader>
-        <Skeleton className="h-5 w-36" />
-        <Skeleton className="h-4 w-56" />
-      </CardHeader>
-      <CardContent className="h-[320px]">
-        <Skeleton className="h-full w-full rounded-2xl" />
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      <Card className="border-border/70">
+        <CardHeader className="gap-4">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-44" />
+            <Skeleton className="h-4 w-80" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <div className="grid gap-3 xl:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, index) => <Skeleton key={index} className="h-20 rounded-2xl" />)}
+          </div>
+        </CardHeader>
+      </Card>
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, index) => <Skeleton key={index} className="h-32 rounded-2xl" />)}
+      </section>
+      <section className="grid gap-4 xl:grid-cols-[1.35fr_.85fr]">
+        <Skeleton className="h-[520px] rounded-2xl" />
+        <Skeleton className="h-[520px] rounded-2xl" />
+      </section>
+    </div>
   );
 }
 
 function EmptyState({ title, description }: { title: string; description: string }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center rounded-2xl border border-dashed border-border/70 bg-muted/25 px-6 text-center">
-      <div className="rounded-full bg-primary/10 p-3 text-primary">
-        <AlertTriangle className="h-5 w-5" />
-      </div>
-      <h3 className="mt-4 text-base font-semibold">{title}</h3>
-      <p className="mt-2 max-w-sm text-sm text-muted-foreground">{description}</p>
+    <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 p-6 text-center">
+      <h3 className="text-base font-semibold">{title}</h3>
+      <p className="mt-2 text-sm text-muted-foreground">{description}</p>
     </div>
   );
 }
 
-function SectionEmpty({ title, description, action }: { title: string; description: string; action?: React.ReactNode }) {
+function KpiCard({
+  label,
+  value,
+  detail,
+  icon: Icon,
+  badgeLabel = "Live",
+  badgeVariant = "outline" as const,
+  href,
+}: {
+  label: string;
+  value: string | number;
+  detail: string;
+  icon: ComponentType<{ className?: string }>;
+  badgeLabel?: string;
+  badgeVariant?: "default" | "secondary" | "outline" | "success" | "warning" | "danger" | "info";
+  href?: string;
+}) {
+  const body = (
+    <>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm text-muted-foreground">{label}</p>
+          <p className="mt-2 text-3xl font-semibold tracking-tight">{value}</p>
+        </div>
+        <div className="rounded-2xl bg-muted/35 p-3">
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
+      <p className="mt-3 text-sm text-muted-foreground">{detail}</p>
+      <Badge variant={badgeVariant} className="mt-5 w-fit">
+        {badgeLabel}
+      </Badge>
+    </>
+  );
+  const className = cn(
+    "flex h-full w-full flex-col rounded-2xl border border-border/70 bg-card p-5 text-left shadow-sm transition",
+    href ? "hover:-translate-y-0.5 hover:shadow-md" : "",
+  );
+
+  return href ? (
+    <Link href={href} className={className}>
+      {body}
+    </Link>
+  ) : <div className={className}>{body}</div>;
+}
+
+function ChartCard({ title, description, badge, children, className }: { title: string; description: string; badge?: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 p-6">
-      <h3 className="text-base font-semibold">{title}</h3>
-      <p className="mt-2 text-sm text-muted-foreground">{description}</p>
-      {action ? <div className="mt-4">{action}</div> : null}
+    <Card className={cn("overflow-hidden border-border/70", className)}>
+      <CardHeader className="flex-row items-start justify-between gap-4">
+        <div>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>{description}</CardDescription>
+        </div>
+        {badge ? <Badge variant="outline">{badge}</Badge> : null}
+      </CardHeader>
+      <CardContent>{children}</CardContent>
+    </Card>
+  );
+}
+
+function ProviderGaugeTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: Array<{ name?: string; value?: number; payload?: { name?: string; value?: number } }>;
+}) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0];
+  const name = String(row?.name ?? row?.payload?.name ?? "Provider");
+  const value = Number(row?.value ?? row?.payload?.value ?? 0);
+  return (
+    <div className="rounded-2xl border border-border/70 bg-popover/95 px-4 py-3 text-popover-foreground shadow-2xl backdrop-blur">
+      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Provider</p>
+      <p className="mt-1 text-sm font-medium">{name}</p>
+      <p className="mt-2 text-sm font-semibold" style={{ color: providerColor(name) }}>{formatNumber(value)} sales</p>
     </div>
   );
 }
 
 export function DashboardPage() {
   const [data, setData] = useState<OverviewResponse | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     let active = true;
-    authedJson<OverviewResponse>("/api/overview")
+    void authedJson<OverviewResponse>("/api/overview")
       .then((value) => {
-        if (active) setData(value);
+        if (!active) return;
+        setData(value);
+        setError(null);
       })
       .catch((cause) => {
+        if (!active) return;
         const message = cause instanceof Error ? cause.message : "Unable to load overview.";
         setError(message);
         toast.error(message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
     return () => {
       active = false;
@@ -188,47 +209,54 @@ export function DashboardPage() {
   }, []);
 
   const weekLabel = data ? weekRangeLabel(data.week.start, data.week.end) : "Current week";
-
   const dayChartData = useMemo(
     () =>
-      data?.byDay.map((value, index) => ({
-        day: weekDays[index] ?? `Day ${index + 1}`,
-        sales: value,
-        teams: data.byDayTeams[index] ?? [],
-      })) ?? [],
+      data?.byDay.map((value, index) => {
+        const date = addDays(data.week.start, index);
+        return {
+          dateId: toDateId(date),
+          label: `${weekDays[index] ?? `Day ${index + 1}`} ${date.toLocaleDateString(undefined, { month: "numeric", day: "numeric" })}`,
+          sales: value,
+        };
+      }) ?? [],
     [data],
   );
 
-  const providerData = useMemo(
-    () => Object.entries(data?.byProvider ?? {}).map(([name, value]) => ({ name, value })).filter((item) => item.value > 0),
+  const providerBreakdown = useMemo(
+    () => Object.entries(data?.byProvider ?? {})
+      .map(([name, value]) => ({ name, value, fill: providerColor(name) }))
+      .filter((item) => item.value > 0)
+      .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name)),
     [data],
   );
 
-  const statusData = useMemo(
-    () =>
-      data
-        ? Object.entries(data.statusFunnel).map(([provider, statuses]) => ({
-            provider,
-            active: statuses["Installed / Active"] ?? 0,
-            pending: statuses.Pending ?? 0,
-            cancelled: statuses.Cancelled ?? 0,
-            other: statuses.Other ?? 0,
-          }))
-        : [],
+  const statusTotals = useMemo(() => {
+    const totals = { installed: 0, pending: 0, cancelled: 0, other: 0 };
+    for (const statuses of Object.values(data?.statusFunnel ?? {})) {
+      totals.installed += statuses["Installed / Active"] ?? 0;
+      totals.pending += statuses.Pending ?? 0;
+      totals.cancelled += statuses.Cancelled ?? 0;
+      totals.other += statuses.Other ?? 0;
+    }
+    return totals;
+  }, [data]);
+
+  const orderBreakdownData = useMemo(() => {
+    const total = statusTotals.installed + statusTotals.pending + statusTotals.cancelled + statusTotals.other;
+    return [
+      { name: "Installed", value: statusTotals.installed, fill: "var(--success)", share: salesSharePercent(statusTotals.installed, total) },
+      { name: "Pending", value: statusTotals.pending, fill: "var(--warning)", share: salesSharePercent(statusTotals.pending, total) },
+      { name: "Cancelled", value: statusTotals.cancelled, fill: "var(--danger)", share: salesSharePercent(statusTotals.cancelled, total) },
+      { name: "Other", value: statusTotals.other, fill: "var(--info)", share: salesSharePercent(statusTotals.other, total) },
+    ];
+  }, [statusTotals]);
+
+  const topReps = useMemo(
+    () => (data?.topReps ?? []).map((rep) => ({ ...rep, share: salesSharePercent(rep.sales, data?.totalSales ?? 0) })),
     [data],
   );
 
-  const goalPacingData = useMemo(
-    () =>
-      data?.goalPacing.map((rep) => ({
-        name: rep.displayName,
-        value: rep.sales,
-        goal: rep.goal,
-        remaining: rep.remaining,
-      })) ?? [],
-    [data],
-  );
-
+  if (loading && !data) return <LoadingState />;
   if (error && !data) {
     return (
       <Alert variant="destructive">
@@ -238,259 +266,323 @@ export function DashboardPage() {
       </Alert>
     );
   }
+  if (!data) return null;
 
-  if (!data) {
-    return (
-      <motion.div initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }} transition={{ duration: 0.35 }} className="space-y-6">
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <MetricSkeleton />
-          <MetricSkeleton />
-          <MetricSkeleton />
-          <MetricSkeleton />
-        </section>
-        <section className="grid gap-4 xl:grid-cols-2">
-          <ChartSkeleton />
-          <ChartSkeleton />
-        </section>
-        <section className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]">
-          <Card className="overflow-hidden">
-            <CardHeader>
-              <Skeleton className="h-5 w-32" />
-              <Skeleton className="h-4 w-56" />
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Skeleton className="h-24 w-full rounded-2xl" />
-              <Skeleton className="h-24 w-full rounded-2xl" />
-            </CardContent>
-          </Card>
-          <Card className="overflow-hidden">
-            <CardHeader>
-              <Skeleton className="h-5 w-28" />
-              <Skeleton className="h-4 w-52" />
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Skeleton className="h-16 w-full rounded-2xl" />
-              <Skeleton className="h-16 w-full rounded-2xl" />
-              <Skeleton className="h-16 w-full rounded-2xl" />
-            </CardContent>
-          </Card>
-        </section>
-      </motion.div>
-    );
-  }
-
-  const comparisonDelta = data.comparison.previous ? Math.round(((data.comparison.current - data.comparison.previous) / data.comparison.previous) * 100) : 0;
+  const comparisonDelta = data.comparison.previous ? ((data.comparison.current - data.comparison.previous) / data.comparison.previous) * 100 : 0;
   const goalProgress = data.totalSalesGoal ? Math.min(100, Math.round((data.totalSales / data.totalSalesGoal) * 100)) : 0;
-  const knocksPerRep = data.activeReps ? data.totalKnocks / data.activeReps : 0;
-
-  const hasDayData = dayChartData.some((item) => item.sales > 0);
-  const hasProviderData = providerData.length > 0;
-  const hasStatusData = statusData.some((item) => item.active || item.pending || item.cancelled || item.other);
-  const hasGoalData = goalPacingData.length > 0;
+  const conversion = data.totalKnocks ? Math.round((data.totalSales / data.totalKnocks) * 100) : 0;
+  const providerTotal = providerBreakdown.reduce((sum, item) => sum + item.value, 0);
+  const hasTrendData = dayChartData.some((item) => item.sales > 0);
+  const hasOrderBreakdown = orderBreakdownData.some((item) => item.value > 0);
+  const freshnessRows = [
+    { label: "ATT", source: data.freshness.att },
+    { label: "T-Fiber", source: data.freshness.tfiber },
+  ];
 
   return (
-    <motion.div initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }} transition={{ duration: 0.35 }} className="space-y-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Total sales" value={formatNumber(data.totalSales)} detail={weekLabel} sublabel={`${formatNumber(data.comparison.current)} current / ${formatNumber(data.comparison.previous)} prior`} icon={TrendingUp} delta={formatDelta(comparisonDelta)} />
-        <MetricCard label="Goal progress" value={formatPercent(goalProgress)} detail={`${formatNumber(data.totalSales)} of ${formatNumber(data.totalSalesGoal)} goal`} sublabel="Weekly pacing" icon={Gauge} />
-        <MetricCard label="Total knocks" value={formatNumber(data.totalKnocks)} detail="Current week field activity" sublabel={`${formatCompact(knocksPerRep)} per rep`} icon={Target} delta={data.activeReps ? `+${formatCompact(knocksPerRep)} per rep` : undefined} />
-        <MetricCard label="Active reps" value={formatNumber(data.activeReps)} detail="Roster members with active status" sublabel="Currently reporting" icon={Users} />
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[1.35fr_.9fr]">
-        <ChartShell title="Sales trend" description="Daily sales across the current reporting window." badge={weekLabel}>
-          {hasDayData ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={dayChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="salesTrendFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="var(--primary)" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                <XAxis dataKey="day" tickLine={false} axisLine={false} />
-                <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
-                <Tooltip
-                  contentStyle={{ borderRadius: 16, border: "1px solid var(--border)", background: "var(--popover)" }}
-                  labelStyle={{ color: "var(--foreground)" }}
-                />
-                <Area type="monotone" dataKey="sales" stroke="var(--primary)" fill="url(#salesTrendFill)" strokeWidth={2.5} />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <EmptyState title="No daily sales yet" description="The overview has loaded, but there are no sales values for the current week." />
-          )}
-        </ChartShell>
-
-        <ChartShell title="Provider mix" description="Share of volume by source." badge={hasProviderData ? `${providerData.length} providers` : "No data"}>
-          {hasProviderData ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={providerData} dataKey="value" nameKey="name" innerRadius={72} outerRadius={112} paddingAngle={3}>
-                  {providerData.map((_, index) => (
-                    <Cell key={index} fill={colors[index % colors.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <EmptyState title="No provider mix yet" description="There are no provider counts in the current overview response." />
-          )}
-        </ChartShell>
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[1.4fr_.9fr]">
-        <Card className="overflow-hidden">
-          <CardHeader className="flex-row items-start justify-between gap-4">
-            <div className="space-y-1">
-              <CardTitle>Status funnel</CardTitle>
-              <CardDescription>Order statuses grouped by provider.</CardDescription>
+    <motion.div initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }} className="space-y-6">
+      <Card className="border-border/70">
+        <CardHeader className="gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-3xl">Dashboard</CardTitle>
+                <Badge variant={error ? "warning" : "success"}>{error ? "Stale" : "Live"}</Badge>
+              </div>
+              <CardDescription className="mt-2">Current sales pulse, roster health, provider mix, and follow-up priorities.</CardDescription>
+              <p className="mt-2 text-sm text-muted-foreground">Overview data from salesOrders, uploadRuns, reps, and weekly goals.</p>
             </div>
-            <Badge variant="outline" className="rounded-full">Realtime snapshot</Badge>
-          </CardHeader>
-          <CardContent className="h-[320px]">
-            {hasStatusData ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={statusData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="provider" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="active" stackId="a" fill="var(--success)" name="Installed / Active" radius={[8, 8, 0, 0]} />
-                  <Bar dataKey="pending" stackId="a" fill="var(--warning)" name="Pending" radius={[8, 8, 0, 0]} />
-                  <Bar dataKey="cancelled" stackId="a" fill="var(--danger)" name="Cancelled" radius={[8, 8, 0, 0]} />
-                  <Bar dataKey="other" stackId="a" fill="var(--info)" name="Other" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <EmptyState title="No status data" description="The overview response did not include any status funnel values." />
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Attention needed</CardTitle>
-            <CardDescription>Items that need review before they slip further behind.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {data.alerts.length ? (
-              data.alerts.map((alert) => (
-                <div key={alert.title} className="rounded-2xl border border-border/70 bg-muted/40 p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="font-medium">{alert.title}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">{alert.detail}</p>
-                    </div>
-                    <Badge variant={alert.type === "upload" ? "warning" : alert.type === "roster" ? "info" : "danger"} className="rounded-full">
-                      {alert.type}
-                    </Badge>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <SectionEmpty title="No active alerts" description="Reporting is healthy and nothing needs immediate attention." />
-            )}
-            <Separator className="my-1" />
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Button asChild variant="outline">
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" asChild>
+                <Link href="/performance">
+                  <ArrowRight className="h-4 w-4" />
+                  Open performance
+                </Link>
+              </Button>
+              <Button variant="outline" asChild>
                 <Link href="/imports">
                   <FileUp className="h-4 w-4" />
                   Upload report
                 </Link>
               </Button>
-              <Button asChild variant="outline">
-                <Link href="/imports/unmatched">
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3">
+              <p className="text-sm font-medium">{weekLabel}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Current dashboard window</p>
+            </div>
+            <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium">Goal progress</p>
+                <span className="text-sm font-semibold">{formatPercent(goalProgress)}</span>
+              </div>
+              <Progress className="mt-3" value={goalProgress} />
+            </div>
+            <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3">
+              <p className="text-sm font-medium">{formatDelta(comparisonDelta)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {formatNumber(data.comparison.current)} current / {formatNumber(data.comparison.previous)} previous
+              </p>
+            </div>
+          </div>
+          {error ? (
+            <Alert>
+              <TriangleAlert className="h-4 w-4" />
+              <AlertTitle>Refresh warning</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        <KpiCard label="Total sales" value={formatNumber(data.totalSales)} detail={weekLabel} icon={TrendingUp} badgeLabel={formatDelta(comparisonDelta)} badgeVariant={comparisonDelta >= 0 ? "success" : "warning"} href="/sales" />
+        <KpiCard label="Goal progress" value={formatPercent(goalProgress)} detail={`${formatNumber(data.totalSales)} of ${formatNumber(data.totalSalesGoal)} goal`} icon={Gauge} badgeLabel="Weekly goal" />
+        <KpiCard label="Total knocks" value={formatNumber(data.totalKnocks)} detail={`${formatCompact(data.activeReps ? data.totalKnocks / data.activeReps : 0)} per active rep`} icon={Target} href="/knocks" />
+        <KpiCard label="Conversion" value={formatPercent(conversion)} detail="Sales divided by knocks" icon={BarChart3} />
+        <KpiCard label="Installed" value={formatNumber(statusTotals.installed)} detail="Installed or active orders" icon={CheckCircle2} badgeVariant="success" />
+        <KpiCard label="Pending" value={formatNumber(statusTotals.pending)} detail="Open installs and follow-up" icon={Clock3} badgeVariant="warning" />
+        <KpiCard label="Active reps" value={formatNumber(data.activeReps)} detail="Roster members with active status" icon={Users} href="/roster" />
+        <KpiCard label="Alerts" value={formatNumber(data.alerts.length)} detail="Pacing, roster, and upload items" icon={TriangleAlert} badgeVariant={data.alerts.length ? "danger" : "success"} />
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1.35fr_.85fr]">
+        <ChartCard title="Sales trend" description="Units sold by day for the current dashboard week." badge={weekLabel}>
+          <div className="h-[420px]">
+            {hasTrendData ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={dayChartData} margin={{ left: 0, right: 0, top: 8, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} />
+                  <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
+                  <RechartsTooltip formatter={(value) => [formatNumber(Number(value)), "Sales"]} labelFormatter={(value) => String(value)} />
+                  <Line type="monotone" dataKey="sales" stroke="var(--primary)" strokeWidth={3} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : <EmptyState title="No trend data" description="There are no sales in the current dashboard window yet." />}
+          </div>
+        </ChartCard>
+
+        <Card className="border-border/70">
+          <CardHeader className="flex-row items-start justify-between gap-4">
+            <div>
+              <CardTitle>Rep leaderboard</CardTitle>
+              <CardDescription>Top reps by current-week sales.</CardDescription>
+            </div>
+            <Badge variant="outline">{topReps.length} reps</Badge>
+          </CardHeader>
+          <CardContent className="max-h-[520px] overflow-auto p-0">
+            {topReps.length ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Rep</TableHead>
+                    <TableHead>Sales</TableHead>
+                    <TableHead>Share</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {topReps.map((rep) => (
+                    <TableRow key={rep.repUid}>
+                      <TableCell className="font-medium">{rep.displayName}</TableCell>
+                      <TableCell>{formatNumber(rep.sales)}</TableCell>
+                      <TableCell>{formatPercent(rep.share)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="p-6">
+                <EmptyState title="No reps in scope" description="Sales will appear here after imports are matched to reps." />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1.2fr_.9fr]">
+        <ChartCard title="Order breakdown" description="Installed, pending, cancelled, and other order volume.">
+          <div className="h-[320px]">
+            {hasOrderBreakdown ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={orderBreakdownData} margin={{ left: 0, right: 0, top: 12, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                  <XAxis dataKey="name" tickLine={false} axisLine={false} />
+                  <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
+                  <RechartsTooltip formatter={(value) => [formatNumber(Number(value)), "Sales"]} />
+                  <Bar dataKey="value" radius={[12, 12, 0, 0]}>
+                    {orderBreakdownData.map((entry) => <Cell key={entry.name} fill={entry.fill} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : <EmptyState title="No order status data" description="Status volume appears here after provider imports are processed." />}
+          </div>
+        </ChartCard>
+
+        <Card className="border-border/70">
+          <CardHeader>
+            <CardTitle>Provider gauge</CardTitle>
+            <CardDescription>Sales volume by provider for the current week.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {providerBreakdown.length ? (
+              <>
+                <div className="relative h-[260px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={providerBreakdown} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={82} outerRadius={116} startAngle={90} endAngle={-270} paddingAngle={3}>
+                        {providerBreakdown.map((entry) => <Cell key={entry.name} fill={entry.fill} />)}
+                      </Pie>
+                      <RechartsTooltip content={<ProviderGaugeTooltip />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Total</p>
+                    <p className="mt-1 text-3xl font-semibold">{formatNumber(providerTotal)}</p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {providerBreakdown.map((item) => (
+                    <div key={item.name} className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: item.fill }} />
+                        <span className="text-sm font-medium">{item.name}</span>
+                      </div>
+                      <span className="text-sm text-muted-foreground">{formatNumber(item.value)} sales</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : <EmptyState title="No provider data" description="Provider totals appear after sales imports are loaded." />}
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+        <Card className="border-border/70">
+          <CardHeader>
+            <CardTitle>Attention needed</CardTitle>
+            <CardDescription>Pacing, roster, and upload items that need review.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {data.alerts.length ? data.alerts.map((alert) => (
+              <div key={`${alert.type}-${alert.title}`} className="rounded-2xl border border-border/70 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium">{alert.title}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{alert.detail}</p>
+                  </div>
+                  <Badge variant={alert.type === "upload" ? "warning" : alert.type === "roster" ? "info" : "danger"}>{alert.type}</Badge>
+                </div>
+              </div>
+            )) : <EmptyState title="No active alerts" description="No dashboard alert requires attention right now." />}
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button variant="outline" asChild>
+                <Link href="/imports/unmatched">Review unmatched</Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href="/performance">
+                  Performance
                   <ArrowRight className="h-4 w-4" />
-                  Review unmatched
-                </Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link href="/roster?add=1">
-                  <Users className="h-4 w-4" />
-                  Add rep
-                </Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link href="/backfill">
-                  <TrendingUp className="h-4 w-4" />
-                  Backfill sale
                 </Link>
               </Button>
             </div>
           </CardContent>
         </Card>
-      </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]">
-        <Card>
+        <Card className="border-border/70">
           <CardHeader>
             <CardTitle>Data freshness</CardTitle>
-            <CardDescription>Most recent source uploads and row counts.</CardDescription>
+            <CardDescription>Most recent source uploads and processed rows.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {[
-              { label: "ATT", source: data.freshness.att },
-              { label: "T-Fiber", source: data.freshness.tfiber },
-            ].map(({ label, source }) => (
+            {freshnessRows.map(({ label, source }) => (
               <div key={label} className="rounded-2xl border border-border/70 p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="font-medium">{label}</p>
                     <p className="mt-1 text-sm text-muted-foreground">{source?.fileName || "No upload yet"}</p>
                   </div>
-                  <Badge variant={source?.uploadedAt ? "success" : "warning"} className="rounded-full">
-                    {source?.uploadedAt ? "Fresh" : "Waiting"}
-                  </Badge>
+                  <Badge variant={source?.uploadedAt ? "success" : "warning"}>{source?.uploadedAt ? "Fresh" : "Waiting"}</Badge>
                 </div>
-                <div className="mt-4">
-                  <Progress value={source?.uploadedAt ? 100 : 8} />
-                </div>
+                <Progress className="mt-4" value={source?.uploadedAt ? 100 : 8} />
                 <p className="mt-2 text-xs text-muted-foreground">
-                  {source?.uploadedAt ? `Uploaded ${formatDateTime(source.uploadedAt)}` : "No recent upload has been processed."}
+                  {source?.uploadedAt ? `Uploaded ${formatDateTime(source.uploadedAt)} with ${formatNumber(source.rows)} rows` : "No recent upload has been processed."}
                 </p>
               </div>
             ))}
           </CardContent>
         </Card>
+      </section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Goal pacing</CardTitle>
-            <CardDescription>Rep-by-rep performance against weekly goals.</CardDescription>
+      <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+        <Card className="border-border/70">
+          <CardHeader className="flex-row items-start justify-between gap-4">
+            <div>
+              <CardTitle>Goal pacing</CardTitle>
+              <CardDescription>Reps currently behind expected weekly pace.</CardDescription>
+            </div>
+            <Badge variant="outline">{data.goalPacing.length} reps</Badge>
           </CardHeader>
           <CardContent className="space-y-3">
-            {hasGoalData ? (
-              data.goalPacing.slice(0, 5).map((rep) => {
-                const percent = rep.goal ? Math.min(100, Math.round((rep.sales / rep.goal) * 100)) : 0;
-                return (
-                  <div key={rep.repUid} className="rounded-2xl border border-border/70 p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <p className="truncate font-medium">{rep.displayName}</p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {formatNumber(rep.sales)} of {formatNumber(rep.goal)} goal
-                        </p>
-                      </div>
-                      <Badge variant={percent >= 100 ? "success" : percent >= 70 ? "warning" : "outline"} className="rounded-full">
-                        {formatPercent(percent)}
-                      </Badge>
+            {data.goalPacing.length ? data.goalPacing.slice(0, 6).map((rep) => {
+              const percent = rep.goal ? Math.min(100, Math.round((rep.sales / rep.goal) * 100)) : 0;
+              return (
+                <div key={rep.repUid} className="rounded-2xl border border-border/70 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{rep.displayName}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">{formatNumber(rep.sales)} of {formatNumber(rep.goal)} goal</p>
                     </div>
-                    <div className="mt-4">
-                      <Progress value={percent} />
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {rep.remaining > 0 ? `${formatNumber(rep.remaining)} remaining, ${formatCompact(rep.neededPerDay)} needed per day` : "Goal completed"}
-                    </p>
+                    <Badge variant={percent >= 100 ? "success" : percent >= 70 ? "warning" : "outline"}>{formatPercent(percent)}</Badge>
                   </div>
-                );
-              })
+                  <Progress className="mt-4" value={percent} />
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {rep.remaining > 0 ? `${formatNumber(rep.remaining)} remaining, ${formatCompact(rep.neededPerDay)} needed per day` : "Goal completed"}
+                  </p>
+                </div>
+              );
+            }) : <EmptyState title="No goal pacing issues" description="Active reps are not behind expected weekly goal pace." />}
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/70">
+          <CardHeader className="flex-row items-start justify-between gap-4">
+            <div>
+              <CardTitle>Team snapshot</CardTitle>
+              <CardDescription>Sales and goal totals by manager and location.</CardDescription>
+            </div>
+            <Badge variant="outline">{data.teamSnapshot.length} groups</Badge>
+          </CardHeader>
+          <CardContent className="max-h-[520px] overflow-auto p-0">
+            {data.teamSnapshot.length ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Manager</TableHead>
+                    <TableHead>Location</TableHead>
+                    <TableHead>Sales</TableHead>
+                    <TableHead>Goal</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.teamSnapshot.slice(0, 10).map((team) => (
+                    <TableRow key={`${team.manager}-${team.location}`}>
+                      <TableCell className="font-medium">{team.manager}</TableCell>
+                      <TableCell>{team.location}</TableCell>
+                      <TableCell>{formatNumber(team.sales)}</TableCell>
+                      <TableCell>{formatNumber(team.goal)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             ) : (
-              <SectionEmpty title="No goal pacing data" description="The overview did not return any rep goal pacing rows." />
+              <div className="p-6">
+                <EmptyState title="No team data" description="Team pacing appears after roster and sales data are available." />
+              </div>
             )}
           </CardContent>
         </Card>

@@ -305,8 +305,11 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const rangeEnd = rangeMode === "mtd"
     ? toDateId(new Date())
     : weekToDateEnd(weekStart);
+  const displayRangeEnd = rangeMode === "mtd"
+    ? rangeEnd
+    : toDateId(endOfWeek(new Date(`${weekStart}T12:00:00`)));
 
-  const reportSegments = useMemo(() => buildRangeSegments(rangeMode === "mtd" ? "mtd" : "wtd", data?.week.start ?? rangeStart, data?.week.end ?? rangeEnd), [data?.week.end, data?.week.start, rangeEnd, rangeMode, rangeStart]);
+  const reportSegments = useMemo(() => buildRangeSegments(rangeMode === "mtd" ? "mtd" : "wtd", data?.week.start ?? rangeStart, rangeMode === "mtd" ? data?.week.end ?? rangeEnd : displayRangeEnd), [data?.week.end, data?.week.start, displayRangeEnd, rangeEnd, rangeMode, rangeStart]);
   const segmentIndexByDateId = useMemo(() => {
     const indexByDateId = new Map<string, number>();
     reportSegments.forEach((segment, index) => {
@@ -399,7 +402,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     return summary;
   }, [goalField, reportSegments, segmentIndexByDateId, visibleRows]);
 
-  const currentLabel = formatRangeLabel(rangeMode === "mtd" ? "mtd" : "wtd", data?.week.start ?? rangeStart, data?.week.end ?? rangeEnd);
+  const currentLabel = formatRangeLabel(rangeMode === "mtd" ? "mtd" : "wtd", data?.week.start ?? rangeStart, rangeMode === "mtd" ? data?.week.end ?? rangeEnd : displayRangeEnd);
   const isTeamView = viewMode === "team";
   const hasNoData = !loading && visibleRows.length === 0;
 
