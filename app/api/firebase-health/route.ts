@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { getAdminApp } from "@/src/lib/firebase/admin";
 
 export const runtime = "nodejs";
 
-export function GET() {
+export async function GET() {
   try {
+    const { getAdminApp } = await import("@/src/lib/firebase/admin");
     const app = getAdminApp();
     return NextResponse.json({
       ok: true,
