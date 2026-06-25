@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { AlertTriangle, Monitor, MoonStar, Search, Shield, SunMedium, UserCog, UserPlus } from "lucide-react";
+import { AlertTriangle, Monitor, MoonStar, Search, Shield, SunMedium, Trash2, UserCog, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -178,9 +178,11 @@ export function SettingsPage() {
   const [roleFilter, setRoleFilter] = useState<(typeof roleFilterOptions)[number]["value"]>("all");
   const [editUser, setEditUser] = useState<UserRow | null>(null);
   const [editDraft, setEditDraft] = useState<UserRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createDraft, setCreateDraft] = useState<CreateAdminDraft>(blankCreateDraft);
   const [creatingAdmin, setCreatingAdmin] = useState(false);
+  const [deletingUser, setDeletingUser] = useState(false);
 
   const profilePermissions = normalizePermissions(profile?.permissions);
   const canManageAccess = profile?.role === "superAdmin";
@@ -296,6 +298,30 @@ export function SettingsPage() {
       toast.error(cause instanceof Error ? cause.message : "Unable to create admin user.");
     } finally {
       setCreatingAdmin(false);
+    }
+  }
+
+  async function deleteUser() {
+    if (!deleteTarget) return;
+    setDeletingUser(true);
+    try {
+      const response = await authedFetch("/api/users", {
+        method: "DELETE",
+        body: JSON.stringify({ authUid: deleteTarget.authUid }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to delete user.");
+      setUsers((current) => current.filter((user) => user.authUid !== deleteTarget.authUid));
+      if (editUser?.authUid === deleteTarget.authUid) {
+        setEditUser(null);
+        setEditDraft(null);
+      }
+      toast.success("Admin user deleted.");
+      setDeleteTarget(null);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to delete user.");
+    } finally {
+      setDeletingUser(false);
     }
   }
 
@@ -439,11 +465,19 @@ export function SettingsPage() {
                               </td>
                               <td className="px-4 py-4 text-sm text-muted-foreground">{permissionsSummary(user.permissions)}</td>
                               <td className="px-4 py-4 text-sm text-muted-foreground">{formatValue(user.updatedAt ?? user.lastLoginAt)}</td>
-                              <td className="px-4 py-4 text-right">
-                                <Button size="sm" variant="outline" onClick={() => openEdit(user)}>
-                                  <UserCog className="h-4 w-4" />
-                                  Edit
-                                </Button>
+                              <td className="px-4 py-4">
+                                <div className="flex justify-end gap-2">
+                                  <Button size="sm" variant="outline" onClick={() => openEdit(user)}>
+                                    <UserCog className="h-4 w-4" />
+                                    Edit
+                                  </Button>
+                                  {user.role !== "superAdmin" ? (
+                                    <Button size="sm" variant="destructive" onClick={() => setDeleteTarget(user)}>
+                                      <Trash2 className="h-4 w-4" />
+                                      Delete
+                                    </Button>
+                                  ) : null}
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -471,7 +505,12 @@ export function SettingsPage() {
                         <p className="text-sm text-muted-foreground">{permissionsSummary(user.permissions)}</p>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span>Updated: {formatValue(user.updatedAt ?? user.lastLoginAt)}</span>
-                          <Button size="sm" variant="outline" onClick={() => openEdit(user)}>Edit</Button>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => openEdit(user)}>Edit</Button>
+                            {user.role !== "superAdmin" ? (
+                              <Button size="sm" variant="destructive" onClick={() => setDeleteTarget(user)}>Delete</Button>
+                            ) : null}
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
@@ -756,15 +795,53 @@ export function SettingsPage() {
               </div>
             ) : null}
             <DialogFooter>
-              <Button variant="outline" onClick={() => setEditUser(null)}>Cancel</Button>
-              <Button
-                onClick={() => {
-                  if (!editUser || !editDraft) return;
-                  void save(editUser, editDraft);
-                }}
-                disabled={!editUser || !editDraft || saving === editUser?.authUid}
-              >
-                {saving === editUser?.authUid ? "Saving..." : "Save user"}
+              <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+                {editUser?.role !== "superAdmin" ? (
+                  <Button variant="destructive" onClick={() => editUser && setDeleteTarget(editUser)} disabled={!editUser || saving === editUser?.authUid}>
+                    <Trash2 className="h-4 w-4" />
+                    Delete user
+                  </Button>
+                ) : <span />}
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setEditUser(null)}>Cancel</Button>
+                  <Button
+                    onClick={() => {
+                      if (!editUser || !editDraft) return;
+                      void save(editUser, editDraft);
+                    }}
+                    disabled={!editUser || !editDraft || saving === editUser?.authUid}
+                  >
+                    {saving === editUser?.authUid ? "Saving..." : "Save user"}
+                  </Button>
+                </div>
+              </div>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open && !deletingUser) setDeleteTarget(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete admin user</DialogTitle>
+              <DialogDescription>
+                This removes the Firebase Auth account and workspace profile for this user. This does not remove historical sales, knocks, roster, or import data.
+              </DialogDescription>
+            </DialogHeader>
+            {deleteTarget ? (
+              <div className="rounded-2xl border border-danger/30 bg-danger/5 p-4 text-sm">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 text-danger" />
+                  <div>
+                    <p className="font-medium text-danger">Delete {deleteTarget.email}?</p>
+                    <p className="mt-1 text-muted-foreground">They will no longer be able to sign in after this is deleted.</p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deletingUser}>Cancel</Button>
+              <Button variant="destructive" onClick={() => void deleteUser()} disabled={deletingUser || !deleteTarget}>
+                {deletingUser ? "Deleting..." : "Delete user"}
               </Button>
             </DialogFooter>
           </DialogContent>

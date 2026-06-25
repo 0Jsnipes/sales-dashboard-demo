@@ -47,6 +47,10 @@ const create = z.object({
   locationIds: z.array(z.string()).default([]),
 });
 
+const remove = z.object({
+  authUid: z.string().min(1),
+});
+
 function authErrorCode(error: unknown) {
   return typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code) : "";
 }
@@ -156,6 +160,32 @@ export async function PATCH(request: Request) {
     if (existing.data()?.role === "superAdmin") return NextResponse.json({ error: "SUPER_ADMIN_PROTECTED" }, { status: 400 });
     await reference.update({ ...value.data, businessUnit: normalizeBusinessUnit(value.data.businessUnit), permissions: normalizePermissions(value.data.permissions), updatedAt: FieldValue.serverTimestamp(), updatedBy: actor.token.uid });
     return NextResponse.json({ ok: true });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const actor = await requireActor(request);
+    if (actor.profile.role !== "superAdmin") return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    const value = remove.safeParse(await request.json());
+    if (!value.success) return NextResponse.json({ error: value.error.flatten() }, { status: 400 });
+
+    const authUid = value.data.authUid;
+    const db = getAdminDb();
+    const reference = db.collection("users").doc(authUid);
+    const existing = await reference.get();
+    if (!existing.exists) return NextResponse.json({ error: "USER_NOT_FOUND" }, { status: 404 });
+    if (existing.data()?.role === "superAdmin") return NextResponse.json({ error: "SUPER_ADMIN_PROTECTED" }, { status: 400 });
+
+    await getAdminAuth().deleteUser(authUid).catch((error) => {
+      if (authErrorCode(error) === "auth/user-not-found") return;
+      throw error;
+    });
+    await reference.delete();
+
+    return NextResponse.json({ deleted: authUid });
   } catch (error) {
     return errorResponse(error);
   }
