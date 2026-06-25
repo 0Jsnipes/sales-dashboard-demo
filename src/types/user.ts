@@ -11,12 +11,20 @@ export interface AppUser {
   managerUid: string | null;
   locationIds: string[];
   permissions: {
+    canViewDashboard: boolean;
     canEditSales: boolean;
     canEditKnocks: boolean;
     canEditRoster: boolean;
     canEditOnboarding: boolean;
     canCreateUsers: boolean;
     canViewPerformance: boolean;
+    canViewSales: boolean;
+    canViewKnocks: boolean;
+    canViewRoster: boolean;
+    canViewOnboarding: boolean;
+    canViewImports: boolean;
+    canViewBackfill: boolean;
+    canViewSettings: boolean;
     canRunBackfill: boolean;
     canReassignSales: boolean;
   };

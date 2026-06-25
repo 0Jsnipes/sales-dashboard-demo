@@ -3,15 +3,15 @@ import type { AppUser } from "@/src/types/user";
 import { canAccessRule, type AccessRule } from "@/src/lib/access";
 
 export const appNav = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, businessUnit: "fiber", permission: "canViewPerformance" },
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, businessUnit: "fiber", permission: "canViewDashboard" },
   { label: "Performance", href: "/performance", icon: BarChart3, businessUnit: "fiber", permission: "canViewPerformance" },
-  { label: "Sales", href: "/sales", icon: TrendingUp, businessUnit: "fiber", permission: "canEditSales" },
-  { label: "Knocks", href: "/knocks", icon: Target, businessUnit: "fiber", permission: "canEditKnocks" },
-  { label: "Roster", href: "/roster", icon: Users, businessUnit: "fiber", permission: "canEditRoster" },
-  { label: "Onboarding", href: "/onboarding", icon: UserCheck, businessUnit: "fiber", permission: "canEditOnboarding" },
-  { label: "Imports", href: "/imports", icon: FileUp, businessUnit: "fiber", permission: "canEditSales" },
-  { label: "Backfill", href: "/backfill", icon: CalendarDays, businessUnit: "fiber", permission: "canRunBackfill" },
-  { label: "Settings", href: "/settings", icon: Settings, businessUnit: "all", superAdminOnly: true },
+  { label: "Sales", href: "/sales", icon: TrendingUp, businessUnit: "fiber", permission: "canViewSales" },
+  { label: "Knocks", href: "/knocks", icon: Target, businessUnit: "fiber", permission: "canViewKnocks" },
+  { label: "Roster", href: "/roster", icon: Users, businessUnit: "fiber", permission: "canViewRoster" },
+  { label: "Onboarding", href: "/onboarding", icon: UserCheck, businessUnit: "fiber", permission: "canViewOnboarding" },
+  { label: "Imports", href: "/imports", icon: FileUp, businessUnit: "fiber", permission: "canViewImports" },
+  { label: "Backfill", href: "/backfill", icon: CalendarDays, businessUnit: "fiber", permission: "canViewBackfill" },
+  { label: "Settings", href: "/settings", icon: Settings, businessUnit: "all", permission: "canViewSettings" },
 ] as const;
 
 export type AppNavItem = (typeof appNav)[number];

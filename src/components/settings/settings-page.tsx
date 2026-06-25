@@ -18,7 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTheme } from "next-themes";
 import { authedFetch, authedJson } from "@/src/lib/api/client";
 import { useAuth } from "@/src/components/auth-provider";
-import { businessUnitLabel } from "@/src/lib/access";
+import { businessUnitLabel, DEFAULT_ADMIN_PERMISSIONS, normalizeBusinessUnit, normalizePermissions } from "@/src/lib/access";
 import type { BusinessUnit } from "@/src/types/user";
 
 type UserRow = {
@@ -33,12 +33,20 @@ type UserRow = {
   updatedAt?: string | null;
   lastLoginAt?: string | null;
   permissions: {
+    canViewDashboard: boolean;
+    canViewPerformance: boolean;
+    canViewSales: boolean;
+    canViewKnocks: boolean;
+    canViewRoster: boolean;
+    canViewOnboarding: boolean;
+    canViewImports: boolean;
+    canViewBackfill: boolean;
+    canViewSettings: boolean;
     canEditSales: boolean;
     canEditKnocks: boolean;
     canEditRoster: boolean;
     canEditOnboarding: boolean;
     canCreateUsers: boolean;
-    canViewPerformance: boolean;
     canRunBackfill: boolean;
     canReassignSales: boolean;
   };
@@ -52,26 +60,33 @@ type CreateAdminDraft = {
   permissions: UserRow["permissions"];
 };
 
-const defaultAdminPermissions: UserRow["permissions"] = {
-  canEditSales: true,
-  canEditKnocks: true,
-  canEditRoster: true,
-  canEditOnboarding: true,
-  canCreateUsers: false,
-  canViewPerformance: true,
-  canRunBackfill: true,
-  canReassignSales: true,
-};
+const defaultAdminPermissions: UserRow["permissions"] = DEFAULT_ADMIN_PERMISSIONS;
 
-const permissionGroups = [
-  { key: "canViewPerformance", label: "View performance", group: "Dashboard" },
-  { key: "canEditSales", label: "Edit sales", group: "Sales" },
-  { key: "canEditRoster", label: "Edit roster", group: "Roster" },
-  { key: "canEditKnocks", label: "Edit knocks", group: "Imports" },
-  { key: "canEditOnboarding", label: "Edit onboarding", group: "Onboarding" },
-  { key: "canRunBackfill", label: "Run backfill", group: "Backfill" },
-  { key: "canReassignSales", label: "Reassign sales", group: "Settings/Admin" },
-  { key: "canCreateUsers", label: "Create users", group: "Settings/Admin" },
+const pagePermissionGroups = [
+  { key: "canViewDashboard", label: "Dashboard", group: "Page access" },
+  { key: "canViewPerformance", label: "Performance", group: "Page access" },
+  { key: "canViewSales", label: "Sales", group: "Page access" },
+  { key: "canViewKnocks", label: "Knocks", group: "Page access" },
+  { key: "canViewRoster", label: "Roster", group: "Page access" },
+  { key: "canViewOnboarding", label: "Onboarding", group: "Page access" },
+  { key: "canViewImports", label: "Imports", group: "Page access" },
+  { key: "canViewBackfill", label: "Backfill", group: "Page access" },
+  { key: "canViewSettings", label: "Settings", group: "Page access" },
+] as const;
+
+const actionPermissionGroups = [
+  { key: "canEditSales", label: "Edit sales and imports", group: "Actions" },
+  { key: "canEditRoster", label: "Edit roster", group: "Actions" },
+  { key: "canEditKnocks", label: "Edit knocks", group: "Actions" },
+  { key: "canEditOnboarding", label: "Edit onboarding", group: "Actions" },
+  { key: "canRunBackfill", label: "Run backfill", group: "Actions" },
+  { key: "canReassignSales", label: "Reassign sales", group: "Actions" },
+  { key: "canCreateUsers", label: "Create users", group: "Actions" },
+] as const;
+
+const permissionSections = [
+  { title: "Page access", description: "Controls which pages appear in navigation and can be opened.", items: pagePermissionGroups },
+  { title: "Action permissions", description: "Controls editing, importing, backfill, and admin operations inside pages.", items: actionPermissionGroups },
 ] as const;
 
 const roleDescriptions: Record<UserRow["role"], string> = {
@@ -94,11 +109,22 @@ function blankCreateDraft(): CreateAdminDraft {
 }
 
 function permissionsSummary(permissions: UserRow["permissions"]) {
-  return permissionGroups
+  return pagePermissionGroups
     .filter((item) => permissions[item.key])
     .map((item) => item.label)
     .slice(0, 3)
-    .join(", ") || "No extra permissions";
+    .join(", ") || "No page access";
+}
+
+function normalizeUserRow(user: UserRow): UserRow {
+  return {
+    ...user,
+    businessUnit: normalizeBusinessUnit(user.businessUnit),
+    permissions: normalizePermissions(user.permissions),
+    locationIds: Array.isArray(user.locationIds) ? user.locationIds : [],
+    repUid: user.repUid ?? null,
+    managerUid: user.managerUid ?? null,
+  };
 }
 
 function formatValue(value?: string | Date | { toDate?: () => Date; seconds?: number; nanoseconds?: number } | null) {
@@ -156,16 +182,32 @@ export function SettingsPage() {
   const [createDraft, setCreateDraft] = useState<CreateAdminDraft>(blankCreateDraft);
   const [creatingAdmin, setCreatingAdmin] = useState(false);
 
-  const allowed = profile?.role === "superAdmin";
+  const profilePermissions = normalizePermissions(profile?.permissions);
+  const canManageAccess = profile?.role === "superAdmin";
+  const canViewSettings = canManageAccess || (profile?.role === "admin" && profilePermissions.canViewSettings);
   const currentUser = profile;
+  const visibleTabs = useMemo(() => canManageAccess
+    ? [
+      { value: "users", label: "Users & Roles" },
+      { value: "permissions", label: "Permissions" },
+      { value: "profile", label: "Profile" },
+      { value: "appearance", label: "Appearance" },
+      { value: "system", label: "System" },
+    ]
+    : [
+      { value: "profile", label: "Profile" },
+      { value: "appearance", label: "Appearance" },
+      { value: "system", label: "System" },
+    ], [canManageAccess]);
+  const selectedTab = visibleTabs.some((tab) => tab.value === activeTab) ? activeTab : visibleTabs[0]?.value ?? "profile";
 
   useEffect(() => {
-    if (!allowed) return;
+    if (!canManageAccess) return;
     let active = true;
     authedJson<{ users: UserRow[] }>("/api/users")
       .then((value) => {
         if (!active) return;
-        setUsers(value.users ?? []);
+        setUsers((value.users ?? []).map(normalizeUserRow));
         setError(null);
         setLoading(false);
       })
@@ -179,7 +221,7 @@ export function SettingsPage() {
     return () => {
       active = false;
     };
-  }, [allowed]);
+  }, [canManageAccess]);
 
   const filteredUsers = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -212,7 +254,7 @@ export function SettingsPage() {
       const response = await authedFetch("/api/users", { method: "PATCH", body: JSON.stringify(payload) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Unable to save user.");
-      setUsers((current) => current.map((item) => item.authUid === user.authUid ? { ...item, ...payload } as UserRow : item));
+      setUsers((current) => current.map((item) => item.authUid === user.authUid ? normalizeUserRow({ ...item, ...payload } as UserRow) : item));
       toast.success("User settings saved.");
       setEditUser(null);
       setEditDraft(null);
@@ -246,7 +288,7 @@ export function SettingsPage() {
       });
       const result = await response.json() as { user?: UserRow; error?: unknown };
       if (!response.ok || !result.user) throw new Error(String(result.error || "Unable to create admin user."));
-      setUsers((current) => [...current.filter((item) => item.authUid !== result.user!.authUid), result.user!].sort((a, b) => a.email.localeCompare(b.email)));
+      setUsers((current) => [...current.filter((item) => item.authUid !== result.user!.authUid), normalizeUserRow(result.user!)].sort((a, b) => a.email.localeCompare(b.email)));
       setCreateOpen(false);
       setCreateDraft(blankCreateDraft());
       toast.success("Admin user created. They will be required to change the temporary password on first login.");
@@ -258,8 +300,9 @@ export function SettingsPage() {
   }
 
   function openEdit(user: UserRow) {
-    setEditUser(user);
-    setEditDraft(user);
+    const normalized = normalizeUserRow(user);
+    setEditUser(normalized);
+    setEditDraft(normalized);
   }
 
   function updateDraft(changes: Partial<UserRow>) {
@@ -270,19 +313,19 @@ export function SettingsPage() {
     setCreateDraft((current) => ({ ...current, permissions: { ...current.permissions, [key]: value } }));
   }
 
-  if (!allowed) {
+  if (!canViewSettings) {
     return (
       <Card className="border-warning/30 bg-warning/5">
         <CardContent className="flex items-center gap-3 p-4 text-sm">
           <Shield className="h-4 w-4 text-warning" />
-          Only the super admin can manage workspace access.
+          Settings are not available for this account.
         </CardContent>
       </Card>
     );
   }
 
-  if (loading) return <SettingsSkeleton />;
-  if (error && !users.length && allowed) return (
+  if (canManageAccess && loading) return <SettingsSkeleton />;
+  if (error && !users.length && canManageAccess) return (
     <Card className="border-border/70">
       <CardContent className="p-6">
         <div className="rounded-2xl border border-danger/30 bg-danger/5 p-4 text-sm text-danger">{error}</div>
@@ -300,33 +343,35 @@ export function SettingsPage() {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline">Admin control center</Badge>
-              <Button onClick={() => { setCreateDraft(blankCreateDraft()); setCreateOpen(true); }}>
-                <UserPlus className="h-4 w-4" />
-                Add admin
-              </Button>
+              {canManageAccess ? (
+                <Button onClick={() => { setCreateDraft(blankCreateDraft()); setCreateOpen(true); }}>
+                  <UserPlus className="h-4 w-4" />
+                  Add admin
+                </Button>
+              ) : null}
             </div>
           </CardHeader>
         </Card>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {summaryCards.map((item) => (
-            <Card key={item.label} className="border-border/70">
-              <CardHeader className="pb-2">
-                <CardDescription>{item.label}</CardDescription>
-                <CardTitle className="text-3xl">{item.value}</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0 text-sm text-muted-foreground">{item.note}</CardContent>
-            </Card>
-          ))}
-        </section>
+        {canManageAccess ? (
+          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {summaryCards.map((item) => (
+              <Card key={item.label} className="border-border/70">
+                <CardHeader className="pb-2">
+                  <CardDescription>{item.label}</CardDescription>
+                  <CardTitle className="text-3xl">{item.value}</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0 text-sm text-muted-foreground">{item.note}</CardContent>
+              </Card>
+            ))}
+          </section>
+        ) : null}
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <Tabs value={selectedTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList className="grid h-auto w-full grid-cols-2 gap-1 overflow-x-auto md:grid-cols-5">
-            <TabsTrigger value="users">Users & Roles</TabsTrigger>
-            <TabsTrigger value="permissions">Permissions</TabsTrigger>
-            <TabsTrigger value="profile">Profile</TabsTrigger>
-            <TabsTrigger value="appearance">Appearance</TabsTrigger>
-            <TabsTrigger value="system">System</TabsTrigger>
+            {visibleTabs.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value}>{tab.label}</TabsTrigger>
+            ))}
           </TabsList>
 
           <TabsContent value="users" className="space-y-4">
@@ -344,14 +389,16 @@ export function SettingsPage() {
                     {roleFilterOptions.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <Button onClick={() => { setCreateDraft(blankCreateDraft()); setCreateOpen(true); }}>
-                  <UserPlus className="h-4 w-4" />
-                  Add admin
-                </Button>
+                {canManageAccess ? (
+                  <Button onClick={() => { setCreateDraft(blankCreateDraft()); setCreateOpen(true); }}>
+                    <UserPlus className="h-4 w-4" />
+                    Add admin
+                  </Button>
+                ) : null}
               </CardContent>
             </Card>
 
-            {!allowed ? (
+            {!canManageAccess ? (
               <Card className="border-warning/30 bg-warning/5">
                 <CardContent className="flex items-center gap-3 p-4 text-sm">
                   <Shield className="h-4 w-4 text-warning" />
@@ -447,16 +494,24 @@ export function SettingsPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <AlertBlock />
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  {permissionGroups.map((item) => (
-                    <Card key={item.key} className="border-border/70">
-                      <CardContent className="p-4">
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">{item.group}</p>
-                        <p className="mt-1 font-medium">{item.label}</p>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+                {permissionSections.map((section) => (
+                  <div key={section.title} className="space-y-3">
+                    <div>
+                      <p className="font-medium">{section.title}</p>
+                      <p className="text-sm text-muted-foreground">{section.description}</p>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      {section.items.map((item) => (
+                        <Card key={item.key} className="border-border/70">
+                          <CardContent className="p-4">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">{item.group}</p>
+                            <p className="mt-1 font-medium">{item.label}</p>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </CardContent>
             </Card>
           </TabsContent>
@@ -583,18 +638,28 @@ export function SettingsPage() {
               </div>
               <div className="space-y-2">
                 <Label>Admin permissions</Label>
-                <div className="grid gap-3 md:grid-cols-2">
-                  {permissionGroups.map((item) => (
-                    <label key={item.key} className="flex items-center gap-3 rounded-2xl border border-border/70 p-3 text-sm">
-                      <Checkbox
-                        checked={Boolean(createDraft.permissions[item.key])}
-                        onCheckedChange={(checked) => updateCreatePermission(item.key, !!checked)}
-                      />
-                      <span className="flex-1">
-                        <span className="block font-medium">{item.label}</span>
-                        <span className="block text-xs text-muted-foreground">{item.group}</span>
-                      </span>
-                    </label>
+                <div className="space-y-4">
+                  {permissionSections.map((section) => (
+                    <div key={section.title} className="space-y-2">
+                      <div>
+                        <p className="text-sm font-medium">{section.title}</p>
+                        <p className="text-xs text-muted-foreground">{section.description}</p>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {section.items.map((item) => (
+                          <label key={item.key} className="flex items-center gap-3 rounded-2xl border border-border/70 p-3 text-sm">
+                            <Checkbox
+                              checked={Boolean(createDraft.permissions[item.key])}
+                              onCheckedChange={(checked) => updateCreatePermission(item.key, !!checked)}
+                            />
+                            <span className="flex-1">
+                              <span className="block font-medium">{item.label}</span>
+                              <span className="block text-xs text-muted-foreground">{item.group}</span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -657,19 +722,29 @@ export function SettingsPage() {
                     Super admin access is protected and cannot be edited here.
                   </div>
                 )}
-                <div className="grid gap-3 md:grid-cols-2">
-                  {permissionGroups.map((item) => (
-                    <label key={item.key} className="flex items-center gap-3 rounded-2xl border border-border/70 p-3 text-sm">
-                      <Checkbox
-                        checked={Boolean(editDraft.permissions[item.key])}
-                        onCheckedChange={(checked) => updateDraft({ permissions: { ...editDraft.permissions, [item.key]: !!checked } })}
-                        disabled={editDraft.role === "superAdmin"}
-                      />
-                      <span className="flex-1">
-                        <span className="block font-medium">{item.label}</span>
-                        <span className="block text-xs text-muted-foreground">{item.group}</span>
-                      </span>
-                    </label>
+                <div className="space-y-4">
+                  {permissionSections.map((section) => (
+                    <div key={section.title} className="space-y-2">
+                      <div>
+                        <p className="text-sm font-medium">{section.title}</p>
+                        <p className="text-xs text-muted-foreground">{section.description}</p>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {section.items.map((item) => (
+                          <label key={item.key} className="flex items-center gap-3 rounded-2xl border border-border/70 p-3 text-sm">
+                            <Checkbox
+                              checked={Boolean(editDraft.permissions[item.key])}
+                              onCheckedChange={(checked) => updateDraft({ permissions: { ...editDraft.permissions, [item.key]: !!checked } })}
+                              disabled={editDraft.role === "superAdmin"}
+                            />
+                            <span className="flex-1">
+                              <span className="block font-medium">{item.label}</span>
+                              <span className="block text-xs text-muted-foreground">{item.group}</span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
                 <Separator />

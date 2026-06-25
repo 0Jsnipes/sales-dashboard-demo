@@ -5,7 +5,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getFirebaseAuth, getFirebaseDb } from "@/src/lib/firebase/client";
 import type { AppUser } from "@/src/types/user";
-import { normalizeBusinessUnit } from "@/src/lib/access";
+import { normalizeBusinessUnit, normalizePermissions } from "@/src/lib/access";
 
 type AuthState = { user: User | null; profile: AppUser | null; loading: boolean; error: string | null; refreshProfile: () => Promise<void> };
 const AuthContext = createContext<AuthState>({ user: null, profile: null, loading: true, error: null, refreshProfile: async () => undefined });
@@ -16,6 +16,7 @@ function normalizeProfile(data: AppUser): AppUser {
     businessUnit: normalizeBusinessUnit(data.businessUnit),
     mustChangePassword: Boolean(data.mustChangePassword),
     locationIds: Array.isArray(data.locationIds) ? data.locationIds : [],
+    permissions: normalizePermissions(data.permissions),
   };
 }
 

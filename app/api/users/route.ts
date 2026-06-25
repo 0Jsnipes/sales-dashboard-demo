@@ -3,33 +3,28 @@ import { z } from "zod";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "@/src/lib/firebase/admin";
 import { requireActor } from "@/src/lib/firebase/server-auth";
-import { normalizeBusinessUnit } from "@/src/lib/access";
+import { DEFAULT_ADMIN_PERMISSIONS, normalizeBusinessUnit, normalizePermissions } from "@/src/lib/access";
 
 export const runtime = "nodejs";
 
 const permissions = z.object({
-  canEditSales: z.boolean(),
-  canEditKnocks: z.boolean(),
-  canEditRoster: z.boolean(),
-  canEditOnboarding: z.boolean(),
-  canCreateUsers: z.boolean(),
-  canViewPerformance: z.boolean(),
-  canRunBackfill: z.boolean(),
-  canReassignSales: z.boolean(),
+  canViewDashboard: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewDashboard),
+  canViewPerformance: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewPerformance),
+  canViewSales: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewSales),
+  canViewKnocks: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewKnocks),
+  canViewRoster: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewRoster),
+  canViewOnboarding: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewOnboarding),
+  canViewImports: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewImports),
+  canViewBackfill: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewBackfill),
+  canViewSettings: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewSettings),
+  canEditSales: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canEditSales),
+  canEditKnocks: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canEditKnocks),
+  canEditRoster: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canEditRoster),
+  canEditOnboarding: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canEditOnboarding),
+  canCreateUsers: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canCreateUsers),
+  canRunBackfill: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canRunBackfill),
+  canReassignSales: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canReassignSales),
 });
-
-type Permissions = z.infer<typeof permissions>;
-
-const defaultAdminPermissions: Permissions = {
-  canEditSales: true,
-  canEditKnocks: true,
-  canEditRoster: true,
-  canEditOnboarding: true,
-  canCreateUsers: false,
-  canViewPerformance: true,
-  canRunBackfill: true,
-  canReassignSales: true,
-};
 
 const update = z.object({
   authUid: z.string().min(1),
@@ -70,7 +65,7 @@ export async function GET(request: Request) {
     const users = snapshot.docs
       .map((document): Record<string, unknown> => {
         const data = document.data() as Record<string, unknown>;
-        return { ...data, businessUnit: normalizeBusinessUnit(data.businessUnit) };
+        return { ...data, businessUnit: normalizeBusinessUnit(data.businessUnit), permissions: normalizePermissions(data.permissions) };
       })
       .sort((a, b) => String(a["email"]).localeCompare(String(b["email"])));
     return NextResponse.json({
@@ -124,7 +119,7 @@ export async function POST(request: Request) {
       role: value.data.role,
       businessUnit: value.data.businessUnit,
       mustChangePassword: true,
-      permissions: value.data.permissions ?? defaultAdminPermissions,
+      permissions: value.data.permissions ?? DEFAULT_ADMIN_PERMISSIONS,
       repUid: value.data.repUid ?? null,
       managerUid: value.data.managerUid ?? null,
       locationIds: value.data.locationIds,
@@ -159,7 +154,7 @@ export async function PATCH(request: Request) {
     const existing = await reference.get();
     if (!existing.exists) return NextResponse.json({ error: "USER_NOT_FOUND" }, { status: 404 });
     if (existing.data()?.role === "superAdmin") return NextResponse.json({ error: "SUPER_ADMIN_PROTECTED" }, { status: 400 });
-    await reference.update({ ...value.data, businessUnit: normalizeBusinessUnit(value.data.businessUnit), updatedAt: FieldValue.serverTimestamp(), updatedBy: actor.token.uid });
+    await reference.update({ ...value.data, businessUnit: normalizeBusinessUnit(value.data.businessUnit), permissions: normalizePermissions(value.data.permissions), updatedAt: FieldValue.serverTimestamp(), updatedBy: actor.token.uid });
     return NextResponse.json({ ok: true });
   } catch (error) {
     return errorResponse(error);
