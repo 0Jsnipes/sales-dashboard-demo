@@ -12,13 +12,12 @@ const config = {
 };
 const appName = "ab-sales-operations";
 
-function normalizeDatabaseId(value: string | undefined) {
+function resolveDatabaseId(value: string | undefined) {
   const trimmed = value?.trim();
-  if (!trimmed || trimmed === "default") return "(default)";
-  return trimmed;
+  return trimmed || "default";
 }
 
-const databaseId = normalizeDatabaseId(process.env.NEXT_PUBLIC_FIREBASE_DATABASE_ID);
+const databaseId = resolveDatabaseId(process.env.NEXT_PUBLIC_FIREBASE_DATABASE_ID);
 
 export function getFirebaseApp(): FirebaseApp {
   if (!config.apiKey || !config.projectId || !config.appId) {

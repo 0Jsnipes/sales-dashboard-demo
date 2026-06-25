@@ -18,10 +18,9 @@ function normalizePrivateKey(value) {
   return unquoted.replace(/\\n/g, "\n");
 }
 
-function normalizeDatabaseId(value) {
+function resolveDatabaseId(value) {
   const trimmed = value?.trim();
-  if (!trimmed || trimmed === "default") return "(default)";
-  return trimmed;
+  return trimmed || "default";
 }
 
 function loadEnvFile(filePath) {
@@ -89,7 +88,7 @@ async function main() {
 
   loadEnvFile(path.join(__dirname, "..", ".env.local"));
   const app = ensureAdminApp();
-  const db = getFirestore(app, normalizeDatabaseId(process.env.FIREBASE_DATABASE_ID));
+  const db = getFirestore(app, resolveDatabaseId(process.env.FIREBASE_DATABASE_ID));
 
   const summary = [];
   let totalDuplicates = 0;

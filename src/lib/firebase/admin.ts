@@ -13,10 +13,9 @@ function normalizePrivateKey(value: string | undefined) {
   return unquoted.replace(/\\n/g, "\n");
 }
 
-function normalizeDatabaseId(value: string | undefined) {
+function resolveDatabaseId(value: string | undefined) {
   const trimmed = value?.trim();
-  if (!trimmed || trimmed === "default") return "(default)";
-  return trimmed;
+  return trimmed || "default";
 }
 
 export function getAdminApp(): App {
@@ -29,6 +28,6 @@ export function getAdminApp(): App {
   }
   return initializeApp({ credential: cert({ projectId, clientEmail, privateKey }), storageBucket: process.env.FIREBASE_STORAGE_BUCKET });
 }
-const databaseId = normalizeDatabaseId(process.env.FIREBASE_DATABASE_ID);
+const databaseId = resolveDatabaseId(process.env.FIREBASE_DATABASE_ID);
 export const getAdminDb = () => getFirestore(getAdminApp(), databaseId);
 export const getAdminAuth = () => getAuth(getAdminApp());
