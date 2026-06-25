@@ -9,6 +9,21 @@ import { getFirestore } from "firebase-admin/firestore";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function normalizePrivateKey(value) {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  const unquoted = (trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ? trimmed.slice(1, -1)
+    : trimmed;
+  return unquoted.replace(/\\n/g, "\n");
+}
+
+function normalizeDatabaseId(value) {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed === "default") return "(default)";
+  return trimmed;
+}
+
 function loadEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return;
   const content = fs.readFileSync(filePath, "utf8");
@@ -30,7 +45,7 @@ function ensureAdminApp() {
   if (getApps().length) return getApps()[0];
   const projectId = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  const privateKey = normalizePrivateKey(process.env.FIREBASE_PRIVATE_KEY);
   if (!projectId || !clientEmail || !privateKey) {
     throw new Error("Missing Firebase Admin credentials. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY.");
   }
@@ -74,7 +89,7 @@ async function main() {
 
   loadEnvFile(path.join(__dirname, "..", ".env.local"));
   const app = ensureAdminApp();
-  const db = getFirestore(app, process.env.FIREBASE_DATABASE_ID || "(default)");
+  const db = getFirestore(app, normalizeDatabaseId(process.env.FIREBASE_DATABASE_ID));
 
   const summary = [];
   let totalDuplicates = 0;

@@ -371,7 +371,7 @@ export function BackfillPage() {
                   <Select value={draft.accountStatus} onValueChange={(value) => setDraft((current) => ({ ...current, accountStatus: value }))}>
                     <SelectTrigger id="accountStatus"><SelectValue placeholder="Select status" /></SelectTrigger>
                     <SelectContent>
-                      {["pending", "installed", "past_due", "canceled", "churned", "unknown"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+                      {["pending", "installed", "past_due", "preorder", "canceled", "churned", "unknown"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">Past due is generally derived from the install date, not forced manually.</p>

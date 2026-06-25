@@ -4,6 +4,7 @@ import { requireActor } from "@/src/lib/firebase/server-auth";
 import type { Rep } from "@/src/types/rep";
 import { formatImportedName } from "@/src/lib/matching/display-name";
 import { applyOutcomeFilter, applyTextSearchFilter, parseCommonFilters, parseDateRangeParams, toDateId } from "@/src/lib/api/report-filters";
+import { sanitizeOrderId } from "@/src/lib/sales/outcomes";
 
 type SalesOrder = {
   orderUid: string;
@@ -64,6 +65,15 @@ function buildRange(searchParams: URLSearchParams, rangeMode: string | null) {
     return { start: dateId(start), end: dateId(end), monday: start };
   }
   const { monday, sunday } = currentWeek(dateRange.weekStart ?? searchParams.get("weekStart"));
+  if (rangeMode === "wtd") {
+    const current = currentWeek();
+    if (dateId(current.monday) === dateId(monday)) {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const end = yesterday < monday ? monday : yesterday;
+      return { start: dateRange.weekStart ?? dateId(monday), end: dateId(end), monday, sunday };
+    }
+  }
   return { start: dateRange.weekStart ?? dateId(monday), end: dateId(sunday), monday, sunday };
 }
 
@@ -177,7 +187,7 @@ export async function GET(request: Request) {
           orderUid: String(order.orderUid || order.orderId || ""),
           orderDateId: String(order.orderDateId || ""),
           provider: String(order.provider || ""),
-          orderId: String(order.orderId || order.orderUid || ""),
+          orderId: sanitizeOrderId(order.orderId || order.orderUid || ""),
           rawRepName: String(order.rawRepName || ""),
           rawSalesId: String(order.rawSalesId || ""),
           rawManagerName: String(order.rawManagerName || ""),

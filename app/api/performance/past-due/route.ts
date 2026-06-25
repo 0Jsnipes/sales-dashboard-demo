@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { requireActor } from "@/src/lib/firebase/server-auth";
+import { sanitizeOrderId } from "@/src/lib/sales/outcomes";
 
 const classify = (status: unknown) => {
   const value = String(status || "").toLowerCase();
-  return value.includes("cancel") ? "cancelled" : value.includes("active") || value.includes("install") ? "active" : value.includes("schedul") || value.includes("pending") ? "pending" : "other";
+  return value.includes("cancel") ? "cancelled" : value.includes("active") || value.includes("install") ? "active" : value.includes("preorder") ? "preorder" : value.includes("schedul") || value.includes("pending") ? "pending" : "other";
 };
 const toDateId = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 const csvCell = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
@@ -60,7 +61,7 @@ export async function GET(request: Request) {
         const rep = order.matchedRepUid ? reps.get(String(order.matchedRepUid)) : undefined;
         const raw = order.rawData as Record<string, unknown> | undefined;
         return {
-          orderId: String(order.orderId || order.orderUid || order.id),
+          orderId: sanitizeOrderId(order.orderId || order.orderUid || order.id),
           orderDateId: String(order.orderDateId || ""),
           installDateId: String(order.installationDateId || ""),
           customer: String(raw?.["Customer Name"] || raw?.["Street Address"] || ""),
@@ -73,7 +74,7 @@ export async function GET(request: Request) {
         };
       })
       .filter((row) => {
-        const overdue = /^\d{4}-\d{2}-\d{2}$/.test(row.installDateId) && row.installDateId < today && row.classification !== "active" && row.classification !== "cancelled";
+        const overdue = /^\d{4}-\d{2}-\d{2}$/.test(row.installDateId) && row.installDateId < today && row.classification !== "active" && row.classification !== "cancelled" && row.classification !== "preorder";
         return (statusFilter === "pastDue" ? overdue : row.classification === statusFilter)
           && (providerFilter === "both" || row.provider === providerFilter)
           && (location === "all" || row.location === location)

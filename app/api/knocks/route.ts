@@ -214,14 +214,17 @@ export async function POST(request: Request) {
     const db = getAdminDb();
     const knockDaily = db.collection("knockDaily");
     const repMap = new Map(reps.map((rep) => [rep.repUid, rep]));
-    const dayTotals = new Map<string, Map<string, { knocks: number; source: string; rawRepName: string; rawSalesId: string; managerName: string; locationName: string }>>();
+    const dayTotals = new Map<string, Map<string, { knocks: number; attKnocks: number; tfiberKnocks: number; source: string; rawRepName: string; rawSalesId: string; managerName: string; locationName: string }>>();
     for (const row of parsed.rows) {
       const day = row.activityDateKey;
       const repUid = row.repId ?? `unmatched:${normalizeRepName(row.repName)}`;
       const rep = row.repId ? repMap.get(row.repId) : undefined;
       const byRep = dayTotals.get(day) ?? new Map();
-      const current = byRep.get(repUid) ?? { knocks: 0, source, rawRepName: row.repName, rawSalesId: row.sourceRepExternalId ?? "", managerName: rep?.managerName ?? "", locationName: rep?.locationName ?? "" };
-      current.knocks += Number(row.quantity || 1);
+      const current = byRep.get(repUid) ?? { knocks: 0, attKnocks: 0, tfiberKnocks: 0, source, rawRepName: row.repName, rawSalesId: row.sourceRepExternalId ?? "", managerName: rep?.managerName ?? "", locationName: rep?.locationName ?? "" };
+      const count = Number(row.quantity || 1);
+      current.knocks += count;
+      if (row.provider === "ATT") current.attKnocks += count;
+      if (row.provider === "T-Fiber") current.tfiberKnocks += count;
       if (!rep && row.repName && row.repName.length < current.rawRepName.length) current.rawRepName = row.repName;
       byRep.set(repUid, current);
       dayTotals.set(day, byRep);
@@ -239,6 +242,8 @@ export async function POST(request: Request) {
           sourceUploadId: uploadId,
           managerName: data.managerName,
           locationName: data.locationName,
+          attKnocks: FieldValue.increment(data.attKnocks),
+          tfiberKnocks: FieldValue.increment(data.tfiberKnocks),
           knocks: FieldValue.increment(data.knocks),
           count: FieldValue.increment(data.knocks),
           updatedAt: FieldValue.serverTimestamp(),

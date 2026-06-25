@@ -7,11 +7,16 @@ export type PerformanceOrder = SalesOrderRecord & {
   providerKey?: string;
   orderId: string;
   provider: string;
+  vendorType?: "organic" | "subVendor" | "unassigned";
   repName: string;
+  repUid?: string | null;
   managerName?: string;
   locationName?: string;
   customer: string;
   status: string;
+  outcome?: SaleOutcome;
+  pastDue?: boolean;
+  saleCount?: number;
   saleDate?: string;
   estimatedInstallDate?: string;
   daysSinceSale?: number | null;
@@ -26,6 +31,7 @@ export function outcomeBadgeVariant(outcome: SaleOutcome) {
     case "installed": return "success" as const;
     case "pending": return "outline" as const;
     case "past_due": return "warning" as const;
+    case "preorder": return "info" as const;
     case "canceled": return "danger" as const;
     case "churned": return "secondary" as const;
     default: return "outline" as const;
@@ -38,6 +44,11 @@ export function calculateInstallRate(total: number, installed: number) {
 
 export function calculateCancellationRate(total: number, canceled: number) {
   return total ? Math.round((canceled / total) * 100) : 0;
+}
+
+export function normalizePerformanceOutcome(order: SalesOrderRecord) {
+  if (isPastDue(order)) return "past_due" as const;
+  return normalizeSaleOutcome(order);
 }
 
 export { isPastDue, normalizeSaleOutcome };

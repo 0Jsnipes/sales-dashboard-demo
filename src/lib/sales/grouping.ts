@@ -1,5 +1,5 @@
 import { endOfMonth, format, isAfter, isBefore, startOfMonth } from "date-fns";
-import { isPastDue, normalizeSaleOutcome, type SaleOutcome, type SalesOrderRecord, saleOutcomeLabel } from "./outcomes";
+import { isPastDue, normalizeSaleOutcome, sanitizeOrderId, type SaleOutcome, type SalesOrderRecord, saleOutcomeLabel } from "./outcomes";
 
 export type SalesMode = "wtd" | "mtd";
 
@@ -30,6 +30,7 @@ export type SalesRepGroup = {
   installed: number;
   pending: number;
   pastDue: number;
+  preorder: number;
   canceled: number;
   churned: number;
   unknown: number;
@@ -83,12 +84,12 @@ export function extractSalesOrder(order: RawSalesOrder): SalesRepOrder {
     raw["Name"],
   ].find((value) => text(value)));
   const orderNumber = clean([
-    raw["Order Number"],
-    raw["Order ID"],
-    raw["Account Number"],
-    raw["Account #"],
-    raw["Order #"],
-    order.orderUid,
+    sanitizeOrderId(raw["Order Number"]),
+    sanitizeOrderId(raw["Order ID"]),
+    sanitizeOrderId(raw["Account Number"]),
+    sanitizeOrderId(raw["Account #"]),
+    sanitizeOrderId(raw["Order #"]),
+    sanitizeOrderId(order.orderUid),
   ].find((value) => text(value)));
   const productName = clean([
     raw["Product"],
@@ -129,16 +130,17 @@ export function extractSalesOrder(order: RawSalesOrder): SalesRepOrder {
   };
 }
 
-export function calculateRepSummary(records: RawSalesOrder[], mode: SalesMode, base?: Omit<SalesRepGroup, "orders" | "total" | "installed" | "pending" | "pastDue" | "canceled" | "churned" | "unknown" | "days"> & Partial<Pick<SalesRepGroup, "days" | "week">>) {
+export function calculateRepSummary(records: RawSalesOrder[], mode: SalesMode, base?: Omit<SalesRepGroup, "orders" | "total" | "installed" | "pending" | "pastDue" | "preorder" | "canceled" | "churned" | "unknown" | "days"> & Partial<Pick<SalesRepGroup, "days" | "week">>) {
   const orders = records.map(extractSalesOrder);
   const totals = orders.reduce(
     (acc, order) => {
       acc.total += 1;
-      acc[order.outcome === "past_due" ? "pending" : order.outcome] += 1;
+      const key = order.outcome === "past_due" ? "pending" : order.outcome;
+      if (key in acc) acc[key as keyof typeof acc] += 1;
       if (order.pastDue) acc.pastDue += 1;
       return acc;
     },
-    { total: 0, installed: 0, pending: 0, pastDue: 0, canceled: 0, churned: 0, unknown: 0 } as Record<"total" | "installed" | "pending" | "pastDue" | "canceled" | "churned" | "unknown", number>,
+    { total: 0, installed: 0, pending: 0, pastDue: 0, preorder: 0, canceled: 0, churned: 0, unknown: 0 } as Record<"total" | "installed" | "pending" | "pastDue" | "preorder" | "canceled" | "churned" | "unknown", number>,
   );
   return {
     ...(base ?? {}),
@@ -146,6 +148,7 @@ export function calculateRepSummary(records: RawSalesOrder[], mode: SalesMode, b
     installed: totals.installed,
     pending: totals.pending,
     pastDue: totals.pastDue,
+    preorder: totals.preorder,
     canceled: totals.canceled,
     churned: totals.churned,
     unknown: totals.unknown,

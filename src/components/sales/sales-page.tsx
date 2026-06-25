@@ -194,6 +194,19 @@ function shiftWeekStart(value: string, days: number) {
   return toDateId(date);
 }
 
+function weekToDateEnd(weekStart: string) {
+  const selectedStart = new Date(`${weekStart}T12:00:00`);
+  const selectedWeekStart = startOfWeek(selectedStart);
+  const currentWeekStart = startOfWeek(new Date());
+  if (toDateId(selectedWeekStart) !== toDateId(currentWeekStart)) {
+    return toDateId(endOfWeek(selectedWeekStart));
+  }
+
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  return toDateId(yesterday < selectedWeekStart ? selectedWeekStart : yesterday);
+}
+
 type WorkspaceKind = "sales" | "knocks";
 type GoalField = "weeklySalesGoal" | "weeklyKnocksGoal";
 
@@ -291,7 +304,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     : weekStart;
   const rangeEnd = rangeMode === "mtd"
     ? toDateId(new Date())
-    : toDateId(endOfWeek(new Date(`${weekStart}T12:00:00`)));
+    : weekToDateEnd(weekStart);
 
   const reportSegments = useMemo(() => buildRangeSegments(rangeMode === "mtd" ? "mtd" : "wtd", data?.week.start ?? rangeStart, data?.week.end ?? rangeEnd), [data?.week.end, data?.week.start, rangeEnd, rangeMode, rangeStart]);
   const segmentIndexByDateId = useMemo(() => {
@@ -334,6 +347,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
         installed: 0,
         pending: 0,
         pastDue: 0,
+        preorder: 0,
         canceled: 0,
         churned: 0,
         unknown: 0,

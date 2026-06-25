@@ -11,7 +11,14 @@ const config = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 const appName = "ab-sales-operations";
-const databaseId = process.env.NEXT_PUBLIC_FIREBASE_DATABASE_ID || "(default)";
+
+function normalizeDatabaseId(value: string | undefined) {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed === "default") return "(default)";
+  return trimmed;
+}
+
+const databaseId = normalizeDatabaseId(process.env.NEXT_PUBLIC_FIREBASE_DATABASE_ID);
 
 export function getFirebaseApp(): FirebaseApp {
   if (!config.apiKey || !config.projectId || !config.appId) {

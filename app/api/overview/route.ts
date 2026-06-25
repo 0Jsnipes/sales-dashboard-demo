@@ -95,7 +95,7 @@ export async function GET(request: Request) {
     const todayKey = dateId(today);
     const uploadedToday = [freshness.att, freshness.tfiber].some((item) => item?.uploadedAt && dateId(new Date(item.uploadedAt)) === todayKey);
     if (!uploadedToday) alerts.push({ type: "upload", title: "No sales report uploaded today", detail: "Upload an ATT or T-Fiber report to keep today’s reporting current." });
-    const classifyStatusValue = (status: unknown) => { const value = String(status || "").toLowerCase(); return value.includes("cancel") ? "Cancelled" : value.includes("active") || value.includes("install") ? "Installed / Active" : value.includes("schedul") ? "Scheduled" : value.includes("pending") ? "Pending" : "Other"; };
+    const classifyStatusValue = (status: unknown) => { const value = String(status || "").toLowerCase(); return value.includes("cancel") ? "Cancelled" : value.includes("active") || value.includes("install") ? "Installed / Active" : value.includes("preorder") ? "Preorder" : value.includes("schedul") ? "Scheduled" : value.includes("pending") ? "Pending" : "Other"; };
     const statusFunnel: Record<string, Record<string, number>> = { ATT: {}, "T-Fiber": {} };
     for (const order of filteredCurrentOrders) {
       const provider = String(order.provider) === "att" ? "ATT" : String(order.provider) === "tfiber" ? "T-Fiber" : null;
