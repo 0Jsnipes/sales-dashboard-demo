@@ -28,7 +28,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { getFirebaseAuth } from "@/src/lib/firebase/client";
-import { appNav } from "@/src/components/layout/navigation";
+import { visibleAppNav } from "@/src/components/layout/navigation";
+import { businessUnitLabel } from "@/src/lib/access";
 
 type AppShellProps = {
   title: string;
@@ -52,10 +53,12 @@ function isRouteActive(pathname: string, href: string) {
 
 function ShellNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const { profile } = useAuth();
+  const navItems = visibleAppNav(profile);
 
   return (
     <nav className="flex flex-1 flex-col gap-1 px-2 py-3">
-      {appNav.map((item) => {
+      {navItems.map((item) => {
         const active = isRouteActive(pathname, item.href);
         const Icon = item.icon;
         const navLink = (
@@ -240,7 +243,7 @@ export function AppShell({ title, subtitle, actions, children }: AppShellProps) 
                       {profile?.role ?? "member"}
                     </Badge>
                     <Badge variant="outline" className="rounded-full">
-                      Authenticated
+                      {businessUnitLabel(profile?.businessUnit)}
                     </Badge>
                   </div>
                 </div>

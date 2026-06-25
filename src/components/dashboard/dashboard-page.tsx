@@ -234,7 +234,7 @@ export function DashboardPage() {
     const totals = { installed: 0, pending: 0, cancelled: 0, other: 0 };
     for (const statuses of Object.values(data?.statusFunnel ?? {})) {
       totals.installed += statuses["Installed / Active"] ?? 0;
-      totals.pending += statuses.Pending ?? 0;
+      totals.pending += (statuses.Pending ?? 0) + (statuses.Scheduled ?? 0) + (statuses.Preorder ?? 0);
       totals.cancelled += statuses.Cancelled ?? 0;
       totals.other += statuses.Other ?? 0;
     }

@@ -3,6 +3,7 @@ import "server-only";
 import type { DecodedIdToken } from "firebase-admin/auth";
 import type { AppUser } from "@/src/types/user";
 import { getAdminAuth, getAdminDb } from "./admin";
+import { normalizeBusinessUnit } from "@/src/lib/access";
 
 export type ServerActor = { token: DecodedIdToken; profile: AppUser };
 
@@ -15,22 +16,27 @@ export async function requireActor(request: Request): Promise<ServerActor> {
   return { token, profile: profile.data() as AppUser };
 }
 
+function canAccessFiber(actor: ServerActor) {
+  const unit = normalizeBusinessUnit(actor.profile.businessUnit);
+  return actor.profile.role === "superAdmin" || unit === "all" || unit === "fiber";
+}
+
 export function canManageRoster(actor: ServerActor) {
-  return actor.profile.role === "superAdmin" || (actor.profile.role === "admin" && actor.profile.permissions.canEditRoster);
+  return actor.profile.role === "superAdmin" || (canAccessFiber(actor) && actor.profile.role === "admin" && actor.profile.permissions.canEditRoster);
 }
 
 export function canImportSales(actor: ServerActor) {
-  return actor.profile.role === "superAdmin" || (actor.profile.role === "admin" && actor.profile.permissions.canEditSales);
+  return actor.profile.role === "superAdmin" || (canAccessFiber(actor) && actor.profile.role === "admin" && actor.profile.permissions.canEditSales);
 }
 
 export function canRunBackfill(actor: ServerActor) {
-  return actor.profile.role === "superAdmin" || (actor.profile.role === "admin" && actor.profile.permissions.canRunBackfill);
+  return actor.profile.role === "superAdmin" || (canAccessFiber(actor) && actor.profile.role === "admin" && actor.profile.permissions.canRunBackfill);
 }
 
 export function canManageOnboarding(actor: ServerActor) {
-  return actor.profile.role === "superAdmin" || (actor.profile.role === "admin" && actor.profile.permissions.canEditOnboarding);
+  return actor.profile.role === "superAdmin" || (canAccessFiber(actor) && actor.profile.role === "admin" && actor.profile.permissions.canEditOnboarding);
 }
 
 export function canReassignSales(actor: ServerActor) {
-  return actor.profile.role === "superAdmin" || (actor.profile.role === "admin" && actor.profile.permissions.canReassignSales);
+  return actor.profile.role === "superAdmin" || (canAccessFiber(actor) && actor.profile.role === "admin" && actor.profile.permissions.canReassignSales);
 }

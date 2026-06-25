@@ -4,7 +4,9 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LayoutDashboard, BarChart3, TrendingUp, Users, FileUp, UserCheck, CalendarDays, Settings, Search, Target } from "lucide-react";
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command";
-import { appNav } from "@/src/components/layout/navigation";
+import { visibleAppNav } from "@/src/components/layout/navigation";
+import { canAccessRule, type AccessRule } from "@/src/lib/access";
+import { useAuth } from "@/src/components/auth-provider";
 
 type CommandPaletteProps = {
   open: boolean;
@@ -12,20 +14,21 @@ type CommandPaletteProps = {
 };
 
 const actions = [
-  { label: "Upload report", href: "/imports", icon: FileUp, shortcut: "I" },
-  { label: "Review unmatched", href: "/imports/unmatched", icon: Search, shortcut: "U" },
-  { label: "Add rep", href: "/roster?add=1", icon: Users, shortcut: "R" },
-  { label: "Backfill sale", href: "/backfill", icon: CalendarDays, shortcut: "B" },
-  { label: "Open onboarding", href: "/onboarding", icon: UserCheck, shortcut: "O" },
-  { label: "View performance", href: "/performance", icon: BarChart3, shortcut: "P" },
-  { label: "Open sales", href: "/sales", icon: TrendingUp, shortcut: "S" },
-  { label: "Open dashboard", href: "/dashboard", icon: LayoutDashboard, shortcut: "D" },
-  { label: "Open settings", href: "/settings", icon: Settings, shortcut: "," },
-  { label: "Open knocks", href: "/knocks", icon: Target, shortcut: "K" },
-];
+  { label: "Upload report", href: "/imports", icon: FileUp, shortcut: "I", businessUnit: "fiber", permission: "canEditSales" },
+  { label: "Review unmatched", href: "/imports/unmatched", icon: Search, shortcut: "U", businessUnit: "fiber", permission: "canEditSales" },
+  { label: "Add rep", href: "/roster?add=1", icon: Users, shortcut: "R", businessUnit: "fiber", permission: "canEditRoster" },
+  { label: "Backfill sale", href: "/backfill", icon: CalendarDays, shortcut: "B", businessUnit: "fiber", permission: "canRunBackfill" },
+  { label: "Open onboarding", href: "/onboarding", icon: UserCheck, shortcut: "O", businessUnit: "fiber", permission: "canEditOnboarding" },
+  { label: "View performance", href: "/performance", icon: BarChart3, shortcut: "P", businessUnit: "fiber", permission: "canViewPerformance" },
+  { label: "Open sales", href: "/sales", icon: TrendingUp, shortcut: "S", businessUnit: "fiber", permission: "canEditSales" },
+  { label: "Open dashboard", href: "/dashboard", icon: LayoutDashboard, shortcut: "D", businessUnit: "fiber", permission: "canViewPerformance" },
+  { label: "Open settings", href: "/settings", icon: Settings, shortcut: ",", businessUnit: "all", superAdminOnly: true },
+  { label: "Open knocks", href: "/knocks", icon: Target, shortcut: "K", businessUnit: "fiber", permission: "canEditKnocks" },
+] as const satisfies ReadonlyArray<AccessRule & { label: string; href: string; icon: typeof FileUp; shortcut: string }>;
 
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const router = useRouter();
+  const { profile } = useAuth();
   const [search, setSearch] = useState("");
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) setSearch("");
@@ -34,10 +37,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
   const items = useMemo(() => {
     const term = search.trim().toLowerCase();
-    const navItems = appNav.map((item) => ({ ...item, label: item.label, href: item.href }));
-    const all = [...navItems, ...actions];
+    const navItems = visibleAppNav(profile).map((item) => ({ ...item, label: item.label, href: item.href }));
+    const visibleActions = actions.filter((item) => canAccessRule(profile, item));
+    const all = [...navItems, ...visibleActions];
     return all.filter((item) => !term || item.label.toLowerCase().includes(term) || item.href.toLowerCase().includes(term));
-  }, [search]);
+  }, [profile, search]);
+
+  const navHrefs = useMemo(() => new Set<string>(visibleAppNav(profile).map((item) => item.href)), [profile]);
 
   return (
     <CommandDialog open={open} onOpenChange={handleOpenChange}>
@@ -46,7 +52,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         <CommandEmpty>No matching pages or actions.</CommandEmpty>
         <CommandGroup heading="Navigate">
           {items
-            .filter((item) => appNav.some((nav) => nav.href === item.href))
+            .filter((item) => navHrefs.has(item.href))
             .map((item) => {
               const Icon = item.icon;
               return (
@@ -66,7 +72,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         </CommandGroup>
         <CommandGroup heading="Quick actions">
           {items
-            .filter((item) => !appNav.some((nav) => nav.href === item.href))
+            .filter((item) => !navHrefs.has(item.href))
             .map((item) => {
               const Icon = item.icon;
               return (

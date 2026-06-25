@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { requireActor } from "@/src/lib/firebase/server-auth";
 import { parseCommonFilters, parseDateRangeParams } from "@/src/lib/api/report-filters";
+import { normalizeSaleOutcome, type SalesOrderRecord } from "@/src/lib/sales/outcomes";
 
 export const runtime = "nodejs";
 
@@ -98,12 +99,19 @@ export async function GET(request: Request) {
     const todayKey = dateId(today);
     const uploadedToday = [freshness.att, freshness.tfiber].some((item) => item?.uploadedAt && dateId(new Date(item.uploadedAt)) === todayKey);
     if (!uploadedToday) alerts.push({ type: "upload", title: "No sales report uploaded today", detail: "Upload an ATT or T-Fiber report to keep today’s reporting current." });
-    const classifyStatusValue = (status: unknown) => { const value = String(status || "").toLowerCase(); return value.includes("cancel") ? "Cancelled" : value.includes("active") || value.includes("install") ? "Installed / Active" : value.includes("preorder") ? "Preorder" : value.includes("schedul") ? "Scheduled" : value.includes("pending") ? "Pending" : "Other"; };
+    const classifyOrderStatus = (order: Record<string, unknown>) => {
+      const outcome = normalizeSaleOutcome(order as SalesOrderRecord);
+      if (outcome === "installed") return "Installed / Active";
+      if (outcome === "pending" || outcome === "past_due") return "Pending";
+      if (outcome === "preorder") return "Preorder";
+      if (outcome === "canceled") return "Cancelled";
+      return "Other";
+    };
     const statusFunnel: Record<string, Record<string, number>> = { ATT: {}, "T-Fiber": {} };
     for (const order of filteredCurrentOrders) {
       const provider = String(order.provider) === "att" ? "ATT" : String(order.provider) === "tfiber" ? "T-Fiber" : null;
       if (!provider) continue;
-      const status = classifyStatusValue(order.accountStatus);
+      const status = classifyOrderStatus(order);
       statusFunnel[provider][status] = (statusFunnel[provider][status] || 0) + Number(order.saleCount || 1);
     }
     const teams = new Map<string, { manager: string; location: string; sales: number; goal: number }>();

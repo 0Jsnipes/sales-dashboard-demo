@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { AlertTriangle, Monitor, MoonStar, Search, Shield, SunMedium, UserCog } from "lucide-react";
+import { AlertTriangle, Monitor, MoonStar, Search, Shield, SunMedium, UserCog, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,11 +18,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTheme } from "next-themes";
 import { authedFetch, authedJson } from "@/src/lib/api/client";
 import { useAuth } from "@/src/components/auth-provider";
+import { businessUnitLabel } from "@/src/lib/access";
+import type { BusinessUnit } from "@/src/types/user";
 
 type UserRow = {
   authUid: string;
   email: string;
   role: "superAdmin" | "admin" | "manager" | "user";
+  businessUnit: BusinessUnit;
+  mustChangePassword?: boolean;
   repUid: string | null;
   managerUid: string | null;
   locationIds: string[];
@@ -38,6 +42,25 @@ type UserRow = {
     canRunBackfill: boolean;
     canReassignSales: boolean;
   };
+};
+
+type CreateAdminDraft = {
+  email: string;
+  password: string;
+  confirmPassword: string;
+  businessUnit: Exclude<BusinessUnit, "all">;
+  permissions: UserRow["permissions"];
+};
+
+const defaultAdminPermissions: UserRow["permissions"] = {
+  canEditSales: true,
+  canEditKnocks: true,
+  canEditRoster: true,
+  canEditOnboarding: true,
+  canCreateUsers: false,
+  canViewPerformance: true,
+  canRunBackfill: true,
+  canReassignSales: true,
 };
 
 const permissionGroups = [
@@ -65,6 +88,10 @@ const roleFilterOptions = [
   { value: "user", label: "Rep / User" },
   { value: "superAdmin", label: "Super admin" },
 ] as const;
+
+function blankCreateDraft(): CreateAdminDraft {
+  return { email: "", password: "", confirmPassword: "", businessUnit: "fiber", permissions: defaultAdminPermissions };
+}
 
 function permissionsSummary(permissions: UserRow["permissions"]) {
   return permissionGroups
@@ -125,6 +152,9 @@ export function SettingsPage() {
   const [roleFilter, setRoleFilter] = useState<(typeof roleFilterOptions)[number]["value"]>("all");
   const [editUser, setEditUser] = useState<UserRow | null>(null);
   const [editDraft, setEditDraft] = useState<UserRow | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createDraft, setCreateDraft] = useState<CreateAdminDraft>(blankCreateDraft);
+  const [creatingAdmin, setCreatingAdmin] = useState(false);
 
   const allowed = profile?.role === "superAdmin";
   const currentUser = profile;
@@ -154,7 +184,7 @@ export function SettingsPage() {
   const filteredUsers = useMemo(() => {
     const term = query.trim().toLowerCase();
     return users.filter((user) => {
-      const matchesQuery = !term || [user.email, user.authUid, user.repUid, user.managerUid, user.role].join(" ").toLowerCase().includes(term);
+      const matchesQuery = !term || [user.email, user.authUid, user.repUid, user.managerUid, user.role, businessUnitLabel(user.businessUnit)].join(" ").toLowerCase().includes(term);
       const matchesRole = roleFilter === "all" || user.role === roleFilter;
       return matchesQuery && matchesRole;
     });
@@ -163,8 +193,8 @@ export function SettingsPage() {
   const summaryCards = [
     { label: "Users", value: users.length, note: "All workspace accounts" },
     { label: "Admins", value: users.filter((user) => user.role === "admin").length, note: "Operational admins" },
-    { label: "Managers", value: users.filter((user) => user.role === "manager").length, note: "Manager accounts" },
-    { label: "Super admins", value: users.filter((user) => user.role === "superAdmin").length, note: "Highest privilege" },
+    { label: "Fiber", value: users.filter((user) => user.businessUnit !== "energy").length, note: "Fiber-side accounts" },
+    { label: "Energy", value: users.filter((user) => user.businessUnit === "energy").length, note: "Energy-side accounts" },
   ];
 
   async function save(user: UserRow, next: Partial<UserRow>) {
@@ -173,6 +203,7 @@ export function SettingsPage() {
       const payload = {
         authUid: user.authUid,
         role: next.role ?? user.role,
+        businessUnit: next.businessUnit ?? user.businessUnit,
         permissions: next.permissions ?? user.permissions,
         repUid: next.repUid ?? user.repUid,
         managerUid: next.managerUid ?? user.managerUid,
@@ -192,6 +223,40 @@ export function SettingsPage() {
     }
   }
 
+  async function createAdmin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const email = createDraft.email.trim().toLowerCase();
+    if (!email) {
+      toast.error("Admin email is required.");
+      return;
+    }
+    if (createDraft.password.length < 8) {
+      toast.error("Temporary password must be at least 8 characters.");
+      return;
+    }
+    if (createDraft.password !== createDraft.confirmPassword) {
+      toast.error("Temporary passwords do not match.");
+      return;
+    }
+    setCreatingAdmin(true);
+    try {
+      const response = await authedFetch("/api/users", {
+        method: "POST",
+        body: JSON.stringify({ email, password: createDraft.password, role: "admin", businessUnit: createDraft.businessUnit, permissions: createDraft.permissions }),
+      });
+      const result = await response.json() as { user?: UserRow; error?: unknown };
+      if (!response.ok || !result.user) throw new Error(String(result.error || "Unable to create admin user."));
+      setUsers((current) => [...current.filter((item) => item.authUid !== result.user!.authUid), result.user!].sort((a, b) => a.email.localeCompare(b.email)));
+      setCreateOpen(false);
+      setCreateDraft(blankCreateDraft());
+      toast.success("Admin user created. They will be required to change the temporary password on first login.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to create admin user.");
+    } finally {
+      setCreatingAdmin(false);
+    }
+  }
+
   function openEdit(user: UserRow) {
     setEditUser(user);
     setEditDraft(user);
@@ -199,6 +264,10 @@ export function SettingsPage() {
 
   function updateDraft(changes: Partial<UserRow>) {
     setEditDraft((current) => current ? { ...current, ...changes } : current);
+  }
+
+  function updateCreatePermission(key: keyof UserRow["permissions"], value: boolean) {
+    setCreateDraft((current) => ({ ...current, permissions: { ...current.permissions, [key]: value } }));
   }
 
   if (!allowed) {
@@ -229,7 +298,13 @@ export function SettingsPage() {
               <CardTitle>Settings</CardTitle>
               <CardDescription>Manage users, permissions, preferences, and system controls.</CardDescription>
             </div>
-            <Badge variant="outline">Admin control center</Badge>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">Admin control center</Badge>
+              <Button onClick={() => { setCreateDraft(blankCreateDraft()); setCreateOpen(true); }}>
+                <UserPlus className="h-4 w-4" />
+                Add admin
+              </Button>
+            </div>
           </CardHeader>
         </Card>
 
@@ -256,7 +331,7 @@ export function SettingsPage() {
 
           <TabsContent value="users" className="space-y-4">
             <Card className="border-border/70">
-              <CardContent className="grid gap-3 p-4 md:grid-cols-2">
+              <CardContent className="grid gap-3 p-4 md:grid-cols-[1fr_220px_auto]">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input className="pl-9" placeholder="Search name or email" value={query} onChange={(event) => setQuery(event.target.value)} />
@@ -269,6 +344,10 @@ export function SettingsPage() {
                     {roleFilterOptions.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                <Button onClick={() => { setCreateDraft(blankCreateDraft()); setCreateOpen(true); }}>
+                  <UserPlus className="h-4 w-4" />
+                  Add admin
+                </Button>
               </CardContent>
             </Card>
 
@@ -289,6 +368,7 @@ export function SettingsPage() {
                           <tr>
                             <th className="px-4 py-3">User</th>
                             <th className="px-4 py-3">Role</th>
+                            <th className="px-4 py-3">Business</th>
                             <th className="px-4 py-3">Permissions summary</th>
                             <th className="px-4 py-3">Updated</th>
                             <th className="px-4 py-3 text-right">Actions</th>
@@ -301,10 +381,14 @@ export function SettingsPage() {
                                 <div>
                                   <p className="font-medium">{user.email}</p>
                                   <p className="text-xs text-muted-foreground">{user.authUid}</p>
+                                  {user.mustChangePassword ? <Badge variant="warning" className="mt-2">Temporary password</Badge> : null}
                                 </div>
                               </td>
                               <td className="px-4 py-4">
                                 <Badge variant={user.role === "superAdmin" ? "danger" : "outline"}>{user.role}</Badge>
+                              </td>
+                              <td className="px-4 py-4">
+                                <Badge variant="secondary">{businessUnitLabel(user.businessUnit)}</Badge>
                               </td>
                               <td className="px-4 py-4 text-sm text-muted-foreground">{permissionsSummary(user.permissions)}</td>
                               <td className="px-4 py-4 text-sm text-muted-foreground">{formatValue(user.updatedAt ?? user.lastLoginAt)}</td>
@@ -331,8 +415,12 @@ export function SettingsPage() {
                             <p className="font-medium">{user.email}</p>
                             <p className="text-xs text-muted-foreground">{user.authUid}</p>
                           </div>
-                          <Badge variant={user.role === "superAdmin" ? "danger" : "outline"}>{user.role}</Badge>
+                          <div className="flex flex-col items-end gap-2">
+                            <Badge variant={user.role === "superAdmin" ? "danger" : "outline"}>{user.role}</Badge>
+                            <Badge variant="secondary">{businessUnitLabel(user.businessUnit)}</Badge>
+                          </div>
                         </div>
+                        {user.mustChangePassword ? <Badge variant="warning">Temporary password</Badge> : null}
                         <p className="text-sm text-muted-foreground">{permissionsSummary(user.permissions)}</p>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span>Updated: {formatValue(user.updatedAt ?? user.lastLoginAt)}</span>
@@ -383,6 +471,7 @@ export function SettingsPage() {
                 <InfoCard label="Name" value={currentUser?.email?.split("@")[0] ?? "—"} />
                 <InfoCard label="Email" value={currentUser?.email ?? "—"} />
                 <InfoCard label="Role" value={profile?.role ?? "member"} />
+                <InfoCard label="Business" value={businessUnitLabel(profile?.businessUnit)} />
                 <InfoCard label="Permissions" value={profile?.permissions ? permissionsSummary(profile.permissions) : "—"} />
               </CardContent>
             </Card>
@@ -435,6 +524,98 @@ export function SettingsPage() {
           </TabsContent>
         </Tabs>
 
+        <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) setCreateDraft(blankCreateDraft()); }}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Add admin user</DialogTitle>
+              <DialogDescription>
+                Create a Firebase Auth account with a temporary password. The admin must change it on first login.
+              </DialogDescription>
+            </DialogHeader>
+            <form className="space-y-4" onSubmit={(event) => void createAdmin(event)}>
+              <div className="space-y-2">
+                <Label htmlFor="new-admin-email">Email</Label>
+                <Input
+                  id="new-admin-email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="admin@example.com"
+                  value={createDraft.email}
+                  onChange={(event) => setCreateDraft((current) => ({ ...current, email: event.target.value }))}
+                  required
+                />
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="new-admin-password">Temporary password</Label>
+                  <Input
+                    id="new-admin-password"
+                    type="password"
+                    autoComplete="new-password"
+                    value={createDraft.password}
+                    onChange={(event) => setCreateDraft((current) => ({ ...current, password: event.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-admin-password-confirm">Confirm password</Label>
+                  <Input
+                    id="new-admin-password-confirm"
+                    type="password"
+                    autoComplete="new-password"
+                    value={createDraft.confirmPassword}
+                    onChange={(event) => setCreateDraft((current) => ({ ...current, confirmPassword: event.target.value }))}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Business side</Label>
+                <Select value={createDraft.businessUnit} onValueChange={(value) => setCreateDraft((current) => ({ ...current, businessUnit: value as CreateAdminDraft["businessUnit"] }))}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fiber">Fiber</SelectItem>
+                    <SelectItem value="energy">Energy</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Admin permissions</Label>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {permissionGroups.map((item) => (
+                    <label key={item.key} className="flex items-center gap-3 rounded-2xl border border-border/70 p-3 text-sm">
+                      <Checkbox
+                        checked={Boolean(createDraft.permissions[item.key])}
+                        onCheckedChange={(checked) => updateCreatePermission(item.key, !!checked)}
+                      />
+                      <span className="flex-1">
+                        <span className="block font-medium">{item.label}</span>
+                        <span className="block text-xs text-muted-foreground">{item.group}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-warning/30 bg-warning/5 p-4 text-sm">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 text-warning" />
+                  <p className="text-muted-foreground">
+                    This creates an admin, not a super admin. Super admin access remains protected and must be handled separately.
+                  </p>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+                <Button type="submit" disabled={creatingAdmin || !createDraft.email.trim() || !createDraft.password.trim() || !createDraft.confirmPassword.trim()}>
+                  {creatingAdmin ? "Creating..." : "Create admin"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
         <Dialog open={Boolean(editUser)} onOpenChange={(open) => !open && setEditUser(null)}>
           <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
@@ -458,6 +639,18 @@ export function SettingsPage() {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">{roleDescriptions[editDraft.role]}</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Business side</Label>
+                  <Select value={editDraft.businessUnit} onValueChange={(value) => updateDraft({ businessUnit: value as BusinessUnit })} disabled={editDraft.role === "superAdmin"}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="fiber">Fiber</SelectItem>
+                      <SelectItem value="energy">Energy</SelectItem>
+                      <SelectItem value="all">All</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">Current Fiber pages are hidden from Energy-only admins.</p>
                 </div>
                 {editDraft.role === "superAdmin" && (
                   <div className="rounded-2xl border border-danger/30 bg-danger/5 p-4 text-sm text-danger">

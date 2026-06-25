@@ -8,7 +8,8 @@ import { differenceInCalendarDays, format, parseISO } from "date-fns";
 import { BarChart3, CalendarRange, CheckCircle2, ChevronDown, Download, Filter, Search, TrendingUp, TriangleAlert, Users, Clock3 } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
-import { authedJson } from "@/src/lib/api/client";
+import { authedFetch, authedJson } from "@/src/lib/api/client";
+import { useAuth } from "@/src/components/auth-provider";
 import { endOfWeek, startOfWeek, toDateId, weekRangeLabel } from "@/src/lib/date/week";
 import { formatDate } from "@/src/lib/formatters/date";
 import { formatNumber, formatPercent } from "@/src/lib/formatters/number";
@@ -19,6 +20,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -99,6 +101,14 @@ type OrderFilterState = {
   provider: string;
   outcome: string;
   status: string;
+};
+
+type ReassignRepOption = {
+  repUid: string;
+  displayName: string;
+  managerName: string;
+  locationName: string;
+  vendorType: string;
 };
 
 const outcomeOptions = [
@@ -291,6 +301,21 @@ function salesSharePercent(part: number, total: number) {
 
 function providerColor(name: string) {
   return PROVIDER_COLORS[name] ?? "#94a3b8";
+}
+
+function orderProviderKey(order: PerformanceOrder) {
+  const source = normalize(order.providerKey ?? order.provider);
+  if (source === "att") return "att";
+  if (source === "tfiber" || source === "t-fiber") return "tfiber";
+  if (source === "manual") return "manual";
+  return source;
+}
+
+function orderDocumentId(order: PerformanceOrder) {
+  const provider = orderProviderKey(order);
+  const prefix = `${provider}:`;
+  if (order.id.startsWith(prefix)) return order.id.slice(prefix.length);
+  return order.orderUid;
 }
 
 function OrderBreakdownLabel({
@@ -501,6 +526,7 @@ function ProviderGaugeTooltip({
 
 export function PerformancePage() {
   const reducedMotion = useReducedMotion();
+  const { profile } = useAuth();
   const [range, setRange] = useQueryState("period", parseAsString.withDefault("lastWeek"));
   const [start, setStart] = useQueryState("start", parseAsString.withDefault(toDateId(startOfWeek(new Date()))));
   const [end, setEnd] = useQueryState("end", parseAsString.withDefault(toDateId(endOfWeek(new Date()))));
@@ -515,6 +541,9 @@ export function PerformancePage() {
   const [error, setError] = useState<string | null>(null);
   const [ordersOpen, setOrdersOpen] = useState(true);
   const [pastDueOpen, setPastDueOpen] = useState(false);
+  const [reassignOrder, setReassignOrder] = useState<PerformanceOrder | null>(null);
+  const [reassignRepUid, setReassignRepUid] = useState("");
+  const [reassigning, setReassigning] = useState(false);
   const [orderFilters, setOrderFilters] = useState<OrderFilterState>({
     search: "",
     manager: "all",
@@ -526,44 +555,48 @@ export function PerformancePage() {
   });
 
   const mode = (range as RangeMode) || "lastWeek";
+  const canReassignOrders = profile?.role === "superAdmin" || (profile?.role === "admin" && profile.permissions.canReassignSales);
 
   useEffect(() => {
     let active = true;
-    const params = new URLSearchParams({ range: mode });
-    if (mode === "custom") {
-      params.set("from", start);
-      params.set("to", end);
-    }
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams({ range: mode });
+      if (mode === "custom") {
+        params.set("from", start);
+        params.set("to", end);
+      }
 
-    const request = `/api/performance?${params.toString()}`;
-    setLoading(true);
+      const request = `/api/performance?${params.toString()}`;
+      setLoading(true);
 
-    void authedJson<PerformanceResponse>(request)
-      .then((value) => {
-        if (!active) return;
-        setData(value);
-        setError(null);
-        if (process.env.NODE_ENV !== "production") {
-          console.log("[performance] loaded", {
-            range: value.range,
-            totals: value.totals,
-            reps: value.reps.length,
-            orders: value.orders.length,
-          });
-        }
-      })
-      .catch((cause) => {
-        if (!active) return;
-        const message = cause instanceof Error ? cause.message : "Unable to load performance data.";
-        setError(message);
-        toast.error(message);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+      void authedJson<PerformanceResponse>(request)
+        .then((value) => {
+          if (!active) return;
+          setData(value);
+          setError(null);
+          if (process.env.NODE_ENV !== "production") {
+            console.log("[performance] loaded", {
+              range: value.range,
+              totals: value.totals,
+              reps: value.reps.length,
+              orders: value.orders.length,
+            });
+          }
+        })
+        .catch((cause) => {
+          if (!active) return;
+          const message = cause instanceof Error ? cause.message : "Unable to load performance data.";
+          setError(message);
+          toast.error(message);
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    }, 0);
 
     return () => {
       active = false;
+      window.clearTimeout(timer);
     };
   }, [end, mode, start]);
 
@@ -668,9 +701,8 @@ export function PerformancePage() {
       { name: "Preorder", value: scopedTotals.preorder, fill: "var(--info)", share: salesSharePercent(scopedTotals.preorder, scopedTotals.sales) },
       { name: "Canceled", value: scopedTotals.canceled, fill: "var(--danger)", share: salesSharePercent(scopedTotals.canceled, scopedTotals.sales) },
       { name: "Churned", value: scopedTotals.churned, fill: "var(--secondary)", share: salesSharePercent(scopedTotals.churned, scopedTotals.sales) },
-      { name: "Unknown", value: scopedTotals.unknown, fill: "var(--muted-foreground)", share: salesSharePercent(scopedTotals.unknown, scopedTotals.sales) },
     ],
-    [scopedTotals.canceled, scopedTotals.churned, scopedTotals.installed, scopedTotals.pending, scopedTotals.pastDue, scopedTotals.preorder, scopedTotals.sales, scopedTotals.unknown],
+    [scopedTotals.canceled, scopedTotals.churned, scopedTotals.installed, scopedTotals.pending, scopedTotals.pastDue, scopedTotals.preorder, scopedTotals.sales],
   );
 
   const providerBreakdown = useMemo(() => {
@@ -745,6 +777,20 @@ export function PerformancePage() {
     return [...statuses].sort((a, b) => a.localeCompare(b));
   }, [scopedOrders]);
 
+  const reassignRepOptions = useMemo<ReassignRepOption[]>(() => {
+    if (!data) return [];
+    return data.reps
+      .filter((rep): rep is PerformanceRep & { repUid: string } => Boolean(rep.repUid) && rep.matchStatus === "matched")
+      .map((rep) => ({
+        repUid: rep.repUid,
+        displayName: rep.displayName,
+        managerName: rep.managerName,
+        locationName: rep.locationName,
+        vendorType: rep.vendorType,
+      }))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName));
+  }, [data]);
+
   const selectedRepLabel = labelForRepFilter(data?.filters.reps ?? [], repFilter);
   const selectedProviderLabel = providerFilter === "all" ? "All providers" : providerFilter;
   const selectedVendorLabel = vendorFilter === "all" ? "All vendor types" : vendorTypeLabel(vendorFilter);
@@ -773,7 +819,7 @@ export function PerformancePage() {
       ["Active reps", scopedTotals.activeReps],
       ["Orders", scopedTotals.orderCount],
     ],
-    [currentRangeDates, currentRangeLabel, locationFilter, managerFilter, providerFilter, repFilter, scopedTotals, selectedProviderLabel, selectedRepLabel, selectedVendorLabel],
+    [currentRangeDates, currentRangeLabel, locationFilter, managerFilter, scopedTotals, selectedProviderLabel, selectedRepLabel, selectedVendorLabel],
   );
 
   if (loading && !data) return <LoadingState />;
@@ -819,6 +865,50 @@ export function PerformancePage() {
     );
     toast.message("Downloaded CSV export.");
   };
+
+  function openReassign(order: PerformanceOrder) {
+    setReassignOrder(order);
+    setReassignRepUid(order.repUid ?? "");
+  }
+
+  async function saveReassignment() {
+    if (!reassignOrder || !reassignRepUid) return;
+    const provider = orderProviderKey(reassignOrder);
+    const documentId = orderDocumentId(reassignOrder);
+    if (!["att", "tfiber", "manual"].includes(provider) || !documentId) {
+      toast.error("This order cannot be reassigned from the performance table.");
+      return;
+    }
+    setReassigning(true);
+    try {
+      const response = await authedFetch(`/api/performance/orders/${encodeURIComponent(provider)}/${encodeURIComponent(documentId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ repUid: reassignRepUid }),
+      });
+      const result = await response.json() as { rep?: ReassignRepOption; error?: unknown };
+      if (!response.ok || !result.rep) throw new Error(String(result.error || "Unable to reassign sale."));
+      const rep = result.rep;
+      setData((current) => current ? {
+        ...current,
+        orders: current.orders.map((order) => order.id === reassignOrder.id ? {
+          ...order,
+          matchedRepUid: rep.repUid,
+          repUid: rep.repUid,
+          repName: rep.displayName,
+          managerName: rep.managerName || "",
+          locationName: rep.locationName || "",
+          vendorType: rep.vendorType === "organic" || rep.vendorType === "subVendor" ? rep.vendorType : "unassigned",
+        } : order),
+      } : current);
+      setReassignOrder(null);
+      setReassignRepUid("");
+      toast.success(`Sale reassigned to ${rep.displayName}.`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to reassign sale.");
+    } finally {
+      setReassigning(false);
+    }
+  }
 
   return (
     <motion.div initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }} className="space-y-6">
@@ -1066,7 +1156,7 @@ export function PerformancePage() {
         <Card className="overflow-hidden border-border/70">
           <CardHeader>
             <CardTitle>Order breakdown</CardTitle>
-            <CardDescription>Installed, pending, past due, preorder, canceled, churned, and unknown sales volume.</CardDescription>
+            <CardDescription>Installed, pending, past due, preorder, canceled, and churned sales volume.</CardDescription>
           </CardHeader>
           <CardContent className="h-[320px]">
             {orderBreakdownData.some((item) => item.value > 0) ? (
@@ -1305,6 +1395,7 @@ export function PerformancePage() {
                         <TableHead>Customer / order</TableHead>
                         <TableHead>Outcome</TableHead>
                         <TableHead>Status</TableHead>
+                        {canReassignOrders ? <TableHead className="text-right">Actions</TableHead> : null}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1341,6 +1432,13 @@ export function PerformancePage() {
                                 <p className="text-xs text-muted-foreground">{etaLabel(order)}</p>
                               </div>
                             </TableCell>
+                            {canReassignOrders ? (
+                              <TableCell className="text-right">
+                                <Button size="sm" variant="outline" onClick={() => openReassign(order)}>
+                                  Reassign
+                                </Button>
+                              </TableCell>
+                            ) : null}
                           </TableRow>
                         );
                       })}
@@ -1376,6 +1474,11 @@ export function PerformancePage() {
                             <p>{status}</p>
                             <p>{etaLabel(order)}</p>
                           </div>
+                          {canReassignOrders ? (
+                            <Button size="sm" variant="outline" onClick={() => openReassign(order)}>
+                              Reassign sale
+                            </Button>
+                          ) : null}
                         </CardContent>
                       </Card>
                     );
@@ -1394,6 +1497,50 @@ export function PerformancePage() {
           </CardContent>
         )}
       </Card>
+
+      <Dialog open={Boolean(reassignOrder)} onOpenChange={(open) => { if (!open) { setReassignOrder(null); setReassignRepUid(""); } }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Reassign sale</DialogTitle>
+            <DialogDescription>
+              Lock this order to a different representative. Future imports will keep this manual assignment.
+            </DialogDescription>
+          </DialogHeader>
+          {reassignOrder ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-border/70 p-4">
+                <p className="font-medium">{reassignOrder.customer}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {sanitizeOrderId(reassignOrder.orderId)} / {reassignOrder.provider} / {formatDate(reassignOrder.orderDateId)}
+                </p>
+                <p className="mt-2 text-sm text-muted-foreground">Current rep: {reassignOrder.repName || "Unassigned"}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium">New representative</p>
+                <Select value={reassignRepUid} onValueChange={setReassignRepUid}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose rep" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {reassignRepOptions.map((rep) => (
+                      <SelectItem key={rep.repUid} value={rep.repUid}>
+                        {rep.displayName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Only active roster reps in the current performance dataset are shown.</p>
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setReassignOrder(null); setReassignRepUid(""); }}>Cancel</Button>
+            <Button onClick={() => void saveReassignment()} disabled={reassigning || !reassignRepUid || !reassignRepOptions.length}>
+              {reassigning ? "Reassigning..." : "Reassign sale"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Sheet open={pastDueOpen} onOpenChange={setPastDueOpen}>
         <SheetContent side="right" className="w-[min(100vw,1200px)] sm:max-w-[1200px] overflow-y-auto">
@@ -1427,6 +1574,7 @@ export function PerformancePage() {
                       <TableHead>Customer / order</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Units</TableHead>
+                      {canReassignOrders ? <TableHead className="text-right">Actions</TableHead> : null}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1451,6 +1599,13 @@ export function PerformancePage() {
                             </div>
                           </TableCell>
                           <TableCell>{unitsFor(order)}</TableCell>
+                          {canReassignOrders ? (
+                            <TableCell className="text-right">
+                              <Button size="sm" variant="outline" onClick={() => openReassign(order)}>
+                                Reassign
+                              </Button>
+                            </TableCell>
+                          ) : null}
                         </TableRow>
                       );
                     })}

@@ -16,8 +16,12 @@ import { getFirebaseAuth } from "@/src/lib/firebase/client";
 function friendlyError(error: unknown) {
   const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code) : "";
   if (code.includes("invalid-credential")) return "The email address or password is incorrect.";
+  if (code.includes("invalid-email")) return "Enter a valid email address.";
+  if (code.includes("user-not-found")) return "No account exists for that email address.";
+  if (code.includes("unauthorized-continue-uri")) return "This website domain is not authorized in Firebase Authentication settings.";
+  if (code.includes("missing-continue-uri")) return "Password reset is missing a return URL.";
   if (code.includes("too-many-requests")) return "Too many attempts. Wait a moment and try again.";
-  return "Unable to sign in. Check your connection and try again.";
+  return "Unable to complete the request. Check your connection and try again.";
 }
 
 export function SignInForm() {
@@ -29,6 +33,7 @@ export function SignInForm() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [pending, setPending] = useState(false);
+  const [resetPending, setResetPending] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -52,11 +57,15 @@ export function SignInForm() {
     }
     setError("");
     setNotice("");
+    setResetPending(true);
     try {
-      await sendPasswordResetEmail(getFirebaseAuth(), email.trim());
+      const url = typeof window === "undefined" ? undefined : `${window.location.origin}/sign-in`;
+      await sendPasswordResetEmail(getFirebaseAuth(), email.trim(), url ? { url, handleCodeInApp: false } : undefined);
       setNotice("Password reset email sent. Check your inbox.");
     } catch (cause) {
       setError(friendlyError(cause));
+    } finally {
+      setResetPending(false);
     }
   }
 
@@ -111,8 +120,8 @@ export function SignInForm() {
                     />
                   </div>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <Button type="button" variant="ghost" className="justify-start px-0 text-primary hover:text-primary" onClick={() => void resetPassword()}>
-                      Forgot password?
+                    <Button type="button" variant="ghost" className="justify-start px-0 text-primary hover:text-primary" onClick={() => void resetPassword()} disabled={resetPending}>
+                      {resetPending ? "Sending reset..." : "Forgot password?"}
                     </Button>
                     <Button type="submit" disabled={pending} className="sm:min-w-32">
                       {pending ? "Signing in..." : "Sign in"}

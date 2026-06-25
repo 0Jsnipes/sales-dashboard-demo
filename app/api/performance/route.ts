@@ -129,14 +129,6 @@ function providerLabel(value: unknown) {
   return "Manual";
 }
 
-function providerKey(value: unknown) {
-  const source = String(value || "").toLowerCase();
-  if (source === "att") return "att";
-  if (source === "tfiber" || source === "t-fiber") return "tfiber";
-  if (source === "manual") return "manual";
-  return source || "manual";
-}
-
 function isoWeek(dateId: string) {
   const [year, month, day] = dateId.split("-").map(Number);
   const value = new Date(Date.UTC(year, month - 1, day));
@@ -442,26 +434,6 @@ async function buildWindow(range: { start: string; end: string; mode: string }):
       saleCount,
     };
     const outcome = normalizePerformanceOutcome(record);
-    const row: PerformanceOrder = {
-      ...record,
-      id: `${order.providerKey}:${order.id}`,
-      providerKey: order.providerKey,
-      orderId: sanitizeOrderId(order.orderId || order.orderUid || order.id),
-      provider,
-      vendorType: rep?.vendorType || "unassigned",
-      repUid,
-      repName: displayName,
-      managerName,
-      locationName,
-      customer: customerName(order.rawData as Record<string, unknown> | undefined),
-      status: (() => {
-        const value = String(order.accountStatus || "").trim();
-        return value && value.toLowerCase() !== "unknown" ? value : "";
-      })(),
-      outcome,
-      pastDue: outcome === "past_due",
-      saleCount,
-    };
 
     totalSales += saleCount;
     if (outcome === "installed") installed += saleCount;
