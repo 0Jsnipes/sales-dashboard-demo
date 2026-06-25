@@ -20,8 +20,8 @@ export async function PATCH(request: Request, { params }: Params) {
     const actor = await requireActor(request);
     if (!canManageRoster(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     const { repUid } = await params;
-    const body = await request.json() as { action?: "terminate" | "restore" | "addAlias" | "update" | "setGoal"; goalType?: "sales" | "knocks"; sendTerminationEmail?: boolean; alias?: string; weeklySalesGoal?: unknown; weeklyKnocksGoal?: unknown; rep?: unknown };
-    if (body.action !== "terminate" && body.action !== "restore" && body.action !== "addAlias" && body.action !== "update" && body.action !== "setGoal") return NextResponse.json({ error: "INVALID_ACTION" }, { status: 400 });
+    const body = await request.json() as { action?: "terminate" | "restore" | "remove" | "addAlias" | "update" | "setGoal"; goalType?: "sales" | "knocks"; sendTerminationEmail?: boolean; alias?: string; weeklySalesGoal?: unknown; weeklyKnocksGoal?: unknown; rep?: unknown };
+    if (body.action !== "terminate" && body.action !== "restore" && body.action !== "remove" && body.action !== "addAlias" && body.action !== "update" && body.action !== "setGoal") return NextResponse.json({ error: "INVALID_ACTION" }, { status: 400 });
     const reference = getAdminDb().collection("reps").doc(repUid);
     const snapshot = await reference.get();
     if (!snapshot.exists) return NextResponse.json({ error: "REP_NOT_FOUND" }, { status: 404 });
@@ -52,8 +52,34 @@ export async function PATCH(request: Request, { params }: Params) {
       const [rematchedTFiberOrders, rematchedATTOrders] = await Promise.all([rematchTFiberOrdersForRep(updatedRep), rematchATTOrdersForRep(updatedRep)]);
       return NextResponse.json({ aliases, rematchedTFiberOrders, rematchedATTOrders });
     }
+    if (body.action === "remove") {
+      await reference.update({
+        status: "inactive",
+        inactiveAt: FieldValue.serverTimestamp(),
+        inactiveBy: actor.token.uid,
+        inactiveReason: "manual",
+        terminatedAt: FieldValue.delete(),
+        terminatedBy: FieldValue.delete(),
+        terminationEmailStatus: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: actor.token.uid,
+      });
+      return NextResponse.json({ status: "inactive" });
+    }
     if (body.action === "restore") {
-      await reference.update({ status: "active", terminatedAt: FieldValue.delete(), terminatedBy: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp(), updatedBy: actor.token.uid });
+      await reference.update({
+        status: "active",
+        terminatedAt: FieldValue.delete(),
+        terminatedBy: FieldValue.delete(),
+        terminationEmailStatus: FieldValue.delete(),
+        inactiveAt: FieldValue.delete(),
+        inactiveBy: FieldValue.delete(),
+        inactiveReason: FieldValue.delete(),
+        reactivatedAt: FieldValue.serverTimestamp(),
+        reactivatedBy: actor.token.uid,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: actor.token.uid,
+      });
       if (rep.authUid) { await getAdminAuth().updateUser(rep.authUid, { disabled: false }); await reference.update({ accountStatus: "active" }); }
       return NextResponse.json({ status: "active" });
     }

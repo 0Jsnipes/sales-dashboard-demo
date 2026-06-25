@@ -27,6 +27,11 @@ export interface Rep {
   terminatedAt?: unknown;
   terminatedBy?: string;
   terminationEmailStatus?: "notSent" | "queued" | "sent" | "failed";
+  inactiveAt?: unknown;
+  inactiveBy?: string;
+  inactiveReason?: "manual" | "noSalesThreeWeeks" | string;
+  reactivatedAt?: unknown;
+  reactivatedBy?: string;
   createdAt?: unknown;
   createdBy?: string;
   updatedAt?: unknown;

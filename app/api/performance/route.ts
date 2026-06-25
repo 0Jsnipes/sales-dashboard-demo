@@ -413,7 +413,7 @@ async function buildWindow(range: { start: string; end: string; mode: string }):
   let unknown = 0;
 
   for (const rep of roster.values()) {
-    repStats.set(rep.repUid, initRepStat(rep));
+    if (rep.status === "active") repStats.set(rep.repUid, initRepStat(rep));
   }
 
   for (const order of salesOrders) {

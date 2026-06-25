@@ -5,6 +5,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import type { Rep } from "@/src/types/rep";
 import { matchImportRowToRep } from "@/src/lib/matching/matchRep";
 import { getAdminDb } from "@/src/lib/firebase/admin";
+import { loadSaleMatchableReps, reactivateInactiveRepsForMatchedSales } from "@/src/lib/reps/lifecycle";
 
 type RawRow = Record<string, unknown>;
 const orderCollection = () => getAdminDb().collection("salesOrders").doc("tfiber").collection("orders");
@@ -31,7 +32,9 @@ export function parseTFiberWorkbook(buffer: Buffer): RawRow[] {
 
 export async function importTFiberRows({ rows, uploadId, actorUid, fileName, storagePath }: { rows: RawRow[]; uploadId: string; actorUid: string; fileName: string; storagePath: string }) {
   const db = getAdminDb();
-  const reps = (await db.collection("reps").where("status", "==", "active").get()).docs.map((document) => document.data() as Rep);
+  const reps = await loadSaleMatchableReps(db);
+  const inactiveRepUids = new Set(reps.filter((rep) => rep.status === "inactive").map((rep) => rep.repUid));
+  const reactivatedRepUids = new Set<string>();
   const existing = new Map((await orderCollection().get()).docs.map((document) => [document.id, document.data()]));
   const orders: Array<{ orderUid: string; data: Record<string, unknown>; unmatched: boolean }> = [];
   let skipped = 0; let matched = 0;
@@ -43,6 +46,7 @@ export async function importTFiberRows({ rows, uploadId, actorUid, fileName, sto
     const previous = existing.get(orderUid);
     const result = previous?.lockedAssignment ? { repUid: previous.matchedRepUid as string | null, method: previous.matchMethod as string | null, confidence: 1, reason: "Locked manual assignment" } : matchImportRowToRep({ rawSalesId: String(row["Rep ID"] ?? ""), rawRepName: String(row.dealername ?? "") }, reps);
     const isMatched = Boolean(result.repUid);
+    if (result.repUid && inactiveRepUids.has(result.repUid)) reactivatedRepUids.add(result.repUid);
     if (isMatched) matched++;
     const estimatedInstallationDateId = dateId(row["Est. Installation Date"]);
     const data = { orderUid, orderId, provider: "tfiber", sourceUploadId: uploadId, orderDate: orderDateId, orderDateId, saleCount: 1, rawRepName: String(row.dealername ?? ""), rawSalesId: String(row["Rep ID"] ?? ""), rawManagerName: String(row.Manager ?? row["Manager Name"] ?? ""), matchedRepUid: result.repUid, matchStatus: isMatched ? (result.method === "manual" ? "manual" : "matched") : "unmatched", matchMethod: result.method, lockedAssignment: Boolean(previous?.lockedAssignment), accountStatus: String(row["Account Status"] ?? ""), installationDateId: estimatedInstallationDateId, estimatedInstallationDateId, cancellationDateId: dateId(row["Order Cancellation Date"]), rawData: serializable(row), legacyPath: null, createdAt: previous?.createdAt ?? FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() };
@@ -59,8 +63,9 @@ export async function importTFiberRows({ rows, uploadId, actorUid, fileName, sto
     }
     await batch.commit();
   }
+  const repsReactivated = await reactivateInactiveRepsForMatchedSales(reactivatedRepUids, db);
   await db.collection("uploadRuns").doc(uploadId).set({ uploadId, type: "tfiberSales", fileName, storagePath, uploadedBy: actorUid, uploadedAt: FieldValue.serverTimestamp(), rowsRead: rows.length, rowsValid: orders.length, rowsSkipped: skipped, rowsMatched: matched, rowsUnmatched: orders.length - matched, selectedDateIds: [], status: "complete", errors: [], summary: { provider: "tfiber", saleCount: orders.length } }, { merge: true });
-  return { rowsRead: rows.length, rowsImported: orders.length, rowsSkipped: skipped, rowsMatched: matched, rowsUnmatched: orders.length - matched };
+  return { rowsRead: rows.length, rowsImported: orders.length, rowsSkipped: skipped, rowsMatched: matched, rowsUnmatched: orders.length - matched, repsReactivated };
 }
 
 export async function rematchTFiberOrdersForRep(rep: Rep) {
@@ -78,5 +83,6 @@ export async function rematchTFiberOrdersForRep(rep: Rep) {
     }
     await batch.commit();
   }
+  if (candidates.length && rep.status === "inactive") await reactivateInactiveRepsForMatchedSales([rep.repUid]);
   return candidates.length;
 }

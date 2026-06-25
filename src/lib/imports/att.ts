@@ -3,6 +3,7 @@ import Papa from "papaparse";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { matchImportRowToRep } from "@/src/lib/matching/matchRep";
 import { formatImportedName } from "@/src/lib/matching/display-name";
+import { loadSaleMatchableReps, reactivateInactiveRepsForMatchedSales } from "@/src/lib/reps/lifecycle";
 import type { Rep } from "@/src/types/rep";
 
 type RawRow = Record<string, string | null | undefined>;
@@ -43,7 +44,9 @@ export function parseATTReport(buffer: Buffer): RawRow[] {
 
 export async function importATTRows({ rows, uploadId, actorUid, fileName, storagePath }: { rows: RawRow[]; uploadId: string; actorUid: string; fileName: string; storagePath: string }) {
   const db = getAdminDb();
-  const reps = (await db.collection("reps").where("status", "==", "active").get()).docs.map((document) => document.data() as Rep);
+  const reps = await loadSaleMatchableReps(db);
+  const inactiveRepUids = new Set(reps.filter((rep) => rep.status === "inactive").map((rep) => rep.repUid));
+  const reactivatedRepUids = new Set<string>();
   const existing = new Map((await orderCollection().get()).docs.map((document) => [document.id, document.data()]));
   const canonical = new Map<string, { orderUid: string; data: Record<string, unknown>; unmatched: boolean }>();
   let skipped = 0;
@@ -66,6 +69,7 @@ export async function importATTRows({ rows, uploadId, actorUid, fileName, storag
     const rawRepName = formatImportedName(rowRepName(row));
     const result = previous?.lockedAssignment ? { repUid: previous.matchedRepUid as string | null, method: previous.matchMethod as string | null } : matchImportRowToRep({ rawRepName }, reps);
     const isMatched = Boolean(result.repUid);
+    if (result.repUid && inactiveRepUids.has(result.repUid)) reactivatedRepUids.add(result.repUid);
     const saleCount = packageCount(serviceDetails);
     const packageName = serviceDetails.map((item) => item.packageName).filter(Boolean).join(" | ");
     const accountStatus = serviceDetails.map((item) => item.status).filter(Boolean).join(" | ") || "Unknown";
@@ -96,8 +100,9 @@ export async function importATTRows({ rows, uploadId, actorUid, fileName, storag
     await batch.commit();
   }
   const unmatchedSales = totalSales - matchedSales;
+  const repsReactivated = await reactivateInactiveRepsForMatchedSales(reactivatedRepUids, db);
   await db.collection("uploadRuns").doc(uploadId).set({ uploadId, type: "attSales", fileName, storagePath, uploadedBy: actorUid, uploadedAt: FieldValue.serverTimestamp(), rowsRead: rows.length, rowsValid: totalSales, rowsSkipped: skipped, rowsMatched: matchedSales, rowsUnmatched: unmatchedSales, selectedDateIds: [], status: "complete", errors: [], summary: { provider: "att", saleCount: totalSales } }, { merge: true });
-  return { rowsRead: rows.length, rowsImported: totalSales, rowsSkipped: skipped, rowsMatched: matchedSales, rowsUnmatched: unmatchedSales };
+  return { rowsRead: rows.length, rowsImported: totalSales, rowsSkipped: skipped, rowsMatched: matchedSales, rowsUnmatched: unmatchedSales, repsReactivated };
 }
 
 export async function rematchATTOrdersForRep(rep: Rep) {
@@ -111,5 +116,6 @@ export async function rematchATTOrdersForRep(rep: Rep) {
     }
     await batch.commit();
   }
+  if (candidates.length && rep.status === "inactive") await reactivateInactiveRepsForMatchedSales([rep.repUid]);
   return candidates.length;
 }

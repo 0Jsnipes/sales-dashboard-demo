@@ -47,10 +47,11 @@ export async function GET(request: Request) {
       getOrders(monday, lastDay),
       getOrders(comparisonCurrentStart, comparisonCurrentEnd),
       getOrders(comparisonPreviousStart, comparisonPreviousEnd),
-      db.collection("reps").where("status", "==", "active").get(),
+      db.collection("reps").get(),
       db.collection("uploadRuns").orderBy("uploadedAt", "desc").limit(30).get(),
     ]);
     const repMap = new Map(repsSnapshot.docs.map((document) => [document.id, document.data()]));
+    const activeRepMap = new Map([...repMap.entries()].filter(([, rep]) => String((rep as { status?: string }).status || "active") === "active"));
     const filteredCurrentOrders = dedupeOrders(currentOrders.filter((order) => {
       const rep = order.matchedRepUid ? repMap.get(String(order.matchedRepUid)) : undefined;
       return (!common.manager || common.manager === "all" || String(rep?.managerName || order.rawManagerName || "") === common.manager)
@@ -86,8 +87,8 @@ export async function GET(request: Request) {
         knocksByRep.set(document.id, (knocksByRep.get(document.id) || 0) + knocks);
       }
     }
-    const totalSalesGoal = [...repMap.values()].reduce((sum, rep) => sum + Number((rep as { weeklySalesGoal?: number }).weeklySalesGoal || 0), 0);
-    const goalPacing = [...repMap.entries()].map(([repUid, rep]) => { const goal = Number((rep as { weeklySalesGoal?: number }).weeklySalesGoal || 0); const sales = repTotals.get(repUid) || 0; const expected = goal * elapsedDays / 7; return { repUid, displayName: String((rep as { displayName?: string }).displayName || ""), sales, goal, expected: Math.ceil(expected), remaining: Math.max(0, goal - sales), neededPerDay: Math.ceil(Math.max(0, goal - sales) / Math.max(1, 7 - elapsedDays)), behind: goal > 0 && sales < expected }; }).filter((rep) => rep.behind).sort((a, b) => (b.expected - b.sales) - (a.expected - a.sales)).slice(0, 5);
+    const totalSalesGoal = [...activeRepMap.values()].reduce((sum, rep) => sum + Number((rep as { weeklySalesGoal?: number }).weeklySalesGoal || 0), 0);
+    const goalPacing = [...activeRepMap.entries()].map(([repUid, rep]) => { const goal = Number((rep as { weeklySalesGoal?: number }).weeklySalesGoal || 0); const sales = repTotals.get(repUid) || 0; const expected = goal * elapsedDays / 7; return { repUid, displayName: String((rep as { displayName?: string }).displayName || ""), sales, goal, expected: Math.ceil(expected), remaining: Math.max(0, goal - sales), neededPerDay: Math.ceil(Math.max(0, goal - sales) / Math.max(1, 7 - elapsedDays)), behind: goal > 0 && sales < expected }; }).filter((rep) => rep.behind).sort((a, b) => (b.expected - b.sales) - (a.expected - a.sales)).slice(0, 5);
     const alerts: Array<{ type: "pace" | "roster" | "upload"; title: string; detail: string }> = [];
     if (elapsedDays > 1) for (const rep of goalPacing) alerts.push({ type: "pace", title: `${rep.displayName} is behind pace`, detail: `${rep.sales} sales against a ${rep.goal}-sale weekly goal.` });
     const unmatched = filteredCurrentOrders.filter((order) => order.matchStatus === "unmatched");
@@ -106,7 +107,7 @@ export async function GET(request: Request) {
       statusFunnel[provider][status] = (statusFunnel[provider][status] || 0) + Number(order.saleCount || 1);
     }
     const teams = new Map<string, { manager: string; location: string; sales: number; goal: number }>();
-    for (const [repUid, rep] of repMap) {
+    for (const [repUid, rep] of activeRepMap) {
       const manager = String((rep as { managerName?: string }).managerName || "No manager");
       const location = String((rep as { locationName?: string }).locationName || "Not assigned");
       const key = manager + "\u0000" + location;
@@ -116,7 +117,7 @@ export async function GET(request: Request) {
       teams.set(key, current);
     }
     const teamSnapshot = [...teams.values()].sort((a, b) => b.sales - a.sales);
-    const efficiency = [...repMap.entries()].map(([repUid, rep]) => { const sales = repTotals.get(repUid) || 0; const knocks = knocksByRep.get(repUid) || 0; return { repUid, displayName: String((rep as { displayName?: string }).displayName || ""), sales, knocks, conversion: knocks ? Number((sales / knocks * 100).toFixed(1)) : 0 }; }).filter((rep) => rep.sales || rep.knocks).sort((a, b) => b.conversion - a.conversion).slice(0, 10);
-    return NextResponse.json({ week: { start: dateId(monday), end: dateId(addDays(monday, 6)) }, totalSales: salesTotal(filteredCurrentOrders), totalSalesGoal, totalKnocks, activeReps: repsSnapshot.size, byDay, byDayTeams: byDayTeams.map((teams) => [...teams.entries()].map(([manager, sales]) => ({ manager, sales })).sort((a, b) => b.sales - a.sales)), byProvider, topReps, comparison: { current: salesTotal(comparisonOrders), previous: salesTotal(previousOrders), currentStart: dateId(comparisonCurrentStart), currentEnd: dateId(comparisonCurrentEnd), previousStart: dateId(comparisonPreviousStart), previousEnd: dateId(comparisonPreviousEnd) }, alerts, goalPacing, freshness, statusFunnel, teamSnapshot, efficiency, meta: { filtersApplied: Object.entries(common).filter(([, value]) => Boolean(value)) } });
+    const efficiency = [...activeRepMap.entries()].map(([repUid, rep]) => { const sales = repTotals.get(repUid) || 0; const knocks = knocksByRep.get(repUid) || 0; return { repUid, displayName: String((rep as { displayName?: string }).displayName || ""), sales, knocks, conversion: knocks ? Number((sales / knocks * 100).toFixed(1)) : 0 }; }).filter((rep) => rep.sales || rep.knocks).sort((a, b) => b.conversion - a.conversion).slice(0, 10);
+    return NextResponse.json({ week: { start: dateId(monday), end: dateId(addDays(monday, 6)) }, totalSales: salesTotal(filteredCurrentOrders), totalSalesGoal, totalKnocks, activeReps: activeRepMap.size, byDay, byDayTeams: byDayTeams.map((teams) => [...teams.entries()].map(([manager, sales]) => ({ manager, sales })).sort((a, b) => b.sales - a.sales)), byProvider, topReps, comparison: { current: salesTotal(comparisonOrders), previous: salesTotal(previousOrders), currentStart: dateId(comparisonCurrentStart), currentEnd: dateId(comparisonCurrentEnd), previousStart: dateId(comparisonPreviousStart), previousEnd: dateId(comparisonPreviousEnd) }, alerts, goalPacing, freshness, statusFunnel, teamSnapshot, efficiency, meta: { filtersApplied: Object.entries(common).filter(([, value]) => Boolean(value)) } });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "UNKNOWN" }, { status: 500 }); }
 }

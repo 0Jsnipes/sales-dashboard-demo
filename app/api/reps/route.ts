@@ -7,6 +7,7 @@ import { canManageRoster, requireActor } from "@/src/lib/firebase/server-auth";
 import { rematchTFiberOrdersForRep } from "@/src/lib/imports/tfiber";
 import { rematchATTOrdersForRep } from "@/src/lib/imports/att";
 import { parseCommonFilters, applyTextSearchFilter } from "@/src/lib/api/report-filters";
+import { autoMoveNoSaleRepsToInactive } from "@/src/lib/reps/lifecycle";
 
 export const runtime = "nodejs";
 
@@ -27,6 +28,7 @@ export async function GET(request: Request) {
     const filters = parseCommonFilters(url.searchParams);
     const status = url.searchParams.get("status") || "active";
     if (!["active", "inactive", "terminated", "all"].includes(status)) return NextResponse.json({ error: "INVALID_STATUS" }, { status: 400 });
+    const autoInactive = actor.profile.role === "superAdmin" || actor.profile.role === "admin" ? await autoMoveNoSaleRepsToInactive(db) : null;
     let snapshot;
     if (actor.profile.role === "superAdmin" || actor.profile.role === "admin") {
       const query = status === "all" ? db.collection("reps") : db.collection("reps").where("status", "==", status);
@@ -55,7 +57,7 @@ export async function GET(request: Request) {
         && (!filters.program || filters.program === "all" || record.programIds?.includes(filters.program))
         && (!filters.vendor || filters.vendor === "all" || record.vendorType === filters.vendor);
     });
-    return NextResponse.json({ reps: filtered.sort((a, b) => String((a as { displayName?: string }).displayName || "").localeCompare(String((b as { displayName?: string }).displayName || ""))), meta: { filtersApplied: Object.entries(filters).filter(([, value]) => Boolean(value)), count: filtered.length } });
+    return NextResponse.json({ reps: filtered.sort((a, b) => String((a as { displayName?: string }).displayName || "").localeCompare(String((b as { displayName?: string }).displayName || ""))), meta: { filtersApplied: Object.entries(filters).filter(([, value]) => Boolean(value)), count: filtered.length, autoInactive } });
   } catch (error) { return errorResponse(error); }
 }
 

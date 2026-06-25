@@ -12,7 +12,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { AlertTriangle, BadgeCheck, CircleAlert, Link2, MapPin, Pencil, Plus, RotateCcw, Search, ShieldAlert, UserRoundX, Users } from "lucide-react";
+import { AlertTriangle, BadgeCheck, CircleAlert, Link2, MapPin, Pencil, Plus, RotateCcw, Search, ShieldAlert, UserMinus, UserRoundX, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +54,8 @@ type RepForm = {
 };
 
 type Readiness = "ready" | "missing_email" | "missing_manager" | "missing_location" | "missing_sales_id" | "unknown";
+type RosterStatus = Rep["status"] | "all";
+type RosterFilters = { manager?: string; location?: string; vendor?: string; search?: string };
 
 const blankForm: RepForm = {
   displayName: "",
@@ -131,6 +133,21 @@ function readinessVariant(value: Readiness): "success" | "warning" | "danger" | 
   }
 }
 
+function statusLabel(value: RosterStatus) {
+  switch (value) {
+    case "active": return "Active";
+    case "inactive": return "Purgatory";
+    case "terminated": return "Terminated";
+    case "all": return "All";
+  }
+}
+
+function statusVariant(value: Rep["status"]): "success" | "warning" | "danger" | "secondary" | "outline" {
+  if (value === "active") return "success";
+  if (value === "terminated") return "danger";
+  return "warning";
+}
+
 function hasMissingSalesId(rep: Rep) {
   return rep.salesIds.length === 0;
 }
@@ -188,7 +205,7 @@ export function RosterPage() {
   const { profile } = useAuth();
   const reducedMotion = useReducedMotion();
   const searchParams = useSearchParams();
-  const [status, setStatus] = useState<"active" | "terminated" | "all">("active");
+  const [status, setStatus] = useState<RosterStatus>("active");
   const [query, setQuery] = useState("");
   const [reps, setReps] = useState<Rep[]>([]);
   const [loading, setLoading] = useState(true);
@@ -201,6 +218,7 @@ export function RosterPage() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [managers, setManagers] = useState<ManagerOption[]>([]);
   const [saving, setSaving] = useState(false);
+  const [removeRep, setRemoveRep] = useState<Rep | null>(null);
   const [terminateRep, setTerminateRep] = useState<Rep | null>(null);
   const [restoreRep, setRestoreRep] = useState<Rep | null>(null);
   const [sendTerminationEmail, setSendTerminationEmail] = useState(true);
@@ -220,7 +238,7 @@ export function RosterPage() {
 
   const request = useCallback((path: string, init?: RequestInit) => authedFetch(path, init), []);
 
-  const loadRoster = useCallback(async (nextStatus = status, nextFilters?: { manager?: string; location?: string; vendor?: string; search?: string }) => {
+  const loadRoster = useCallback(async (nextStatus: RosterStatus, nextFilters?: RosterFilters) => {
     setLoading(true);
     setError(null);
     try {
@@ -239,9 +257,22 @@ export function RosterPage() {
     } finally {
       setLoading(false);
     }
-  }, [status]);
+  }, []);
 
-  useEffect(() => { void loadRoster(status, { manager: managerFilter, location: locationFilter, vendor: vendorFilter, search: query }); }, [loadRoster, status, managerFilter, locationFilter, vendorFilter, query]);
+  const currentRosterFilters = useCallback((): RosterFilters => ({ manager: managerFilter, location: locationFilter, vendor: vendorFilter, search: query }), [managerFilter, locationFilter, vendorFilter, query]);
+
+  const refreshRoster = useCallback(async (nextStatus: RosterStatus = status) => {
+    await loadRoster(nextStatus, currentRosterFilters());
+  }, [currentRosterFilters, loadRoster, status]);
+
+  useEffect(() => { void refreshRoster(status); }, [refreshRoster, status]);
+
+  useEffect(() => {
+    if (!selectedRep) return;
+    const current = reps.find((rep) => rep.repUid === selectedRep.repUid);
+    if (current) setSelectedRep(current);
+    else setSelectedRep(null);
+  }, [reps, selectedRep]);
 
   useEffect(() => {
     Promise.all([
@@ -302,7 +333,7 @@ export function RosterPage() {
     { accessorKey: "salesIds", header: "IDs / aliases", cell: ({ row }) => <span>{row.original.salesIds.length} / {row.original.aliases.length}</span> },
     { accessorKey: "weeklySalesGoal", header: "Sales goal", cell: ({ row }) => <span>{row.original.weeklySalesGoal || 0}</span> },
     { accessorKey: "weeklyKnocksGoal", header: "Knocks goal", cell: ({ row }) => <span>{(row.original as Rep & { weeklyKnocksGoal?: number }).weeklyKnocksGoal || 0}</span> },
-    { accessorKey: "status", header: "Status", cell: ({ row }) => <Badge variant={row.original.status === "active" ? "success" : "warning"}>{row.original.status}</Badge> },
+    { accessorKey: "status", header: "Status", cell: ({ row }) => <Badge variant={statusVariant(row.original.status)}>{statusLabel(row.original.status)}</Badge> },
     { id: "readiness", header: "Account readiness", cell: ({ row }) => <Badge variant={readinessVariant(readiness(row.original))}>{readinessLabel(readiness(row.original))}</Badge> },
     { accessorKey: "updatedAt", header: "Last updated", cell: ({ row }) => <span className="text-sm text-muted-foreground">{formatDateTime(row.original.updatedAt as string | Date | null | undefined)}</span> },
     {
@@ -310,24 +341,30 @@ export function RosterPage() {
       header: "",
       cell: ({ row }) => (
         <div className="flex flex-wrap gap-1.5">
-          <Button size="xs" variant="outline" className="h-7 gap-1.5 px-2 text-[11px]" onClick={() => { setEditing(row.original); setForm(repToForm(row.original)); setEditorOpen(true); }}>
+          <Button size="xs" variant="outline" className="h-7 gap-1.5 px-2 text-[11px]" onClick={(event) => { event.stopPropagation(); setEditing(row.original); setForm(repToForm(row.original)); setEditorOpen(true); }}>
             <Pencil className="h-4 w-4" />
             Edit
           </Button>
-          <Button size="xs" variant="ghost" className="h-7 gap-1.5 px-2 text-[11px]" onClick={() => setLocationDialogRep(row.original)}>
+          <Button size="xs" variant="ghost" className="h-7 gap-1.5 px-2 text-[11px]" onClick={(event) => { event.stopPropagation(); setLocationDialogRep(row.original); }}>
             <MapPin className="h-4 w-4" />
             Assign location
           </Button>
-          <Button size="xs" variant="ghost" className="h-7 gap-1.5 px-2 text-[11px]" onClick={() => setSelectedRep(row.original)}>
+          <Button size="xs" variant="ghost" className="h-7 gap-1.5 px-2 text-[11px]" onClick={(event) => { event.stopPropagation(); setSelectedRep(row.original); }}>
             Details
           </Button>
           {row.original.status === "active" ? (
-            <Button size="xs" variant="ghost" className="h-7 gap-1.5 px-2 text-[11px]" onClick={() => setTerminateRep(row.original)}>
-              <UserRoundX className="h-4 w-4" />
-              Terminate
-            </Button>
+            <>
+              <Button size="xs" variant="ghost" className="h-7 gap-1.5 px-2 text-[11px]" onClick={(event) => { event.stopPropagation(); setRemoveRep(row.original); }}>
+                <UserMinus className="h-4 w-4" />
+                Remove
+              </Button>
+              <Button size="xs" variant="ghost" className="h-7 gap-1.5 px-2 text-[11px]" onClick={(event) => { event.stopPropagation(); setTerminateRep(row.original); }}>
+                <UserRoundX className="h-4 w-4" />
+                Terminate
+              </Button>
+            </>
           ) : (
-            <Button size="xs" variant="ghost" className="h-7 gap-1.5 px-2 text-[11px]" onClick={() => setRestoreRep(row.original)}>
+            <Button size="xs" variant="ghost" className="h-7 gap-1.5 px-2 text-[11px]" onClick={(event) => { event.stopPropagation(); setRestoreRep(row.original); }}>
               <RotateCcw className="h-4 w-4" />
               Restore
             </Button>
@@ -400,7 +437,7 @@ export function RosterPage() {
       setEditorOpen(false);
       setEditing(null);
       setForm(blankForm);
-      await loadRoster(status);
+      await refreshRoster();
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to save representative.");
     } finally {
@@ -421,7 +458,7 @@ export function RosterPage() {
       toast.success("Location assignment saved.");
       setLocationDialogRep(null);
       setLocationId("");
-      await loadRoster(status);
+      await refreshRoster();
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to assign location.");
     } finally {
@@ -429,21 +466,22 @@ export function RosterPage() {
     }
   }
 
-  async function changeStatus(action: "terminate" | "restore") {
-    const target = action === "terminate" ? terminateRep : restoreRep;
+  async function changeStatus(action: "remove" | "terminate" | "restore") {
+    const target = action === "remove" ? removeRep : action === "terminate" ? terminateRep : restoreRep;
     if (!target) return;
     setSaving(true);
     try {
       const response = await request(`/api/reps/${target.repUid}`, {
         method: "PATCH",
-        body: JSON.stringify({ action, sendTerminationEmail }),
+        body: JSON.stringify(action === "terminate" ? { action, sendTerminationEmail } : { action }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Unable to update status.");
-      toast.success(action === "terminate" ? "Representative terminated." : "Representative restored.");
+      toast.success(action === "remove" ? "Representative moved to purgatory." : action === "terminate" ? "Representative terminated." : "Representative restored.");
+      setRemoveRep(null);
       setTerminateRep(null);
       setRestoreRep(null);
-      await loadRoster(status);
+      await refreshRoster();
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to update status.");
     } finally {
@@ -470,7 +508,7 @@ export function RosterPage() {
       toast.success("Alias added.");
       setAliasDraft("");
       setAddAliasTarget(null);
-      await loadRoster(status);
+      await refreshRoster();
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to add alias.");
     } finally {
@@ -479,6 +517,7 @@ export function RosterPage() {
   }
 
   const activeCount = reps.filter((rep) => rep.status === "active").length;
+  const inactiveCount = reps.filter((rep) => rep.status === "inactive").length;
   const terminatedCount = reps.filter((rep) => rep.status === "terminated").length;
   const missingSalesIdCount = reps.filter(hasMissingSalesId).length;
   const missingLocationCount = reps.filter(hasMissingLocation).length;
@@ -498,6 +537,7 @@ export function RosterPage() {
 
   const kpis = [
     { label: "Active reps", value: activeCount, icon: Users, iconClass: "bg-emerald-500/15 text-emerald-600", borderClass: "border-emerald-500/20" },
+    { label: "Purgatory", value: inactiveCount, icon: UserMinus, iconClass: "bg-amber-500/15 text-amber-600", borderClass: "border-amber-500/20" },
     { label: "Terminated reps", value: terminatedCount, icon: UserRoundX, iconClass: "bg-rose-500/15 text-rose-600", borderClass: "border-rose-500/20" },
     { label: "Missing sales ID/alias", value: missingSalesIdCount, icon: CircleAlert, iconClass: "bg-amber-500/15 text-amber-600", borderClass: "border-amber-500/20" },
     { label: "Missing location", value: missingLocationCount, icon: MapPin, iconClass: "bg-sky-500/15 text-sky-600", borderClass: "border-sky-500/20" },
@@ -548,6 +588,7 @@ export function RosterPage() {
               <SelectTrigger className="h-10"><SelectValue placeholder="Status" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Purgatory</SelectItem>
                 <SelectItem value="terminated">Terminated</SelectItem>
                 <SelectItem value="all">All</SelectItem>
               </SelectContent>
@@ -563,8 +604,9 @@ export function RosterPage() {
               </SelectContent>
             </Select>
             <Tabs value={status} onValueChange={(value) => setStatus(value as typeof status)}>
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="active">Active</TabsTrigger>
+                <TabsTrigger value="inactive">Purgatory</TabsTrigger>
                 <TabsTrigger value="terminated">Terminated</TabsTrigger>
                 <TabsTrigger value="all">All</TabsTrigger>
               </TabsList>
@@ -629,7 +671,7 @@ export function RosterPage() {
       <Card className="overflow-hidden">
         <CardHeader className="flex-row items-center justify-between gap-3 p-4 sm:p-5">
           <div>
-            <CardTitle className="text-base sm:text-lg">{status === "terminated" ? "Terminated reps" : status === "active" ? "Active reps" : "All reps"}</CardTitle>
+            <CardTitle className="text-base sm:text-lg">{status === "all" ? "All reps" : `${statusLabel(status)} reps`}</CardTitle>
             <CardDescription>{filtered.length} matching records.</CardDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -670,7 +712,7 @@ export function RosterPage() {
                       <p className="font-medium">{rep.displayName}</p>
                       <p className="text-sm text-muted-foreground">{rep.email || "No email"} · {rep.phone || "No phone"}</p>
                     </button>
-                    <Badge variant={rep.status === "active" ? "success" : "warning"}>{rep.status}</Badge>
+                    <Badge variant={statusVariant(rep.status)}>{statusLabel(rep.status)}</Badge>
                   </div>
                   <div className="grid gap-2 text-sm text-muted-foreground">
                     <p>Manager: {rep.managerName || "—"}</p>
@@ -683,6 +725,14 @@ export function RosterPage() {
                     <Button size="sm" variant="outline" onClick={() => setSelectedRep(rep)}>Profile</Button>
                     <Button size="sm" variant="outline" onClick={() => { setEditing(rep); setForm(repToForm(rep)); setEditorOpen(true); }}>Edit</Button>
                     <Button size="sm" variant="ghost" onClick={() => setLocationDialogRep(rep)}>Assign location</Button>
+                    {rep.status === "active" ? (
+                      <>
+                        <Button size="sm" variant="ghost" onClick={() => setRemoveRep(rep)}>Remove</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setTerminateRep(rep)}>Terminate</Button>
+                      </>
+                    ) : (
+                      <Button size="sm" variant="ghost" onClick={() => setRestoreRep(rep)}>Restore</Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -697,7 +747,7 @@ export function RosterPage() {
             <ScrollArea className="h-full pr-4">
               <SheetHeader>
                 <SheetTitle>{selectedRep.displayName}</SheetTitle>
-                <SheetDescription>{selectedRep.status} · {selectedRep.managerName || "No manager"} · {selectedRep.locationName || "No location"}</SheetDescription>
+                <SheetDescription>{statusLabel(selectedRep.status)} · {selectedRep.managerName || "No manager"} · {selectedRep.locationName || "No location"}</SheetDescription>
               </SheetHeader>
               <div className="space-y-5 py-5">
                 <section className="grid gap-3 md:grid-cols-2">
@@ -705,7 +755,7 @@ export function RosterPage() {
                     <p>Name: {selectedRep.displayName}</p>
                     <p>Phone: {selectedRep.phone || "—"}</p>
                     <p>Email: {selectedRep.email || "—"}</p>
-                    <p>Status: {selectedRep.status}</p>
+                    <p>Status: {statusLabel(selectedRep.status)}</p>
                   </ProfileCard>
                   <ProfileCard title="Organization">
                     <p>Manager: {selectedRep.managerName || "—"}</p>
@@ -742,7 +792,12 @@ export function RosterPage() {
                 </ProfileCard>
                 <div className="flex flex-wrap gap-2">
                   <Button onClick={() => { setEditing(selectedRep); setForm(repToForm(selectedRep)); setEditorOpen(true); }}>Edit rep</Button>
-                  {selectedRep.status === "active" ? <Button variant="destructive" onClick={() => setTerminateRep(selectedRep)}>Terminate</Button> : <Button variant="outline" onClick={() => setRestoreRep(selectedRep)}>Restore</Button>}
+                  {selectedRep.status === "active" ? (
+                    <>
+                      <Button variant="outline" onClick={() => setRemoveRep(selectedRep)}>Remove from roster</Button>
+                      <Button variant="destructive" onClick={() => setTerminateRep(selectedRep)}>Terminate</Button>
+                    </>
+                  ) : <Button variant="outline" onClick={() => setRestoreRep(selectedRep)}>Restore</Button>}
                 </div>
               </div>
             </ScrollArea>
@@ -861,6 +916,21 @@ export function RosterPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setLocationDialogRep(null)}>Cancel</Button>
             <Button onClick={() => void saveLocationAssignment()} disabled={saving || !locationId}>{saving ? "Saving..." : "Save assignment"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(removeRep)} onOpenChange={(open) => !open && setRemoveRep(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove from roster</DialogTitle>
+            <DialogDescription>
+              This moves the rep to purgatory. It keeps their history and login intact, sends no termination email, and they will reactivate automatically if a future import matches a sale to them.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRemoveRep(null)}>Cancel</Button>
+            <Button onClick={() => void changeStatus("remove")} disabled={saving}>{saving ? "Working..." : "Remove"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
