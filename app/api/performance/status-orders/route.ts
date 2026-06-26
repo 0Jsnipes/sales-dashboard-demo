@@ -1,104 +1,658 @@
+import { addDays, startOfMonth, subDays } from "date-fns";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { requireActor } from "@/src/lib/firebase/server-auth";
-import { sanitizeOrderId } from "@/src/lib/sales/outcomes";
+import { parseDateRangeParams, toDateId } from "@/src/lib/api/report-filters";
+import { formatImportedName } from "@/src/lib/matching/display-name";
+import { buildRepSearchIndex, normalizeEmail, normalizeName, normalizeSalesId } from "@/src/lib/matching/normalize";
+import { normalizePerformanceOutcome } from "@/src/lib/performance/performance-utils";
+import { readFirstText, sanitizeOrderId } from "@/src/lib/sales/outcomes";
+import type { SaleOutcome, SalesOrderRecord } from "@/src/lib/sales/outcomes";
+import type { Rep } from "@/src/types/rep";
 
 export const runtime = "nodejs";
 
-type Order = Record<string, unknown> & {
+type OrderDoc = Record<string, unknown> & {
   id: string;
-  matchedRepUid?: string | null;
-  rawData?: Record<string, unknown>;
-  orderId?: string;
-  orderUid?: string;
-  orderDateId?: string;
-  installationDateId?: string;
-  rawRepName?: string;
-  rawManagerName?: string;
-  provider?: string;
-  accountStatus?: string;
+  providerKey: string;
 };
-const classify = (status: unknown) => {
-  const value = String(status || "").toLowerCase();
-  return value.includes("cancel") ? "cancelled" : value.includes("active") || value.includes("install") ? "active" : value.includes("preorder") ? "preorder" : value.includes("schedul") || value.includes("pending") ? "pending" : "other";
-};
-const toDateId = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-const cell = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
-const saleKey = (order: Record<string, unknown>) => `${String(order.orderId || order.orderUid || order.id || "").trim()}::${String(order.orderDateId || "").trim()}`;
 
-function dedupeOrders<T extends Record<string, unknown>>(orders: T[]) {
+type AssignmentDoc = Record<string, unknown> & {
+  repUid?: string;
+  weekISO?: string;
+  mode?: "forward" | "single";
+  locationName?: string;
+};
+
+type PerformanceOrder = SalesOrderRecord & {
+  id: string;
+  providerKey: string;
+  repUid: string | null;
+  repName: string;
+  managerName: string;
+  locationName: string;
+  customer: string;
+  orderId: string;
+  provider: string;
+  vendorType: "organic" | "subVendor" | "unassigned";
+  status: string;
+  outcome: SaleOutcome;
+  pastDue: boolean;
+  saleCount: number;
+};
+
+type RepSummary = {
+  repUid: string | null;
+  displayName: string;
+  managerName: string;
+  locationName: string;
+  vendorType: string;
+  sales: number;
+  knocks: number;
+  attKnocks: number;
+  tfiberKnocks: number;
+  installed: number;
+  pending: number;
+  pastDue: number;
+  preorder: number;
+  canceled: number;
+  churned: number;
+  unknown: number;
+  total: number;
+  goal: number;
+  conversion: number;
+  matchStatus: "matched" | "unmatched";
+};
+
+type TeamSummary = {
+  name: string;
+  sales: number;
+  knocks: number;
+  reps: number;
+  conversion: number;
+};
+
+type TrendPoint = {
+  dateId: string;
+  sales: number;
+  knocks: number;
+};
+
+type PerformanceResponse = {
+  range: { start: string; end: string; mode: string };
+  totals: {
+    sales: number;
+    knocks: number;
+    attKnocks: number;
+    tfiberKnocks: number;
+    conversion: number;
+    installed: number;
+    pending: number;
+    pastDue: number;
+    preorder: number;
+    canceled: number;
+    churned: number;
+    unknown: number;
+    activeReps: number;
+    orderCount: number;
+  };
+  trend: TrendPoint[];
+  reps: RepSummary[];
+  teams: {
+    managers: TeamSummary[];
+    locations: TeamSummary[];
+  };
+  orders: PerformanceOrder[];
+  filters: {
+    managers: string[];
+    locations: string[];
+    providers: string[];
+    reps: { repUid: string; displayName: string }[];
+  };
+};
+
+type PerformanceWindow = {
+  range: { start: string; end: string; mode: string };
+  totals: PerformanceResponse["totals"];
+  trend: TrendPoint[];
+  reps: RepSummary[];
+  teams: PerformanceResponse["teams"];
+  orders: PerformanceOrder[];
+  filters: PerformanceResponse["filters"];
+};
+
+function providerKey(value: unknown) {
+  const source = String(value || "").toLowerCase().replace(/[^a-z]/g, "");
+  if (source === "att" || source.includes("att")) return "att";
+  if (source === "tfiber" || source.includes("tfiber")) return "tfiber";
+  if (source === "frontier" || source.includes("frontier")) return "frontier";
+  return "manual";
+}
+
+function providerLabel(value: unknown) {
+  const source = providerKey(value);
+  if (source === "att") return "ATT";
+  if (source === "tfiber") return "T-Fiber";
+  if (source === "frontier") return "Frontier";
+  return "Manual";
+}
+
+function resolveTFiberPastDueAsOfDate(orders: OrderDoc[]) {
+  const latest = orders
+    .filter((order) => providerKey(order.provider || order.providerKey) === "tfiber")
+    .map((order) => String(order.orderDateId || ""))
+    .filter((dateId) => /^\d{4}-\d{2}-\d{2}$/.test(dateId))
+    .sort()
+    .pop();
+
+  return latest ? addDays(new Date(`${latest}T12:00:00`), 1) : new Date();
+}
+
+function isoWeek(dateId: string) {
+  const [year, month, day] = dateId.split("-").map(Number);
+  const value = new Date(Date.UTC(year, month - 1, day));
+  value.setUTCDate(value.getUTCDate() + 4 - (value.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(value.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((value.valueOf() - yearStart.valueOf()) / 86400000) + 1) / 7);
+  return `${value.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+function orderDedupeKey(order: OrderDoc) {
+  return `${String(order.orderId || order.orderUid || order.id || "").trim()}::${String(order.orderDateId || "").trim()}`;
+}
+
+function dedupeOrders<T extends OrderDoc>(orders: T[]) {
   const seen = new Set<string>();
   return orders.filter((order) => {
-    const key = saleKey(order);
+    const key = orderDedupeKey(order);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 }
 
+function text(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function customerName(raw: Record<string, unknown> | undefined) {
+  if (!raw) return "—";
+  return text(raw["Customer Name"] || raw["Customer / Address"] || raw["Customer"] || raw["Account Name"] || raw["Name"]) || "—";
+}
+
+function resolveRange(url: URL) {
+  const mode = url.searchParams.get("range") || "lastWeek";
+  const today = new Date();
+  const todayId = toDateId(today);
+
+  if (mode === "custom") {
+    const explicit = parseDateRangeParams(url.searchParams);
+    if (!explicit.from || !explicit.to) throw new Error("VALID_DATE_RANGE_REQUIRED");
+    return { start: explicit.from, end: explicit.to, mode };
+  }
+
+  if (mode === "mtd") {
+    const start = startOfMonth(today);
+    return { start: toDateId(start), end: todayId, mode };
+  }
+
+  if (mode === "last30") {
+    return { start: toDateId(subDays(today, 29)), end: todayId, mode };
+  }
+
+  if (mode === "wtd") {
+    const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const day = monday.getDay();
+    monday.setDate(monday.getDate() + (day === 0 ? -6 : 1 - day));
+    const yesterday = subDays(today, 1);
+    const end = yesterday < monday ? monday : yesterday;
+    return { start: toDateId(monday), end: toDateId(end), mode };
+  }
+
+  const currentWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const currentDay = currentWeek.getDay();
+  currentWeek.setDate(currentWeek.getDate() + (currentDay === 0 ? -6 : 1 - currentDay));
+  const lastWeekStart = addDays(currentWeek, -7);
+  const lastWeekEnd = addDays(currentWeek, -1);
+  return { start: toDateId(lastWeekStart), end: toDateId(lastWeekEnd), mode: "lastWeek" };
+}
+
+function rangeDates(start: string, end: string) {
+  const dates: string[] = [];
+  const cursor = new Date(`${start}T12:00:00`);
+  const last = new Date(`${end}T12:00:00`);
+  while (cursor <= last) {
+    dates.push(toDateId(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
+}
+
+function resolveRepFromOrder(order: OrderDoc, roster: Map<string, Rep>) {
+  const rawRepUid = String(order.matchedRepUid || "").trim();
+  if (rawRepUid && roster.has(rawRepUid)) return roster.get(rawRepUid) ?? null;
+
+  const raw = order.rawData as Record<string, unknown> | undefined;
+  const email = normalizeEmail(String(raw?.["Email"] || raw?.["Rep Email"] || order.rawEmail || ""));
+  const salesId = normalizeSalesId(String(order.rawSalesId || raw?.["Rep ID"] || raw?.["Source Rep ID"] || ""));
+  const rawName = normalizeName(String(order.rawRepName || raw?.["Representative"] || order.displayName || ""));
+
+  for (const rep of roster.values()) {
+    const index = buildRepSearchIndex(rep);
+    if (email && index.emails.includes(email)) return rep;
+    if (salesId && index.salesIds.includes(salesId)) return rep;
+    if (rawName && index.names.includes(rawName)) return rep;
+  }
+
+  return null;
+}
+
+function resolveKnockRep(row: Record<string, unknown>, roster: Map<string, Rep>) {
+  const repUid = String(row.repUid || "");
+  if (repUid && roster.has(repUid)) return roster.get(repUid) ?? null;
+  const email = normalizeEmail(String(row.rawEmail || row.repEmail || ""));
+  const salesId = normalizeSalesId(String(row.rawSalesId || row.sourceRepExternalId || ""));
+  const rawName = normalizeName(String(row.rawRepName || row.displayName || ""));
+  for (const rep of roster.values()) {
+    const index = buildRepSearchIndex(rep);
+    if (email && index.emails.includes(email)) return rep;
+    if (salesId && index.salesIds.includes(salesId)) return rep;
+    if (rawName && index.names.includes(rawName)) return rep;
+  }
+  return null;
+}
+
+function dateIdFromUnknown(value: unknown) {
+  const source = String(value ?? "").trim();
+  if (!source) return "";
+  const match = source.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  const parsed = new Date(source);
+  if (Number.isNaN(parsed.valueOf())) return "";
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
+}
+
+function resolveKnockBreakdown(row: Record<string, unknown>) {
+  const attKnocks = Number(row.attKnocks ?? 0);
+  const tfiberKnocks = Number(row.tfiberKnocks ?? 0);
+  const combined = Number(row.knocks ?? row.count ?? (attKnocks + tfiberKnocks));
+  if (attKnocks || tfiberKnocks) {
+    return { knocks: attKnocks + tfiberKnocks, attKnocks, tfiberKnocks };
+  }
+
+  const source = String(row.source ?? "").toLowerCase();
+  if (source.includes("att")) return { knocks: combined, attKnocks: combined, tfiberKnocks: 0 };
+  if (source.includes("tfiber") || source.includes("t-fiber")) return { knocks: combined, attKnocks: 0, tfiberKnocks: combined };
+  return { knocks: combined, attKnocks: 0, tfiberKnocks: 0 };
+}
+
+function resolveEstimatedInstallDateId(order: OrderDoc) {
+  const raw = order.rawData as Record<string, unknown> | undefined;
+  return dateIdFromUnknown(
+    order.estimatedInstallationDateId
+      || readFirstText(raw, ["Est. Installation Date", "Estimated Installation Date", "ETA Installation Date", "Install ETA"])
+      || (order.providerKey === "tfiber" ? order.installationDateId : ""),
+  ) || undefined;
+}
+
+function resolveLocation(rep: Rep | null | undefined, orderDateId: string, assignmentsByRep: Map<string, AssignmentDoc[]>) {
+  if (!rep) return "";
+  const assignments = assignmentsByRep.get(rep.repUid) ?? [];
+  const week = isoWeek(orderDateId);
+  const single = assignments.find((item) => item.mode === "single" && item.weekISO === week);
+  if (single?.locationName) return String(single.locationName);
+  const forward = assignments
+    .filter((item) => item.mode === "forward" && String(item.weekISO || "") <= week)
+    .sort((a, b) => String(a.weekISO || "").localeCompare(String(b.weekISO || "")))
+    .pop();
+  return forward?.locationName ? String(forward.locationName) : rep.locationName || "";
+}
+
+function initRepStat(rep: Rep): RepSummary {
+  return {
+    repUid: rep.repUid,
+    displayName: rep.displayName || "Unnamed representative",
+    managerName: rep.managerName || "No manager",
+    locationName: rep.locationName || "Not assigned",
+    vendorType: rep.vendorType || "unassigned",
+    sales: 0,
+    knocks: 0,
+    attKnocks: 0,
+    tfiberKnocks: 0,
+    installed: 0,
+    pending: 0,
+    pastDue: 0,
+    preorder: 0,
+    canceled: 0,
+    churned: 0,
+    unknown: 0,
+    total: 0,
+    goal: Number(rep.weeklySalesGoal || 0),
+    conversion: 0,
+    matchStatus: "matched",
+  };
+}
+
+function initUnmatchedRepStat(name: string, managerName = "No manager", locationName = "Not assigned"): RepSummary {
+  return {
+    repUid: null,
+    displayName: name || "Unmatched / Not on roster",
+    managerName,
+    locationName,
+    vendorType: "unassigned",
+    sales: 0,
+    knocks: 0,
+    attKnocks: 0,
+    tfiberKnocks: 0,
+    installed: 0,
+    pending: 0,
+    pastDue: 0,
+    preorder: 0,
+    canceled: 0,
+    churned: 0,
+    unknown: 0,
+    total: 0,
+    goal: 0,
+    conversion: 0,
+    matchStatus: "unmatched",
+  };
+}
+
+function bumpTeam(map: Map<string, TeamSummary & { repIds: Set<string> }>, name: string, repUid: string, sales: number, knocks: number) {
+  const key = name || "Unassigned";
+  const current = map.get(key) ?? { name: key, sales: 0, knocks: 0, reps: 0, conversion: 0, repIds: new Set<string>() };
+  current.sales += sales;
+  current.knocks += knocks;
+  if (repUid) current.repIds.add(repUid);
+  current.reps = current.repIds.size;
+  current.conversion = current.knocks ? Math.round((current.sales / current.knocks) * 100) : 0;
+  map.set(key, current);
+}
+
+async function buildWindow(range: { start: string; end: string; mode: string }): Promise<PerformanceWindow> {
+  const db = getAdminDb();
+  const [salesSnapshots, repsSnapshot, assignmentsSnapshot] = await Promise.all([
+    Promise.all([
+      db.collection("salesOrders").doc("att").collection("orders").where("orderDateId", ">=", range.start).where("orderDateId", "<=", range.end).get(),
+      db.collection("salesOrders").doc("tfiber").collection("orders").where("orderDateId", ">=", range.start).where("orderDateId", "<=", range.end).get(),
+      db.collection("salesOrders").doc("manual").collection("orders").where("orderDateId", ">=", range.start).where("orderDateId", "<=", range.end).get(),
+    ]),
+    db.collection("reps").get(),
+    db.collection("repLocationAssignments").get(),
+  ]);
+
+  const roster = new Map(repsSnapshot.docs.map((document) => [document.id, document.data() as Rep]));
+  const assignmentsByRep = new Map<string, AssignmentDoc[]>();
+  for (const document of assignmentsSnapshot.docs) {
+    const data = document.data() as AssignmentDoc;
+    const repUid = String(data.repUid || "");
+    if (!repUid) continue;
+    const list = assignmentsByRep.get(repUid) ?? [];
+    list.push(data);
+    assignmentsByRep.set(repUid, list);
+  }
+
+  const salesOrders = dedupeOrders(
+    salesSnapshots.flatMap((snapshot, index) => snapshot.docs.map((document) => ({
+      id: document.id,
+      providerKey: ["att", "tfiber", "manual"][index]!,
+      ...(document.data() as Record<string, unknown>),
+    } as OrderDoc))),
+  );
+  const tfiberPastDueAsOfDate = resolveTFiberPastDueAsOfDate(salesOrders);
+
+  const dailyDocs = await Promise.all(rangeDates(range.start, range.end).map(async (dateId) => {
+    const snapshot = await db.collection("knockDaily").doc(dateId).collection("reps").get();
+    return { dateId, snapshot };
+  }));
+
+  const trendByDay = new Map<string, TrendPoint>();
+  const repStats = new Map<string, RepSummary>();
+  const managerMap = new Map<string, TeamSummary & { repIds: Set<string> }>();
+  const locationMap = new Map<string, TeamSummary & { repIds: Set<string> }>();
+  const providerSet = new Set<string>();
+  const knockTotalsByRep = new Map<string, number>();
+  let totalSales = 0;
+  let totalKnocks = 0;
+  let totalAttKnocks = 0;
+  let totalTfiberKnocks = 0;
+  let installed = 0;
+  let pending = 0;
+  let pastDue = 0;
+  let preorder = 0;
+  let canceled = 0;
+  let churned = 0;
+  let unknown = 0;
+
+  for (const rep of roster.values()) {
+    if (rep.status === "active") repStats.set(rep.repUid, initRepStat(rep));
+  }
+
+  for (const order of salesOrders) {
+    const saleCount = Number(order.saleCount || 1);
+    const rep = resolveRepFromOrder(order, roster);
+    const repUid = rep?.repUid ?? null;
+    const estimatedInstallationDateId = resolveEstimatedInstallDateId(order);
+    const rawRepName = String(order.rawRepName || order.displayName || order.orderId || "Unmatched / Not on roster");
+    const displayName = rep?.displayName || (String(order.provider || order.providerKey) === "att" ? formatImportedName(rawRepName) : rawRepName) || "Unmatched / Not on roster";
+    const managerName = rep?.managerName || String(order.rawManagerName || "") || "No manager";
+    const locationName = resolveLocation(rep, String(order.orderDateId || ""), assignmentsByRep) || rep?.locationName || "Not assigned";
+    const rawProviderKey = providerKey(order.provider || order.providerKey);
+    const provider = providerLabel(rawProviderKey);
+    const record: SalesOrderRecord = {
+      orderUid: String(order.orderUid || order.orderId || order.id),
+      orderDateId: String(order.orderDateId || ""),
+      provider: rawProviderKey,
+      accountStatus: String(order.accountStatus || ""),
+      installationDateId: String(order.installationDateId || "") || undefined,
+      estimatedInstallationDateId,
+      cancellationDateId: String(order.cancellationDateId || "") || undefined,
+      rawData: order.rawData && typeof order.rawData === "object" ? (order.rawData as Record<string, unknown>) : undefined,
+      rawRepName: String(order.rawRepName || ""),
+      rawSalesId: String(order.rawSalesId || ""),
+      rawManagerName: String(order.rawManagerName || ""),
+      matchedRepUid: repUid,
+      saleCount,
+    };
+    const outcome = normalizePerformanceOutcome(record, rawProviderKey === "tfiber" ? { asOfDate: tfiberPastDueAsOfDate } : undefined);
+
+    totalSales += saleCount;
+    if (outcome === "installed") installed += saleCount;
+    else if (outcome === "pending") pending += saleCount;
+    else if (outcome === "past_due") { pending += saleCount; pastDue += saleCount; }
+    else if (outcome === "preorder") preorder += saleCount;
+    else if (outcome === "canceled") canceled += saleCount;
+    else if (outcome === "churned") churned += saleCount;
+    else unknown += saleCount;
+    providerSet.add(provider);
+
+    const trend = trendByDay.get(String(order.orderDateId || "")) ?? { dateId: String(order.orderDateId || ""), sales: 0, knocks: 0 };
+    trend.sales += saleCount;
+    trendByDay.set(String(order.orderDateId || ""), trend);
+
+    const statKey = repUid ? repUid : `unmatched:${normalizeName(displayName)}`;
+    const stat = repUid ? repStats.get(repUid) ?? initUnmatchedRepStat(displayName, managerName, locationName) : repStats.get(statKey) ?? initUnmatchedRepStat(displayName, managerName, locationName);
+    stat.repUid = repUid;
+    stat.displayName = displayName;
+    stat.managerName = managerName;
+    stat.locationName = locationName;
+    stat.sales += saleCount;
+    stat.total += saleCount;
+    stat.goal = rep?.weeklySalesGoal ? Number(rep.weeklySalesGoal || 0) : stat.goal;
+    if (outcome === "installed") stat.installed += saleCount;
+    else if (outcome === "pending") stat.pending += saleCount;
+    else if (outcome === "past_due") { stat.pending += saleCount; stat.pastDue += saleCount; }
+    else if (outcome === "preorder") stat.preorder += saleCount;
+    else if (outcome === "canceled") stat.canceled += saleCount;
+    else if (outcome === "churned") stat.churned += saleCount;
+    else stat.unknown += saleCount;
+    stat.conversion = stat.knocks ? Math.round((stat.sales / stat.knocks) * 100) : 0;
+    repStats.set(repUid ? repUid : statKey, stat);
+
+    bumpTeam(managerMap, managerName, repUid ?? statKey, saleCount, 0);
+    bumpTeam(locationMap, locationName, repUid ?? statKey, saleCount, 0);
+  }
+
+  for (const { dateId, snapshot } of dailyDocs) {
+    for (const document of snapshot.docs) {
+      const data = document.data() as Record<string, unknown>;
+      const breakdown = resolveKnockBreakdown(data);
+      const knocks = breakdown.knocks;
+      if (!knocks) continue;
+      const rep = resolveKnockRep({ ...data, repUid: document.id }, roster);
+      const repUid = rep?.repUid ?? null;
+      const displayName = rep?.displayName || String(data.displayName || data.rawRepName || "Unmatched / Not on roster");
+      const managerName = rep?.managerName || String(data.managerName || "") || "No manager";
+      const locationName = rep ? resolveLocation(rep, dateId, assignmentsByRep) || rep.locationName || "Not assigned" : String(data.locationName || "") || "Not assigned";
+
+      totalKnocks += knocks;
+      totalAttKnocks += breakdown.attKnocks;
+      totalTfiberKnocks += breakdown.tfiberKnocks;
+      knockTotalsByRep.set(repUid ?? `unmatched:${normalizeName(displayName)}`, (knockTotalsByRep.get(repUid ?? `unmatched:${normalizeName(displayName)}`) || 0) + knocks);
+      const trend = trendByDay.get(dateId) ?? { dateId, sales: 0, knocks: 0 };
+      trend.knocks += knocks;
+      trendByDay.set(dateId, trend);
+
+      const statKey = repUid ? repUid : `unmatched:${normalizeName(displayName)}`;
+      const stat = repUid ? repStats.get(repUid) ?? initUnmatchedRepStat(displayName, managerName, locationName) : repStats.get(statKey) ?? initUnmatchedRepStat(displayName, managerName, locationName);
+      stat.repUid = repUid;
+      stat.displayName = displayName;
+      stat.managerName = managerName;
+      stat.locationName = locationName;
+      stat.knocks += knocks;
+      stat.attKnocks += breakdown.attKnocks;
+      stat.tfiberKnocks += breakdown.tfiberKnocks;
+      stat.total += knocks;
+      stat.conversion = stat.knocks ? Math.round((stat.sales / stat.knocks) * 100) : 0;
+      repStats.set(repUid ? repUid : statKey, stat);
+
+      bumpTeam(managerMap, managerName, repUid ?? statKey, 0, knocks);
+      bumpTeam(locationMap, locationName, repUid ?? statKey, 0, knocks);
+    }
+  }
+
+  const reps = [...repStats.values()]
+    .map((rep) => ({
+      ...rep,
+      conversion: rep.knocks ? Math.round((rep.sales / rep.knocks) * 100) : 0,
+    }))
+    .sort((a, b) => b.sales - a.sales || b.knocks - a.knocks || a.displayName.localeCompare(b.displayName));
+
+  const managers = [...managerMap.values()]
+    .map(({ repIds, ...row }) => ({ ...row, reps: repIds.size, conversion: row.knocks ? Math.round((row.sales / row.knocks) * 100) : 0 }))
+    .sort((a, b) => b.sales - a.sales || a.name.localeCompare(b.name));
+
+  const locations = [...locationMap.values()]
+    .map(({ repIds, ...row }) => ({ ...row, reps: repIds.size, conversion: row.knocks ? Math.round((row.sales / row.knocks) * 100) : 0 }))
+    .sort((a, b) => b.sales - a.sales || a.name.localeCompare(b.name));
+
+  const orders = salesOrders
+    .map((order) => {
+      const rep = resolveRepFromOrder(order, roster);
+      const repUid = rep?.repUid ?? null;
+      const estimatedInstallationDateId = resolveEstimatedInstallDateId(order);
+      const displayName = rep?.displayName || (String(order.provider || order.providerKey) === "att" ? formatImportedName(String(order.rawRepName || "")) : String(order.rawRepName || "Unmatched / Not on roster"));
+      const managerName = rep?.managerName || String(order.rawManagerName || "") || "No manager";
+      const locationName = resolveLocation(rep, String(order.orderDateId || ""), assignmentsByRep) || rep?.locationName || "Not assigned";
+      const rawProviderKey = providerKey(order.provider || order.providerKey);
+      const provider = providerLabel(rawProviderKey);
+      const record: SalesOrderRecord = {
+        orderUid: String(order.orderUid || order.orderId || order.id),
+        orderDateId: String(order.orderDateId || ""),
+        provider: rawProviderKey,
+        accountStatus: String(order.accountStatus || ""),
+        installationDateId: String(order.installationDateId || "") || undefined,
+        estimatedInstallationDateId,
+        cancellationDateId: String(order.cancellationDateId || "") || undefined,
+        rawData: order.rawData && typeof order.rawData === "object" ? (order.rawData as Record<string, unknown>) : undefined,
+        rawRepName: String(order.rawRepName || ""),
+        rawSalesId: String(order.rawSalesId || ""),
+        rawManagerName: String(order.rawManagerName || ""),
+        matchedRepUid: repUid,
+        saleCount: Number(order.saleCount || 1),
+      };
+      const outcome = normalizePerformanceOutcome(record, rawProviderKey === "tfiber" ? { asOfDate: tfiberPastDueAsOfDate } : undefined);
+      return {
+        ...record,
+        id: `${order.providerKey}:${order.id}`,
+        providerKey: order.providerKey,
+        orderId: sanitizeOrderId(order.orderId || order.orderUid || order.id),
+        provider,
+        vendorType: rep?.vendorType || "unassigned",
+        repUid,
+        repName: displayName,
+        managerName,
+        locationName,
+        customer: customerName(order.rawData as Record<string, unknown> | undefined),
+        status: (() => {
+          const value = String(order.accountStatus || "").trim();
+          return value && value.toLowerCase() !== "unknown" ? value : "";
+        })(),
+        outcome,
+        pastDue: outcome === "past_due",
+        saleCount: Number(order.saleCount || 1),
+      } satisfies PerformanceOrder;
+    })
+    .sort((a, b) => b.orderDateId.localeCompare(a.orderDateId) || a.repName.localeCompare(b.repName));
+
+  const totals = {
+    sales: totalSales,
+    knocks: totalKnocks,
+    attKnocks: totalAttKnocks,
+    tfiberKnocks: totalTfiberKnocks,
+    conversion: totalKnocks ? Math.round((totalSales / totalKnocks) * 100) : 0,
+    installed,
+    pending,
+    pastDue,
+    preorder,
+    canceled,
+    churned,
+    unknown,
+    activeReps: reps.filter((rep) => rep.repUid && (rep.sales > 0 || rep.knocks > 0)).length,
+    orderCount: orders.length,
+  };
+
+  const filters = {
+    managers: [...new Set([...reps.map((rep) => rep.managerName).filter(Boolean), ...managers.map((team) => team.name).filter(Boolean)])].sort(),
+    locations: [...new Set([...reps.map((rep) => rep.locationName).filter(Boolean), ...locations.map((team) => team.name).filter(Boolean)])].sort(),
+    providers: [...providerSet].sort(),
+    reps: reps.map((rep) => ({ repUid: rep.repUid ? String(rep.repUid) : rep.displayName, displayName: rep.displayName })).sort((a, b) => a.displayName.localeCompare(b.displayName)),
+  };
+
+  const trend = [...trendByDay.values()].sort((a, b) => a.dateId.localeCompare(b.dateId));
+
+  return {
+    range,
+    totals,
+    trend,
+    reps,
+    teams: {
+      managers,
+      locations,
+    },
+    orders,
+    filters,
+  };
+}
+
 export async function GET(request: Request) {
   try {
     await requireActor(request);
     const url = new URL(request.url);
-    const start = url.searchParams.get("start");
-    const end = url.searchParams.get("end");
-    const statusFilter = url.searchParams.get("status");
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(start ?? "") || !/^\d{4}-\d{2}-\d{2}$/.test(end ?? "") || start! > end! || !["active", "pending", "pastDue"].includes(statusFilter ?? "")) {
-      return NextResponse.json({ error: "VALID_FILTERS_REQUIRED" }, { status: 400 });
-    }
-
-    const db = getAdminDb();
-    const get = (provider: string) => db.collection("salesOrders").doc(provider).collection("orders").where("orderDateId", ">=", start!).where("orderDateId", "<=", end!).get();
-    const [att, tfiber, manual, repsSnapshot] = await Promise.all([get("att"), get("tfiber"), get("manual"), db.collection("reps").where("status", "==", "active").get()]);
-    const reps = new Map(repsSnapshot.docs.map((document) => [document.id, document.data()]));
-    const today = toDateId(new Date());
-    const providerFilter = url.searchParams.get("provider") || "both";
-    const location = url.searchParams.get("location") || "all";
-    const fixedManager = url.searchParams.get("manager") || "all";
-    const fixedRep = url.searchParams.get("rep") || "all";
-    const orderId = (url.searchParams.get("orderId") || "").toLowerCase();
-    const repText = (url.searchParams.get("repText") || "").toLowerCase();
-    const managerText = (url.searchParams.get("managerText") || "").toLowerCase();
-    const providerName = (order: Order) => String(order.provider) === "att" ? "ATT" : String(order.provider) === "tfiber" ? "T-Fiber" : String(order.provider) === "frontier" ? "Frontier" : "Manual";
-    const rows = dedupeOrders([...att.docs, ...tfiber.docs, ...manual.docs].map((document) => ({ id: document.id, ...(document.data() as Record<string, unknown>) }))) as Order[];
-    const filtered = rows
-      .map((order) => {
-        const rep = order.matchedRepUid ? reps.get(String(order.matchedRepUid)) : undefined;
-        const raw = order.rawData as Record<string, unknown> | undefined;
-        return {
-          orderId: sanitizeOrderId(order.orderId || order.orderUid || order.id),
-          orderDateId: String(order.orderDateId || ""),
-          installDateId: String(order.installationDateId || ""),
-          customer: String(raw?.["Customer Name"] || raw?.["Street Address"] || ""),
-          representative: String(rep?.displayName || order.rawRepName || "Not on roster"),
-          manager: String(rep?.managerName || order.rawManagerName || ""),
-          location: String(rep?.locationName || ""),
-          provider: providerName(order),
-          accountStatus: String(order.accountStatus || ""),
-          classification: classify(order.accountStatus),
-        };
-      })
-      .filter((row) => {
-        const overdue = /^\d{4}-\d{2}-\d{2}$/.test(row.installDateId) && row.installDateId < today && row.classification !== "active" && row.classification !== "cancelled" && row.classification !== "preorder";
-        return (statusFilter === "pastDue" ? overdue : row.classification === statusFilter)
-          && (providerFilter === "both" || row.provider === providerFilter)
-          && (location === "all" || row.location === location)
-          && (fixedManager === "all" || row.manager === fixedManager)
-          && (fixedRep === "all" || row.representative === fixedRep)
-          && (!orderId || row.orderId.toLowerCase().includes(orderId))
-          && (!repText || row.representative.toLowerCase().includes(repText))
-          && (!managerText || row.manager.toLowerCase().includes(managerText));
-      })
-      .sort((a, b) => a.installDateId.localeCompare(b.installDateId) || a.orderId.localeCompare(b.orderId));
-
-    if (url.searchParams.get("format") === "csv") {
-      const headers = ["Order Date", "Install Date", "Order Number", "Customer / Address", "Representative", "Manager", "Location", "Provider", "Account Status"];
-      const csv = [headers.map(cell).join(","), ...filtered.map((row) => [row.orderDateId, row.installDateId, row.orderId, row.customer, row.representative, row.manager, row.location, row.provider, row.accountStatus].map(cell).join(","))].join("\n");
-      return new NextResponse(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${statusFilter}-install-orders-${start}-to-${end}.csv"` } });
-    }
-
-    return NextResponse.json({ rows: filtered.slice(0, 1000), total: filtered.length });
+    const range = resolveRange(url);
+    const window = await buildWindow(range);
+    const response: PerformanceResponse = {
+      range,
+      totals: window.totals,
+      trend: window.trend,
+      reps: window.reps,
+      teams: window.teams,
+      orders: window.orders,
+      filters: window.filters,
+    };
+    return NextResponse.json(response);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "STATUS_ORDERS_FAILED" }, { status: 500 });
+    const message = error instanceof Error ? error.message : "UNKNOWN";
+    return NextResponse.json({ error: message }, { status: message === "UNAUTHENTICATED" ? 401 : 500 });
   }
 }

@@ -1,4 +1,4 @@
-import type { SaleOutcome, SalesOrderRecord } from "@/src/lib/sales/outcomes";
+import type { SaleOutcome, SaleOutcomeOptions, SalesOrderRecord } from "@/src/lib/sales/outcomes";
 import { isPastDue, normalizeSaleOutcome, saleOutcomeLabel } from "@/src/lib/sales/outcomes";
 
 export type PerformanceOrder = SalesOrderRecord & {
@@ -22,8 +22,8 @@ export type PerformanceOrder = SalesOrderRecord & {
   daysSinceSale?: number | null;
 };
 
-export function outcomeLabel(order: SalesOrderRecord) {
-  return saleOutcomeLabel(normalizeSaleOutcome(order));
+export function outcomeLabel(order: SalesOrderRecord, options?: SaleOutcomeOptions) {
+  return saleOutcomeLabel(normalizePerformanceOutcome(order, options));
 }
 
 export function outcomeBadgeVariant(outcome: SaleOutcome) {
@@ -46,9 +46,9 @@ export function calculateCancellationRate(total: number, canceled: number) {
   return total ? Math.round((canceled / total) * 100) : 0;
 }
 
-export function normalizePerformanceOutcome(order: SalesOrderRecord) {
-  if (isPastDue(order)) return "past_due" as const;
-  return normalizeSaleOutcome(order);
+export function normalizePerformanceOutcome(order: SalesOrderRecord, options?: SaleOutcomeOptions) {
+  if (isPastDue(order, options)) return "past_due" as const;
+  return normalizeSaleOutcome(order, options);
 }
 
 export { isPastDue, normalizeSaleOutcome };

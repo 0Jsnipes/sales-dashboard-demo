@@ -18,8 +18,21 @@ export type SalesOrderRecord = {
   saleCount?: number;
 };
 
+export type SaleOutcomeOptions = {
+  /**
+   * Date used when deciding whether an estimated install is past due.
+   * For T-Fiber reports, pass the report-as-of date so the dashboard does not
+   * mark orders past due before the source export has had a chance to update.
+   */
+  asOfDate?: Date | string;
+};
+
 function text(value: unknown) {
   return String(value ?? "").trim();
+}
+
+function normalizedText(value: unknown) {
+  return text(value).toLowerCase().replace(/\s+/g, " ");
 }
 
 export function sanitizeOrderId(value: unknown) {
@@ -35,11 +48,27 @@ function dateIdFromValue(value: unknown) {
   return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
 }
 
+function providerKey(value: unknown) {
+  const source = normalizedText(value).replace(/[^a-z]/g, "");
+  if (source === "tfiber" || source.includes("tfiber")) return "tfiber";
+  if (source === "att" || source.includes("att")) return "att";
+  if (source === "frontier" || source.includes("frontier")) return "frontier";
+  return source || "manual";
+}
+
+function isTFiberOrder(order: SalesOrderRecord) {
+  return providerKey(order.provider) === "tfiber";
+}
+
 function actualInstallDateId(order: SalesOrderRecord) {
   const raw = order.rawData ?? {};
-  const explicit = dateIdFromValue(readFirstText(raw, ["Installation Date", "Install Date", "Installed Date", "Actual Installation Date", "Actual Install Date"]));
+  const explicit = dateIdFromValue(readFirstText(raw, ["Activation Date", "Installation Date", "Install Date", "Installed Date", "Actual Installation Date", "Actual Install Date"]));
   if (explicit) return explicit;
-  if (String(order.provider || "").toLowerCase().includes("t-fiber") || String(order.provider || "").toLowerCase() === "tfiber") return "";
+
+  // T-Fiber's exported "Est. Installation Date" is not proof of an install.
+  // Only Activation Date / a true actual install date should count as installed.
+  if (isTFiberOrder(order)) return "";
+
   return dateIdFromValue(order.installationDateId);
 }
 
@@ -48,7 +77,7 @@ function accountStatusText(order: SalesOrderRecord) {
   return [
     order.accountStatus,
     readFirstText(raw, ["Account Status", "Status", "Order Status", "Install Status", "Installation Status", "Current Status"]),
-  ].map((value) => text(value).toLowerCase()).find(Boolean) ?? "";
+  ].map((value) => normalizedText(value)).find(Boolean) ?? "";
 }
 
 function isPreorderStatus(order: SalesOrderRecord, status = accountStatusText(order)) {
@@ -56,11 +85,11 @@ function isPreorderStatus(order: SalesOrderRecord, status = accountStatusText(or
   if (/pre[\s-]?order/.test(status)) return true;
 
   const likelyFields = ["Account Status", "Status", "Order Status", "Install Status", "Installation Status", "Current Status", "Order Type", "Sale Type", "Sales Type", "Type", "Category", "Stage", "Phase", "Preorder", "Pre-Order", "Pre Order"];
-  if (likelyFields.some((key) => /pre[\s-]?order/.test(text(raw[key]).toLowerCase()))) return true;
+  if (likelyFields.some((key) => /pre[\s-]?order/.test(normalizedText(raw[key])))) return true;
 
   for (const [key, value] of Object.entries(raw)) {
     const normalizedKey = key.toLowerCase();
-    const normalizedValue = text(value).toLowerCase();
+    const normalizedValue = normalizedText(value);
     if (normalizedKey.includes("preorder")) {
       if (normalizedValue && !["0", "false", "no", "n", "off"].includes(normalizedValue)) return true;
     }
@@ -69,6 +98,30 @@ function isPreorderStatus(order: SalesOrderRecord, status = accountStatusText(or
   }
 
   return false;
+}
+
+function normalizeTFiberSaleOutcome(order: SalesOrderRecord, status = accountStatusText(order)): SaleOutcome {
+  if (status.includes("cancel")) return "canceled";
+  if (status.includes("churn")) return "churned";
+  if (isPreorderStatus(order, status)) return "preorder";
+
+  // T-Fiber status buckets should mirror the Excel export exactly.
+  if (status === "active") return "installed";
+  if (status === "pending installation") return "pending";
+
+  const actualInstall = actualInstallDateId(order);
+  if (actualInstall) return "installed";
+  return "unknown";
+}
+
+function asOfStartOfDay(options?: SaleOutcomeOptions) {
+  const source = options?.asOfDate;
+  if (source instanceof Date) return startOfDay(source);
+  if (typeof source === "string" && source.trim()) {
+    const parsed = parseISO(source.length === 10 ? `${source}T12:00:00` : source);
+    if (!Number.isNaN(parsed.valueOf())) return startOfDay(parsed);
+  }
+  return startOfDay(new Date());
 }
 
 export function readFirstText(raw: Record<string, unknown> | undefined, keys: string[]) {
@@ -80,8 +133,10 @@ export function readFirstText(raw: Record<string, unknown> | undefined, keys: st
   return "";
 }
 
-export function normalizeSaleOutcome(order: SalesOrderRecord): SaleOutcome {
+export function normalizeSaleOutcome(order: SalesOrderRecord, _options?: SaleOutcomeOptions): SaleOutcome {
   const status = accountStatusText(order);
+
+  if (isTFiberOrder(order)) return normalizeTFiberSaleOutcome(order, status);
 
   if (status.includes("cancel")) return "canceled";
   if (status.includes("churn")) return "churned";
@@ -95,17 +150,27 @@ export function normalizeSaleOutcome(order: SalesOrderRecord): SaleOutcome {
   return "unknown";
 }
 
-export function isPastDue(order: SalesOrderRecord) {
+export function isPastDue(order: SalesOrderRecord, options?: SaleOutcomeOptions) {
   const status = accountStatusText(order);
-  if (status.includes("cancel") || status.includes("churn") || isPreorderStatus(order, status)) return false;
+
+  if (isTFiberOrder(order)) {
+    // For T-Fiber, only Pending Installation orders can be past due.
+    // Active, canceled, churned, and preorders are never past due.
+    if (normalizeTFiberSaleOutcome(order, status) !== "pending") return false;
+  } else if (status.includes("cancel") || status.includes("churn") || isPreorderStatus(order, status)) {
+    return false;
+  }
 
   const estimated = order.estimatedInstallationDateId
     || dateIdFromValue(readFirstText(order.rawData, ["Est. Installation Date", "Estimated Installation Date", "ETA Installation Date", "Install ETA"]));
+
   if (!estimated) return status.includes("past due") || status.includes("pastdue") || status.includes("late");
+
   const actualInstall = actualInstallDateId(order);
   if (actualInstall) return false;
+
   try {
-    return isBefore(parseISO(`${estimated}T12:00:00`), startOfDay(new Date()));
+    return isBefore(parseISO(`${estimated}T12:00:00`), asOfStartOfDay(options));
   } catch {
     return false;
   }

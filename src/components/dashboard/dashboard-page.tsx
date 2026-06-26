@@ -19,8 +19,20 @@ import { toDateId, weekRangeLabel } from "@/src/lib/date/week";
 import { formatDateTime } from "@/src/lib/formatters/date";
 import { formatCompact, formatDelta, formatNumber } from "@/src/lib/formatters/number";
 
+type OrderStatusTotals = {
+  total: number;
+  installed: number;
+  pending: number;
+  pastDue: number;
+  preorder: number;
+  canceled: number;
+  churned: number;
+  unknown: number;
+};
+
 type OverviewResponse = {
   week: { start: string; end: string };
+  orderStatusRange?: { start: string; end: string };
   totalSales: number;
   totalSalesGoal: number;
   totalKnocks: number;
@@ -33,10 +45,13 @@ type OverviewResponse = {
   alerts: { type: "pace" | "roster" | "upload"; title: string; detail: string }[];
   goalPacing: { repUid: string; displayName: string; sales: number; goal: number; expected: number; remaining: number; neededPerDay: number }[];
   freshness: { att: { uploadedAt: string | null; rows: number; fileName: string } | null; tfiber: { uploadedAt: string | null; rows: number; fileName: string } | null };
-  statusFunnel: Record<string, Record<string, number>>;
+  statusFunnel: Record<string, OrderStatusTotals>;
+  orderStatusTotals?: OrderStatusTotals;
   teamSnapshot: { manager: string; location: string; sales: number; goal: number }[];
   efficiency: { repUid: string; displayName: string; sales: number; knocks: number; conversion: number }[];
 };
+
+const emptyOrderStatusTotals = (): OrderStatusTotals => ({ total: 0, installed: 0, pending: 0, pastDue: 0, preorder: 0, canceled: 0, churned: 0, unknown: 0 });
 
 const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const providerColors: Record<string, string> = {
@@ -231,25 +246,33 @@ export function DashboardPage() {
   );
 
   const statusTotals = useMemo(() => {
-    const totals = { installed: 0, pending: 0, cancelled: 0, other: 0 };
+    if (data?.orderStatusTotals) return data.orderStatusTotals;
+    const totals = emptyOrderStatusTotals();
     for (const statuses of Object.values(data?.statusFunnel ?? {})) {
-      totals.installed += statuses["Installed / Active"] ?? 0;
-      totals.pending += (statuses.Pending ?? 0) + (statuses.Scheduled ?? 0) + (statuses.Preorder ?? 0);
-      totals.cancelled += statuses.Cancelled ?? 0;
-      totals.other += statuses.Other ?? 0;
+      totals.total += statuses.total ?? 0;
+      totals.installed += statuses.installed ?? 0;
+      totals.pending += statuses.pending ?? 0;
+      totals.pastDue += statuses.pastDue ?? 0;
+      totals.preorder += statuses.preorder ?? 0;
+      totals.canceled += statuses.canceled ?? 0;
+      totals.churned += statuses.churned ?? 0;
+      totals.unknown += statuses.unknown ?? 0;
     }
     return totals;
   }, [data]);
 
   const orderBreakdownData = useMemo(() => {
-    const total = statusTotals.installed + statusTotals.pending + statusTotals.cancelled + statusTotals.other;
+    const total = statusTotals.total || data?.totalSales || 0;
     return [
-      { name: "Installed", value: statusTotals.installed, fill: "var(--success)", share: salesSharePercent(statusTotals.installed, total) },
-      { name: "Pending", value: statusTotals.pending, fill: "var(--warning)", share: salesSharePercent(statusTotals.pending, total) },
-      { name: "Cancelled", value: statusTotals.cancelled, fill: "var(--danger)", share: salesSharePercent(statusTotals.cancelled, total) },
-      { name: "Other", value: statusTotals.other, fill: "var(--info)", share: salesSharePercent(statusTotals.other, total) },
-    ];
-  }, [statusTotals]);
+      { name: "Active", value: statusTotals.installed, fill: "var(--success)", share: salesSharePercent(statusTotals.installed, total) },
+      { name: "Pending total", value: statusTotals.pending, fill: "var(--warning)", share: salesSharePercent(statusTotals.pending, total) },
+      { name: "Past due subset", value: statusTotals.pastDue, fill: "var(--destructive)", share: salesSharePercent(statusTotals.pastDue, total) },
+      { name: "Preorders", value: statusTotals.preorder, fill: "var(--info)", share: salesSharePercent(statusTotals.preorder, total) },
+      { name: "Canceled", value: statusTotals.canceled, fill: "var(--danger)", share: salesSharePercent(statusTotals.canceled, total) },
+      { name: "Churned", value: statusTotals.churned, fill: "var(--muted-foreground)", share: salesSharePercent(statusTotals.churned, total) },
+      { name: "Unknown", value: statusTotals.unknown, fill: "var(--muted)", share: salesSharePercent(statusTotals.unknown, total) },
+    ].filter((item) => item.value > 0);
+  }, [data?.totalSales, statusTotals]);
 
   const topReps = useMemo(
     () => (data?.topReps ?? []).map((rep) => ({ ...rep, share: salesSharePercent(rep.sales, data?.totalSales ?? 0) })),
@@ -274,6 +297,7 @@ export function DashboardPage() {
   const providerTotal = providerBreakdown.reduce((sum, item) => sum + item.value, 0);
   const hasTrendData = dayChartData.some((item) => item.sales > 0);
   const hasOrderBreakdown = orderBreakdownData.some((item) => item.value > 0);
+  const statusRangeLabel = data.orderStatusRange ? weekRangeLabel(data.orderStatusRange.start, data.orderStatusRange.end) : weekLabel;
   const freshnessRows = [
     { label: "ATT", source: data.freshness.att },
     { label: "T-Fiber", source: data.freshness.tfiber },
@@ -343,8 +367,9 @@ export function DashboardPage() {
         <KpiCard label="Goal progress" value={formatPercent(goalProgress)} detail={`${formatNumber(data.totalSales)} of ${formatNumber(data.totalSalesGoal)} goal`} icon={Gauge} badgeLabel="Weekly goal" />
         <KpiCard label="Total knocks" value={formatNumber(data.totalKnocks)} detail={`${formatCompact(data.activeReps ? data.totalKnocks / data.activeReps : 0)} per active rep`} icon={Target} href="/knocks" />
         <KpiCard label="Conversion" value={formatPercent(conversion)} detail="Sales divided by knocks" icon={BarChart3} />
-        <KpiCard label="Installed" value={formatNumber(statusTotals.installed)} detail="Installed or active orders" icon={CheckCircle2} badgeVariant="success" />
-        <KpiCard label="Pending" value={formatNumber(statusTotals.pending)} detail="Open installs and follow-up" icon={Clock3} badgeVariant="warning" />
+        <KpiCard label="Active" value={formatNumber(statusTotals.installed)} detail={`Status range: ${statusRangeLabel}`} icon={CheckCircle2} badgeVariant="success" />
+        <KpiCard label="Pending" value={formatNumber(statusTotals.pending)} detail={`${formatNumber(statusTotals.pastDue)} past due subset`} icon={Clock3} badgeVariant="warning" />
+        <KpiCard label="Past due" value={formatNumber(statusTotals.pastDue)} detail="Pending installs past the report date" icon={TriangleAlert} badgeVariant={statusTotals.pastDue ? "danger" : "success"} />
         <KpiCard label="Active reps" value={formatNumber(data.activeReps)} detail="Roster members with active status" icon={Users} href="/roster" />
         <KpiCard label="Alerts" value={formatNumber(data.alerts.length)} detail="Pacing, roster, and upload items" icon={TriangleAlert} badgeVariant={data.alerts.length ? "danger" : "success"} />
       </section>
@@ -404,7 +429,7 @@ export function DashboardPage() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_.9fr]">
-        <ChartCard title="Order breakdown" description="Installed, pending, cancelled, and other order volume.">
+        <ChartCard title="Order status health" description={`Active, pending, past-due subset, canceled, churned, and preorder volume for ${statusRangeLabel}.`}>
           <div className="h-[320px]">
             {hasOrderBreakdown ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -412,7 +437,7 @@ export function DashboardPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                   <XAxis dataKey="name" tickLine={false} axisLine={false} />
                   <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
-                  <RechartsTooltip formatter={(value) => [formatNumber(Number(value)), "Sales"]} />
+                  <RechartsTooltip formatter={(value) => [formatNumber(Number(value)), "Orders"]} />
                   <Bar dataKey="value" radius={[12, 12, 0, 0]}>
                     {orderBreakdownData.map((entry) => <Cell key={entry.name} fill={entry.fill} />)}
                   </Bar>

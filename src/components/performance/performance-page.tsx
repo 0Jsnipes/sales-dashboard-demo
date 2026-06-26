@@ -234,7 +234,7 @@ function countOutcomes(orders: PerformanceOrder[]) {
     const outcome = order.outcome ?? "unknown";
     if (outcome === "installed") totals.installed += units;
     else if (outcome === "pending") totals.pending += units;
-    else if (outcome === "past_due") totals.past_due += units;
+    else if (outcome === "past_due") { totals.pending += units; totals.past_due += units; }
     else if (outcome === "preorder") totals.preorder += units;
     else if (outcome === "canceled") totals.canceled += units;
     else if (outcome === "churned") totals.churned += units;
@@ -649,7 +649,7 @@ export function PerformancePage() {
       row.total += units;
       if (order.outcome === "installed") row.installed += units;
       else if (order.outcome === "pending") row.pending += units;
-      else if (order.outcome === "past_due") row.pastDue += units;
+      else if (order.outcome === "past_due") { row.pending += units; row.pastDue += units; }
       else if (order.outcome === "preorder") row.preorder += units;
       else if (order.outcome === "canceled") row.canceled += units;
       else if (order.outcome === "churned") row.churned += units;
