@@ -756,6 +756,7 @@ export function RosterPage() {
                     <p>Phone: {selectedRep.phone || "—"}</p>
                     <p>Email: {selectedRep.email || "—"}</p>
                     <p>Status: {statusLabel(selectedRep.status)}</p>
+                    <p>Added: {formatDate(selectedRep.createdAt)}</p>
                   </ProfileCard>
                   <ProfileCard title="Organization">
                     <p>Manager: {selectedRep.managerName || "—"}</p>
@@ -788,7 +789,10 @@ export function RosterPage() {
                   <p className="mt-2 text-sm text-muted-foreground">Create account CTA is a placeholder unless a backend invite endpoint exists.</p>
                 </ProfileCard>
                 <ProfileCard title="Notes / audit">
-                  <p className="text-sm text-muted-foreground">Notes and audit history are not backed by a dedicated endpoint yet.</p>
+                  <p>Created: {formatDateTime(selectedRep.createdAt)}</p>
+                  <p>Updated: {formatDateTime(selectedRep.updatedAt)}</p>
+                  <p>Reactivated: {formatDateTime(selectedRep.reactivatedAt)}</p>
+                  <p className="pt-2 text-sm text-muted-foreground">Notes and audit history are not backed by a dedicated endpoint yet.</p>
                 </ProfileCard>
                 <div className="flex flex-wrap gap-2">
                   <Button onClick={() => { setEditing(selectedRep); setForm(repToForm(selectedRep)); setEditorOpen(true); }}>Edit rep</Button>

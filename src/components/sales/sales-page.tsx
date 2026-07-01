@@ -45,6 +45,7 @@ type ActionTarget = {
 };
 
 type SalesGridRow = SalesRepGroup & {
+  createdAt?: unknown;
   email?: string;
   programIds?: string[];
   source: "roster" | "sales" | "unmatched";
@@ -55,6 +56,41 @@ function normalizeProviderFilter(value: string) {
   if (source === "att" || source === "at&t") return "att";
   if (source === "tfiber" || source === "t-fiber" || source === "tmobile fiber" || source === "t-mobile fiber") return "tfiber";
   return source;
+}
+
+function toValidDate(value: unknown) {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.valueOf()) ? null : value;
+  if (typeof value === "number") {
+    const date = new Date(value);
+    return Number.isNaN(date.valueOf()) ? null : date;
+  }
+  if (typeof value === "string") {
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00`) : new Date(value);
+    return Number.isNaN(date.valueOf()) ? null : date;
+  }
+  if (typeof value === "object") {
+    const candidate = value as { toDate?: () => Date; seconds?: number; nanoseconds?: number };
+    if (typeof candidate.toDate === "function") {
+      const date = candidate.toDate();
+      return date instanceof Date && !Number.isNaN(date.valueOf()) ? date : null;
+    }
+    if (typeof candidate.seconds === "number") {
+      const millis = candidate.seconds * 1000 + Math.floor((candidate.nanoseconds ?? 0) / 1_000_000);
+      const date = new Date(millis);
+      return Number.isNaN(date.valueOf()) ? null : date;
+    }
+  }
+  return null;
+}
+
+function isRecentlyAdded(value: unknown, days = 14) {
+  const createdAt = toValidDate(value);
+  if (!createdAt) return false;
+  const now = new Date();
+  const windowEnd = new Date(createdAt);
+  windowEnd.setDate(windowEnd.getDate() + days);
+  return now >= createdAt && now < windowEnd;
 }
 
 function LoadingState() {
@@ -234,6 +270,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const [locationFilter, setLocationFilter] = useQueryState("location", parseAsString.withDefault("all"));
   const [vendorFilter, setVendorFilter] = useQueryState("vendor", parseAsString.withDefault("all"));
   const [providerFilter, setProviderFilter] = useQueryState("provider", parseAsString.withDefault("all"));
+  const [showNewRepHighlights, setShowNewRepHighlights] = useQueryState("showNewRepHighlights", parseAsString.withDefault("1"));
   const [viewMode, setViewMode] = useQueryState("view", parseAsString.withDefault("rep"));
   const [rangeMode, setRangeMode] = useQueryState("range", parseAsString.withDefault("wtd"));
   const [showZeroSales, setShowZeroSales] = useQueryState("showZeroSales", parseAsString.withDefault("1"));
@@ -338,6 +375,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
       if (salesRow) {
         return {
           ...salesRow,
+          createdAt: rep.createdAt,
           email: rep.email,
           programIds: rep.programIds,
           source: "sales" as const,
@@ -370,6 +408,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
         orders: [],
         days: reportSegments.map(() => 0),
         week: data?.week ?? { start: weekStart, end: weekStart },
+        createdAt: rep.createdAt,
         email: rep.email,
         programIds: rep.programIds,
         source: "roster" as const,
@@ -770,6 +809,15 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                 <SelectItem value="tfiber">T-Fiber</SelectItem>
               </SelectContent>
             </Select>
+            {!isKnocks ? (
+              <div className="flex h-11 items-center justify-between gap-3 rounded-full border border-border/60 bg-background/80 px-4 shadow-sm">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium leading-none">Highlight new reps</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Show reps added in the last 2 weeks</p>
+                </div>
+                <Switch checked={showNewRepHighlights !== "0"} onCheckedChange={(checked) => void setShowNewRepHighlights(checked ? "1" : "0")} aria-label="Highlight new reps" />
+              </div>
+            ) : null}
             <div className="flex h-11 items-center justify-between gap-3 rounded-full border border-border/60 bg-background/80 px-4 shadow-sm">
               <div className="min-w-0">
                 <p className="text-sm font-medium leading-none">Show zero {workspaceNameLower}</p>
@@ -840,10 +888,19 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                   </TableHeader>
                   <TableBody>
                     {rowSegments.map(({ row: rep, counts }) => (
-                      <TableRow key={rep.key} className="h-16 border-border/60 transition-colors hover:bg-muted/20">
+                      <TableRow
+                        key={rep.key}
+                        className={cn(
+                          "h-16 border-border/60 transition-colors hover:bg-muted/20",
+                          !isKnocks && showNewRepHighlights !== "0" && isRecentlyAdded(rep.createdAt) ? "bg-emerald-50/80 hover:bg-emerald-50 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/30" : undefined,
+                        )}
+                      >
                         <TableCell className="font-medium">
                           <div className="min-w-0">
-                            <div className="truncate">{rep.displayName}</div>
+                            <div className="flex items-center gap-2">
+                              <div className="truncate">{rep.displayName}</div>
+                              {!isKnocks && showNewRepHighlights !== "0" && isRecentlyAdded(rep.createdAt) ? <Badge variant="success">New</Badge> : null}
+                            </div>
                             <div className="mt-1 text-xs text-muted-foreground xl:hidden">
                               {rep.managerName || "No manager"} / {rep.locationName || "No location"}
                             </div>
