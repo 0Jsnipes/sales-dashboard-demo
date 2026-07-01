@@ -333,6 +333,7 @@ export function RosterPage() {
     { accessorKey: "salesIds", header: "IDs / aliases", cell: ({ row }) => <span>{row.original.salesIds.length} / {row.original.aliases.length}</span> },
     { accessorKey: "weeklySalesGoal", header: "Sales goal", cell: ({ row }) => <span>{row.original.weeklySalesGoal || 0}</span> },
     { accessorKey: "weeklyKnocksGoal", header: "Knocks goal", cell: ({ row }) => <span>{(row.original as Rep & { weeklyKnocksGoal?: number }).weeklyKnocksGoal || 0}</span> },
+    { accessorKey: "lastSaleDateId", header: "Last sale", cell: ({ row }) => row.original.status === "inactive" ? <span>{formatDate(row.original.lastSaleDateId) || "—"}</span> : <span className="text-muted-foreground">—</span> },
     { accessorKey: "status", header: "Status", cell: ({ row }) => <Badge variant={statusVariant(row.original.status)}>{statusLabel(row.original.status)}</Badge> },
     { id: "readiness", header: "Account readiness", cell: ({ row }) => <Badge variant={readinessVariant(readiness(row.original))}>{readinessLabel(readiness(row.original))}</Badge> },
     { accessorKey: "updatedAt", header: "Last updated", cell: ({ row }) => <span className="text-sm text-muted-foreground">{formatDateTime(row.original.updatedAt as string | Date | null | undefined)}</span> },
@@ -717,6 +718,7 @@ export function RosterPage() {
                   <div className="grid gap-2 text-sm text-muted-foreground">
                     <p>Manager: {rep.managerName || "—"}</p>
                     <p>Location: {rep.locationName || "—"}</p>
+                    {rep.status === "inactive" ? <p>Last sale: {formatDate(rep.lastSaleDateId) || "—"}</p> : null}
                 <p>Sales goal: {rep.weeklySalesGoal || 0}</p>
                 <p>Knocks goal: {(rep as Rep & { weeklyKnocksGoal?: number }).weeklyKnocksGoal || 0}</p>
                 <p>Readiness: {readinessLabel(readiness(rep))}</p>
@@ -756,6 +758,7 @@ export function RosterPage() {
                     <p>Phone: {selectedRep.phone || "—"}</p>
                     <p>Email: {selectedRep.email || "—"}</p>
                     <p>Status: {statusLabel(selectedRep.status)}</p>
+                    {selectedRep.status === "inactive" ? <p>Last sale: {formatDate(selectedRep.lastSaleDateId) || "—"}</p> : null}
                     <p>Added: {formatDate(selectedRep.createdAt)}</p>
                   </ProfileCard>
                   <ProfileCard title="Organization">
