@@ -35,7 +35,7 @@ import type { Rep } from "@/src/types/rep";
 import type { Location } from "@/src/types/location";
 import type { ManagerOption } from "@/src/types/manager";
 import { useAuth } from "@/src/components/auth-provider";
-import { formatDateTime } from "@/src/lib/formatters/date";
+import { formatDate, formatDateTime } from "@/src/lib/formatters/date";
 
 type RepForm = {
   displayName: string;

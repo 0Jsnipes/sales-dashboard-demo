@@ -12,6 +12,7 @@ export type AccessRule = {
 export const DEFAULT_ADMIN_PERMISSIONS: AppUser["permissions"] = {
   canViewDashboard: true,
   canViewPerformance: true,
+  canViewReporting: false,
   canViewSales: true,
   canViewKnocks: true,
   canViewRoster: true,

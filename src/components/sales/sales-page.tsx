@@ -357,6 +357,19 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const displayRangeEnd = rangeMode === "mtd"
     ? rangeEnd
     : toDateId(endOfWeek(new Date(`${weekStart}T12:00:00`)));
+  const exportHref = useMemo(() => {
+    if (isKnocks) return "";
+    const params = new URLSearchParams({
+      start: rangeStart,
+      end: rangeEnd,
+      manager: managerFilter,
+      rep: repFilter,
+      location: locationFilter,
+      vendorType: vendorFilter,
+      provider: providerFilter,
+    });
+    return `/api/sales/export?${params.toString()}`;
+  }, [isKnocks, locationFilter, managerFilter, providerFilter, rangeEnd, rangeStart, repFilter, vendorFilter]);
 
   const reportSegments = useMemo(() => buildRangeSegments(rangeMode === "mtd" ? "mtd" : "wtd", data?.week.start ?? rangeStart, rangeMode === "mtd" ? data?.week.end ?? rangeEnd : displayRangeEnd), [data?.week.end, data?.week.start, displayRangeEnd, rangeEnd, rangeMode, rangeStart]);
   const segmentIndexByDateId = useMemo(() => {
@@ -370,6 +383,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const rows = useMemo<SalesGridRow[]>(() => {
     const salesRows = data?.reps ?? [];
     const salesByRepUid = new Map(salesRows.filter((row) => row.repUid).map((row) => [row.repUid as string, row]));
+    const rosterRepUids = new Set(rosterOptions.map((rep) => rep.repUid));
     const rosterRows = rosterOptions.map((rep) => {
       const salesRow = salesByRepUid.get(rep.repUid);
       if (salesRow) {
@@ -414,8 +428,20 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
         source: "roster" as const,
       };
     });
+    const historicalSalesRows = salesRows
+      .filter((row): row is typeof row & { repUid: string } => {
+        const repUid = row.repUid;
+        return typeof repUid === "string" && repUid.length > 0 && !rosterRepUids.has(repUid);
+      })
+      .map((row) => ({
+        ...row,
+        createdAt: undefined,
+        email: undefined,
+        programIds: [],
+        source: "sales" as const,
+      }));
     const unmatchedRows = salesRows.filter((row) => !row.repUid).map((row) => ({ ...row, source: "unmatched" as const }));
-    return [...rosterRows, ...unmatchedRows].sort((a, b) => a.displayName.localeCompare(b.displayName));
+    return [...rosterRows, ...historicalSalesRows, ...unmatchedRows].sort((a, b) => a.displayName.localeCompare(b.displayName));
   }, [data?.reps, data?.week, reportSegments, rosterOptions, weekStart]);
 
   const visibleRows = useMemo(() => {
@@ -644,11 +670,16 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     }
   }
 
+  function syncGoalState(repUid: string, goal: number) {
+    setData((current) => current ? { ...current, reps: current.reps.map((row) => row.repUid === repUid ? { ...row, [goalField]: goal } : row) } : current);
+    setRosterOptions((current) => current.map((item) => item.repUid === repUid ? { ...item, [goalField]: goal } : item));
+  }
+
   async function updateInlineGoal(rep: SalesRepGroup, nextGoal: string) {
     if (!rep.repUid) return;
     const previousGoal = Number(rep[goalField] || 0);
     const goal = Number(nextGoal || 0);
-    setData((current) => current ? { ...current, reps: current.reps.map((row) => row.repUid === rep.repUid ? { ...row, [goalField]: goal } : row) } : current);
+    syncGoalState(rep.repUid, goal);
     try {
       const response = await authedFetch(`/api/reps/${rep.repUid}`, {
         method: "PATCH",
@@ -659,7 +690,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
       toast.success("Weekly goal updated.");
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to save goal.");
-      setData((current) => current ? { ...current, reps: current.reps.map((row) => row.repUid === rep.repUid ? { ...row, [goalField]: previousGoal } : row) } : current);
+      syncGoalState(rep.repUid, previousGoal);
     } finally {}
   }
 
@@ -748,7 +779,18 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                 <RefreshCcw className="h-4 w-4" />
                 Refresh
               </Button>
-                <Button variant="outline" size="sm" className="rounded-full" onClick={() => toast.message("Export remains on the existing backend export route.")}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => {
+                    if (isKnocks) {
+                      toast.message("Knocks export is not available from this screen.");
+                      return;
+                    }
+                    window.location.href = exportHref;
+                  }}
+                >
                   <Download className="h-4 w-4" />
                   Export
                 </Button>
@@ -940,7 +982,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                               value={Number(rep[goalField] || 0)}
                               onChange={(event) => {
                                 const nextGoal = Number(event.target.value || 0);
-                                setData((current) => current ? { ...current, reps: current.reps.map((row) => row.repUid === rep.repUid ? { ...row, [goalField]: nextGoal } : row) } : current);
+                                if (rep.repUid) syncGoalState(rep.repUid, nextGoal);
                               }}
                               onBlur={(event) => void updateInlineGoal(rep, event.target.value)}
                               aria-label={`Weekly goal for ${rep.displayName}`}

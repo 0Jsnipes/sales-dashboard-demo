@@ -10,6 +10,7 @@ export const runtime = "nodejs";
 const permissions = z.object({
   canViewDashboard: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewDashboard),
   canViewPerformance: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewPerformance),
+  canViewReporting: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewReporting),
   canViewSales: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewSales),
   canViewKnocks: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewKnocks),
   canViewRoster: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewRoster),

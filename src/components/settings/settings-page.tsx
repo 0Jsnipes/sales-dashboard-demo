@@ -35,6 +35,7 @@ type UserRow = {
   permissions: {
     canViewDashboard: boolean;
     canViewPerformance: boolean;
+    canViewReporting: boolean;
     canViewSales: boolean;
     canViewKnocks: boolean;
     canViewRoster: boolean;
@@ -65,6 +66,7 @@ const defaultAdminPermissions: UserRow["permissions"] = DEFAULT_ADMIN_PERMISSION
 const pagePermissionGroups = [
   { key: "canViewDashboard", label: "Dashboard", group: "Page access" },
   { key: "canViewPerformance", label: "Performance", group: "Page access" },
+  { key: "canViewReporting", label: "Reporting", group: "Page access" },
   { key: "canViewSales", label: "Sales", group: "Page access" },
   { key: "canViewKnocks", label: "Knocks", group: "Page access" },
   { key: "canViewRoster", label: "Roster", group: "Page access" },

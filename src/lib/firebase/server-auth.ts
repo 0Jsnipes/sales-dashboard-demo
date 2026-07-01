@@ -40,3 +40,7 @@ export function canManageOnboarding(actor: ServerActor) {
 export function canReassignSales(actor: ServerActor) {
   return actor.profile.role === "superAdmin" || (canAccessFiber(actor) && actor.profile.role === "admin" && actor.profile.permissions.canReassignSales);
 }
+
+export function canViewReporting(actor: ServerActor) {
+  return actor.profile.role === "superAdmin" || (canAccessFiber(actor) && actor.profile.role === "admin" && actor.profile.permissions.canViewReporting);
+}

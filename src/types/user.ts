@@ -18,6 +18,7 @@ export interface AppUser {
     canEditOnboarding: boolean;
     canCreateUsers: boolean;
     canViewPerformance: boolean;
+    canViewReporting: boolean;
     canViewSales: boolean;
     canViewKnocks: boolean;
     canViewRoster: boolean;

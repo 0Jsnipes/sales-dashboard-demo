@@ -6,6 +6,7 @@ import { AppShell } from "@/src/components/layout/app-shell";
 import { appNav, canAccessNavItem } from "@/src/components/layout/navigation";
 import { DashboardPage } from "@/src/components/dashboard/dashboard-page";
 import { PerformancePage } from "@/src/components/performance/performance-page";
+import { ReportingPage } from "@/src/components/reporting/reporting-page";
 import { SalesPage } from "@/src/components/sales/sales-page";
 import { KnocksPage } from "@/src/components/knocks/knocks-page";
 import { RosterPage } from "@/src/components/roster/roster-page";
@@ -17,7 +18,7 @@ import { SettingsPage } from "@/src/components/settings/settings-page";
 import { Card, CardContent } from "@/components/ui/card";
 import { ShieldAlert } from "lucide-react";
 
-export function OperationsApp({ view }: { view: "dashboard" | "performance" | "sales" | "knocks" | "roster" | "onboarding" | "imports" | "unmatched" | "backfill" | "settings" }) {
+export function OperationsApp({ view }: { view: "dashboard" | "performance" | "reporting" | "sales" | "knocks" | "roster" | "onboarding" | "imports" | "unmatched" | "backfill" | "settings" }) {
   return (
     <RequireAuth>
       <OperationsShell view={view} />
@@ -25,11 +26,12 @@ export function OperationsApp({ view }: { view: "dashboard" | "performance" | "s
   );
 }
 
-function OperationsShell({ view }: { view: "dashboard" | "performance" | "sales" | "knocks" | "roster" | "onboarding" | "imports" | "unmatched" | "backfill" | "settings" }) {
+function OperationsShell({ view }: { view: "dashboard" | "performance" | "reporting" | "sales" | "knocks" | "roster" | "onboarding" | "imports" | "unmatched" | "backfill" | "settings" }) {
   const { profile } = useAuth();
   const screen =
     view === "dashboard" ? <DashboardPage /> :
     view === "performance" ? <PerformancePage /> :
+    view === "reporting" ? <ReportingPage /> :
     view === "sales" ? <SalesPage /> :
     view === "knocks" ? <KnocksPage /> :
     view === "roster" ? <RosterPage /> :
@@ -42,6 +44,7 @@ function OperationsShell({ view }: { view: "dashboard" | "performance" | "sales"
   const meta =
     view === "dashboard" ? { title: "Dashboard", subtitle: "Live sales performance for the current week." } :
     view === "performance" ? { title: "Performance", subtitle: "Executive analytics for sales, installs, and order status." } :
+    view === "reporting" ? { title: "Reporting", subtitle: "Spreadsheet-style reporting for sales and knocks with full-column filtering." } :
     view === "sales" ? { title: "Sales", subtitle: "Weekly sales rows, filters, and goal management." } :
     view === "knocks" ? { title: "Knocks", subtitle: "Knock reporting workspace and intake landing zone." } :
     view === "roster" ? { title: "Roster", subtitle: "Reps, managers, locations, and identity management." } :

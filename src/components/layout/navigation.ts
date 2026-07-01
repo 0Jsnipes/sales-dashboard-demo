@@ -1,10 +1,11 @@
-import { LayoutDashboard, BarChart3, TrendingUp, Target, Users, UserCheck, FileUp, CalendarDays, Settings } from "lucide-react";
+import { LayoutDashboard, BarChart3, TableProperties, TrendingUp, Target, Users, UserCheck, FileUp, CalendarDays, Settings } from "lucide-react";
 import type { AppUser } from "@/src/types/user";
 import { canAccessRule, type AccessRule } from "@/src/lib/access";
 
 export const appNav = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, businessUnit: "fiber", permission: "canViewDashboard" },
   { label: "Performance", href: "/performance", icon: BarChart3, businessUnit: "fiber", permission: "canViewPerformance" },
+  { label: "Reporting", href: "/reporting", icon: TableProperties, businessUnit: "fiber", permission: "canViewReporting" },
   { label: "Sales", href: "/sales", icon: TrendingUp, businessUnit: "fiber", permission: "canViewSales" },
   { label: "Knocks", href: "/knocks", icon: Target, businessUnit: "fiber", permission: "canViewKnocks" },
   { label: "Roster", href: "/roster", icon: Users, businessUnit: "fiber", permission: "canViewRoster" },

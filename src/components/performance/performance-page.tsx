@@ -14,6 +14,7 @@ import { endOfWeek, startOfWeek, toDateId, weekRangeLabel } from "@/src/lib/date
 import { formatDate } from "@/src/lib/formatters/date";
 import { formatNumber, formatPercent } from "@/src/lib/formatters/number";
 import { calculateCancellationRate, calculateInstallRate, outcomeBadgeVariant, type PerformanceOrder } from "@/src/lib/performance/performance-utils";
+import { buildSalesExportRows, buildWorksheetData } from "@/src/lib/reports/sales-export";
 import { saleOutcomeLabel, sanitizeOrderId } from "@/src/lib/sales/outcomes";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -265,13 +266,16 @@ function groupTeamRows(rows: Array<{ managerName: string; locationName: string; 
     .sort((a, b) => b.sales - a.sales || a.name.localeCompare(b.name));
 }
 
-function csvCell(value: unknown) {
-  return `"${String(value ?? "").replace(/"/g, '""')}"`;
-}
-
-function downloadCsv(filename: string, rows: Array<Array<unknown>>) {
-  const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+async function downloadWorkbook(filename: string, sheets: Array<{ name: string; rows: Record<string, unknown>[] }>) {
+  const XLSX = await import("xlsx");
+  const workbook = XLSX.utils.book_new();
+  for (const sheet of sheets) {
+    const data = buildWorksheetData(sheet.rows);
+    const worksheet = XLSX.utils.json_to_sheet(data.rows, { header: data.headers });
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name.slice(0, 31) || "Sheet1");
+  }
+  const output = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+  const blob = new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -838,32 +842,29 @@ export function PerformancePage() {
   const installRate = calculateInstallRate(scopedTotals.sales, scopedTotals.installed);
   const cancellationRate = calculateCancellationRate(scopedTotals.sales, scopedTotals.canceled);
 
-  const exportSummary = () => {
-    downloadCsv(`performance-summary-${toDateId(new Date())}.csv`, [["Metric", "Value"], ...summaryRows]);
-    toast.message("Downloaded a live performance summary.");
+  const exportSummary = async () => {
+    const summarySheet = summaryRows.map(([metric, value]) => ({ Metric: metric, Value: value, Scope: topFiltersLabel }));
+    await downloadWorkbook(`performance-report-${toDateId(new Date())}.xlsx`, [
+      { name: "Summary", rows: summarySheet },
+      { name: "Orders", rows: buildSalesExportRows(scopedOrders) },
+      { name: "Past Due", rows: buildSalesExportRows(pastDueRows) },
+    ]);
+    toast.message("Downloaded the performance report workbook.");
   };
 
-  const exportOrders = (orders: PerformanceOrder[], prefix: string) => {
-      downloadCsv(
-        `${prefix}-${toDateId(new Date())}.csv`,
-        [
-          ["Sale date", "Rep", "Manager", "Location", "Provider", "Vendor type", "Customer / order", "Outcome", "Status", "ETA", "Units"],
-          ...orders.map((order) => [
-            order.orderDateId,
-            order.repName,
-            order.managerName,
-            order.locationName,
-            order.provider,
-            vendorTypeLabel(order.vendorType),
-            `${order.customer} (${sanitizeOrderId(order.orderId)})`,
-            saleOutcomeLabel(order.outcome ?? "unknown"),
-            statusLabel(order),
-            etaValue(order),
-            unitsFor(order),
-          ]),
-      ],
+  const exportOrders = async (orders: PerformanceOrder[], prefix: string) => {
+    const grouped = new Map<string, PerformanceOrder[]>();
+    for (const order of orders) {
+      const provider = order.provider === "ATT" || order.provider === "T-Fiber" ? order.provider : "Other";
+      const current = grouped.get(provider) ?? [];
+      current.push(order);
+      grouped.set(provider, current);
+    }
+    await downloadWorkbook(
+      `${prefix}-${toDateId(new Date())}.xlsx`,
+      [...grouped.entries()].map(([name, providerOrders]) => ({ name, rows: buildSalesExportRows(providerOrders) })),
     );
-    toast.message("Downloaded CSV export.");
+    toast.message("Downloaded the report workbook.");
   };
 
   function openReassign(order: PerformanceOrder) {

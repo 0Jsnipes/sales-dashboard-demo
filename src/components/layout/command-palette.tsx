@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LayoutDashboard, BarChart3, TrendingUp, Users, FileUp, UserCheck, CalendarDays, Settings, Search, Target } from "lucide-react";
+import { LayoutDashboard, BarChart3, TableProperties, TrendingUp, Users, FileUp, UserCheck, CalendarDays, Settings, Search, Target } from "lucide-react";
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command";
 import { visibleAppNav } from "@/src/components/layout/navigation";
 import { canAccessRule, type AccessRule } from "@/src/lib/access";
@@ -20,6 +20,7 @@ const actions = [
   { label: "Backfill sale", href: "/backfill", icon: CalendarDays, shortcut: "B", businessUnit: "fiber", permissions: ["canViewBackfill", "canRunBackfill"] },
   { label: "Open onboarding", href: "/onboarding", icon: UserCheck, shortcut: "O", businessUnit: "fiber", permission: "canViewOnboarding" },
   { label: "View performance", href: "/performance", icon: BarChart3, shortcut: "P", businessUnit: "fiber", permission: "canViewPerformance" },
+  { label: "Open reporting", href: "/reporting", icon: TableProperties, shortcut: "G", businessUnit: "fiber", permission: "canViewReporting" },
   { label: "Open sales", href: "/sales", icon: TrendingUp, shortcut: "S", businessUnit: "fiber", permission: "canViewSales" },
   { label: "Open dashboard", href: "/dashboard", icon: LayoutDashboard, shortcut: "D", businessUnit: "fiber", permission: "canViewDashboard" },
   { label: "Open settings", href: "/settings", icon: Settings, shortcut: ",", businessUnit: "all", permission: "canViewSettings" },
