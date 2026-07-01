@@ -1,4 +1,4 @@
-import { isBefore, parseISO, startOfDay } from "date-fns";
+import { differenceInCalendarDays, isBefore, parseISO, startOfDay } from "date-fns";
 
 export type SaleOutcome = "installed" | "pending" | "past_due" | "preorder" | "canceled" | "churned" | "unknown";
 
@@ -171,6 +171,18 @@ export function isPastDue(order: SalesOrderRecord, options?: SaleOutcomeOptions)
 
   try {
     return isBefore(parseISO(`${estimated}T12:00:00`), asOfStartOfDay(options));
+  } catch {
+    return false;
+  }
+}
+
+export function isPastDueOlderThan(order: SalesOrderRecord, maxAgeDays: number, options?: SaleOutcomeOptions) {
+  if (!isPastDue(order, options)) return false;
+  const saleDate = String(order.orderDateId || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(saleDate)) return false;
+
+  try {
+    return differenceInCalendarDays(asOfStartOfDay(options), parseISO(`${saleDate}T12:00:00`)) > maxAgeDays;
   } catch {
     return false;
   }

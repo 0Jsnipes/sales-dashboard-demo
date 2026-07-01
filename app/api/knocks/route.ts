@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { canImportSales, requireActor } from "@/src/lib/firebase/server-auth";
+import { reactivateInactiveRepsForMatchedSales } from "@/src/lib/reps/lifecycle";
 import type { Rep } from "@/src/types/rep";
 import { parseCommonFilters, parseDateRangeParams, toDateId } from "@/src/lib/api/report-filters";
 import { detectKnockSource } from "@/src/lib/knocks/source-detection";
@@ -92,6 +93,13 @@ function buildRange(searchParams: URLSearchParams, rangeMode: string | null) {
   return { start: dateRange.weekStart ?? dateId(monday), end: dateId(sunday), monday, sunday };
 }
 
+function normalizeProvider(value: unknown) {
+  const source = String(value || "").trim().toLowerCase();
+  if (source === "att" || source === "at&t") return "att";
+  if (source === "tfiber" || source === "t-fiber" || source === "t-mobile fiber" || source === "tmobile fiber") return "tfiber";
+  return source;
+}
+
 export async function GET(request: Request) {
   try {
     await requireActor(request);
@@ -107,13 +115,18 @@ export async function GET(request: Request) {
     const dayCount = Math.max(1, Math.floor((new Date(`${range.end}T12:00:00`).getTime() - new Date(`${range.start}T12:00:00`).getTime()) / 86_400_000) + 1);
 
     const grouped = new Map<string, KnockGroup>();
+    const selectedProvider = normalizeProvider(filters.provider);
     for (let offset = 0; offset < dayCount; offset += 1) {
       const cursor = new Date(`${range.start}T12:00:00`);
       cursor.setDate(cursor.getDate() + offset);
       const daily = await db.collection("knockDaily").doc(dateId(cursor)).collection("reps").get();
       for (const document of daily.docs) {
         const data = document.data() as Record<string, unknown>;
-        const count = Number(data.knocks ?? data.count ?? 0);
+        const count = selectedProvider === "att"
+          ? Number(data.attKnocks ?? 0)
+          : selectedProvider === "tfiber"
+            ? Number(data.tfiberKnocks ?? 0)
+            : Number(data.knocks ?? data.count ?? 0);
         if (!count) continue;
         const rep = resolveRep({ ...data, repUid: document.id }, roster);
         const repUid = rep?.repUid ?? String(data.repUid || document.id || "");
@@ -173,6 +186,7 @@ export async function GET(request: Request) {
       if (filters.location && filters.location !== "all" && String(rep.locationName || "") !== filters.location) return false;
       if (filters.repId && rep.repUid !== filters.repId) return false;
       if (filters.rep && filters.rep !== "all" && String(rep.displayName || "") !== filters.rep) return false;
+      if (filters.vendor && filters.vendor !== "all" && String(rep.vendorType || "unassigned") !== filters.vendor) return false;
       const term = filters.search?.trim().toLowerCase();
       if (!term) return true;
       return [
@@ -216,6 +230,7 @@ export async function POST(request: Request) {
     const db = getAdminDb();
     const knockDaily = db.collection("knockDaily");
     const repMap = new Map(reps.map((rep) => [rep.repUid, rep]));
+    const inactiveRepUids = new Set(reps.filter((rep) => rep.status === "inactive").map((rep) => rep.repUid));
     const dayTotals = new Map<string, Map<string, { knocks: number; attKnocks: number; tfiberKnocks: number; source: string; rawRepName: string; rawSalesId: string; managerName: string; locationName: string }>>();
     for (const row of parsed.rows) {
       const day = row.activityDateKey;
@@ -231,9 +246,28 @@ export async function POST(request: Request) {
       byRep.set(repUid, current);
       dayTotals.set(day, byRep);
     }
+    const existingKnockCountsByRepDay = new Map<string, number>();
+    for (const day of dayTotals.keys()) {
+      const snapshot = await knockDaily.doc(day).collection("reps").get();
+      for (const document of snapshot.docs) {
+        const repUid = String(document.id || "").trim();
+        if (!repUid || !inactiveRepUids.has(repUid)) continue;
+        const data = document.data();
+        existingKnockCountsByRepDay.set(`${repUid}::${day}`, Number(data.knocks ?? data.count ?? 0));
+      }
+    }
+    const newlyActiveKnockRepUids = new Set<string>();
     for (const [day, repsForDay] of dayTotals.entries()) {
       const batch = db.batch();
       for (const [repUid, data] of repsForDay.entries()) {
+        if (inactiveRepUids.has(repUid) && Number(data.knocks || 0) > 0) {
+          const repDayKey = `${repUid}::${day}`;
+          const existingCount = existingKnockCountsByRepDay.get(repDayKey) ?? 0;
+          if (existingCount <= 0) {
+            newlyActiveKnockRepUids.add(repUid);
+            existingKnockCountsByRepDay.set(repDayKey, Number(data.knocks || 0));
+          }
+        }
         const ref = knockDaily.doc(day).collection("reps").doc(repUid);
         batch.set(ref, {
           repUid,
@@ -254,6 +288,7 @@ export async function POST(request: Request) {
       }
       await batch.commit();
     }
+    const repsReactivated = await reactivateInactiveRepsForMatchedSales(newlyActiveKnockRepUids, db, "system:matched-knock-import");
     await db.collection("uploadRuns").doc(uploadId).set({
       uploadId,
       type: "knockImport",
@@ -267,9 +302,9 @@ export async function POST(request: Request) {
       rowsMatched: parsed.summary.matchedRows,
       rowsUnmatched: parsed.summary.unmatchedRows,
       status: "complete",
-      summary: { source, knockCount: parsed.summary.validRows },
+      summary: { source, knockCount: parsed.summary.validRows, repsReactivated },
     }, { merge: true });
-    return NextResponse.json({ ok: true, uploadId, storagePath, summary: parsed.summary }, { status: 201 });
+    return NextResponse.json({ ok: true, uploadId, storagePath, summary: { ...parsed.summary, repsReactivated } }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "UNKNOWN";
     const status = message === "UNAUTHENTICATED" ? 401 : message === "PROFILE_NOT_FOUND" ? 403 : 500;

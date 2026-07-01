@@ -1,5 +1,5 @@
 import type { SaleOutcome, SaleOutcomeOptions, SalesOrderRecord } from "@/src/lib/sales/outcomes";
-import { isPastDue, normalizeSaleOutcome, saleOutcomeLabel } from "@/src/lib/sales/outcomes";
+import { isPastDue, isPastDueOlderThan, normalizeSaleOutcome, saleOutcomeLabel } from "@/src/lib/sales/outcomes";
 
 export type PerformanceOrder = SalesOrderRecord & {
   orderUid: string;
@@ -47,8 +47,9 @@ export function calculateCancellationRate(total: number, canceled: number) {
 }
 
 export function normalizePerformanceOutcome(order: SalesOrderRecord, options?: SaleOutcomeOptions) {
+  if (isPastDueOlderThan(order, 31, options)) return "canceled" as const;
   if (isPastDue(order, options)) return "past_due" as const;
   return normalizeSaleOutcome(order, options);
 }
 
-export { isPastDue, normalizeSaleOutcome };
+export { isPastDue, isPastDueOlderThan, normalizeSaleOutcome };

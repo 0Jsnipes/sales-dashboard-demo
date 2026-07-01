@@ -46,8 +46,16 @@ type ActionTarget = {
 
 type SalesGridRow = SalesRepGroup & {
   email?: string;
+  programIds?: string[];
   source: "roster" | "sales" | "unmatched";
 };
+
+function normalizeProviderFilter(value: string) {
+  const source = value.trim().toLowerCase();
+  if (source === "att" || source === "at&t") return "att";
+  if (source === "tfiber" || source === "t-fiber" || source === "tmobile fiber" || source === "t-mobile fiber") return "tfiber";
+  return source;
+}
 
 function LoadingState() {
   return (
@@ -224,6 +232,8 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const [managerFilter, setManagerFilter] = useQueryState("manager", parseAsString.withDefault("all"));
   const [repFilter, setRepFilter] = useQueryState("rep", parseAsString.withDefault("all"));
   const [locationFilter, setLocationFilter] = useQueryState("location", parseAsString.withDefault("all"));
+  const [vendorFilter, setVendorFilter] = useQueryState("vendor", parseAsString.withDefault("all"));
+  const [providerFilter, setProviderFilter] = useQueryState("provider", parseAsString.withDefault("all"));
   const [viewMode, setViewMode] = useQueryState("view", parseAsString.withDefault("rep"));
   const [rangeMode, setRangeMode] = useQueryState("range", parseAsString.withDefault("wtd"));
   const [showZeroSales, setShowZeroSales] = useQueryState("showZeroSales", parseAsString.withDefault("1"));
@@ -255,6 +265,8 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
       manager: managerFilter,
       location: locationFilter,
       rep: repFilter,
+      vendor: vendorFilter,
+      provider: providerFilter,
     });
     try {
       if (!options?.silent) setLoading(true);
@@ -274,7 +286,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, [kind, locationFilter, managerFilter, rangeMode, repFilter, search, weekStart, workspaceNameLower]);
+  }, [kind, locationFilter, managerFilter, providerFilter, rangeMode, repFilter, search, vendorFilter, weekStart, workspaceNameLower]);
 
   useEffect(() => {
     let active = true;
@@ -327,6 +339,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
         return {
           ...salesRow,
           email: rep.email,
+          programIds: rep.programIds,
           source: "sales" as const,
           managerName: rep.managerName || salesRow.managerName,
           locationName: rep.locationName || salesRow.locationName,
@@ -358,6 +371,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
         days: reportSegments.map(() => 0),
         week: data?.week ?? { start: weekStart, end: weekStart },
         email: rep.email,
+        programIds: rep.programIds,
         source: "roster" as const,
       };
     });
@@ -368,15 +382,24 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const visibleRows = useMemo(() => {
     const term = search.trim().toLowerCase();
     const includeZeroSales = showZeroSales !== "0";
+    const selectedProvider = normalizeProviderFilter(providerFilter);
     return rows.filter((row) => {
       const matchesSearch = !term || [row.displayName, row.managerName, row.locationName, row.programName, row.rawSalesId, row.email, ...row.orders.map((order) => order.customerName), ...row.orders.map((order) => order.orderNumber)].join(" ").toLowerCase().includes(term);
+      const matchesVendor = vendorFilter === "all" || row.vendorType === vendorFilter;
+      const rowProviders = row.orders.map((order) => normalizeProviderFilter(order.provider)).filter(Boolean);
+      const rosterProviders = (row.programIds ?? []).map(normalizeProviderFilter).filter(Boolean);
+      const matchesProvider = providerFilter === "all"
+        || rowProviders.includes(selectedProvider)
+        || (!rowProviders.length && rosterProviders.includes(selectedProvider));
       return matchesSearch
         && (managerFilter === "all" || row.managerName === managerFilter)
         && (repFilter === "all" || row.displayName === repFilter)
         && (locationFilter === "all" || row.locationName === locationFilter)
+        && matchesVendor
+        && matchesProvider
         && (includeZeroSales || row.total > 0);
     });
-  }, [locationFilter, managerFilter, repFilter, rows, search, showZeroSales]);
+  }, [locationFilter, managerFilter, providerFilter, repFilter, rows, search, showZeroSales, vendorFilter]);
 
   const teamChart = useMemo(() => visibleRows.map((row) => ({ name: row.displayName, sales: row.total })).slice(0, 12), [visibleRows]);
 
@@ -700,7 +723,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
             </TabsList>
           </Tabs>
 
-          <div className="grid gap-3 rounded-[24px] border border-border/60 bg-muted/20 p-4 shadow-sm md:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-3 rounded-[24px] border border-border/60 bg-muted/20 p-4 shadow-sm md:grid-cols-2 xl:grid-cols-7">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -729,6 +752,22 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
               <SelectContent>
                 <SelectItem value="all">All locations</SelectItem>
                 {Array.from(new Set(rows.map((row) => row.locationName).filter((value) => value && value !== "—"))).map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={vendorFilter} onValueChange={setVendorFilter}>
+              <SelectTrigger className="h-11 rounded-full border-border/60 bg-background/80 shadow-sm"><SelectValue placeholder="Vendor type" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All vendor types</SelectItem>
+                <SelectItem value="organic">Organic</SelectItem>
+                <SelectItem value="subVendor">Sub-vendor</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={providerFilter} onValueChange={setProviderFilter}>
+              <SelectTrigger className="h-11 rounded-full border-border/60 bg-background/80 shadow-sm"><SelectValue placeholder="Provider" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All providers</SelectItem>
+                <SelectItem value="att">ATT</SelectItem>
+                <SelectItem value="tfiber">T-Fiber</SelectItem>
               </SelectContent>
             </Select>
             <div className="flex h-11 items-center justify-between gap-3 rounded-full border border-border/60 bg-background/80 px-4 shadow-sm">

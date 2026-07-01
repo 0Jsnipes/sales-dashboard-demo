@@ -34,9 +34,23 @@ export async function importTFiberRows({ rows, uploadId, actorUid, fileName, sto
   const db = getAdminDb();
   const reps = await loadSaleMatchableReps(db);
   const inactiveRepUids = new Set(reps.filter((rep) => rep.status === "inactive").map((rep) => rep.repUid));
-  const reactivatedRepUids = new Set<string>();
-  const existing = new Map((await orderCollection().get()).docs.map((document) => [document.id, document.data()]));
+  const [existingATT, existingTFiber, existingManual] = await Promise.all([
+    db.collection("salesOrders").doc("att").collection("orders").get(),
+    orderCollection().get(),
+    db.collection("salesOrders").doc("manual").collection("orders").get(),
+  ]);
+  const existing = new Map(existingTFiber.docs.map((document) => [document.id, document.data()]));
+  const existingSalesDaysByRep = new Set<string>();
+  for (const document of [...existingATT.docs, ...existingTFiber.docs, ...existingManual.docs]) {
+    const data = document.data();
+    const repUid = String(data.matchedRepUid || "").trim();
+    const orderDateId = String(data.orderDateId || "").trim();
+    if (!repUid || !orderDateId || !inactiveRepUids.has(repUid)) continue;
+    if (Number(data.saleCount || 1) <= 0) continue;
+    existingSalesDaysByRep.add(`${repUid}::${orderDateId}`);
+  }
   const orders: Array<{ orderUid: string; data: Record<string, unknown>; unmatched: boolean }> = [];
+  const newlyMatchedInactiveRepUids = new Set<string>();
   let skipped = 0; let matched = 0;
   for (const row of rows) {
     const orderId = String(row["Alt Order ID"] || row["Order #"] || "").trim();
@@ -46,7 +60,13 @@ export async function importTFiberRows({ rows, uploadId, actorUid, fileName, sto
     const previous = existing.get(orderUid);
     const result = previous?.lockedAssignment ? { repUid: previous.matchedRepUid as string | null, method: previous.matchMethod as string | null, confidence: 1, reason: "Locked manual assignment" } : matchImportRowToRep({ rawSalesId: String(row["Rep ID"] ?? ""), rawRepName: String(row.dealername ?? "") }, reps);
     const isMatched = Boolean(result.repUid);
-    if (result.repUid && inactiveRepUids.has(result.repUid)) reactivatedRepUids.add(result.repUid);
+    if (result.repUid && inactiveRepUids.has(result.repUid)) {
+      const repDayKey = `${result.repUid}::${orderDateId}`;
+      if (!existingSalesDaysByRep.has(repDayKey)) {
+        newlyMatchedInactiveRepUids.add(result.repUid);
+        existingSalesDaysByRep.add(repDayKey);
+      }
+    }
     if (isMatched) matched++;
     const estimatedInstallationDateId = dateId(row["Est. Installation Date"]);
     const activationDateId = dateId(row["Activation Date"]);
@@ -64,7 +84,7 @@ export async function importTFiberRows({ rows, uploadId, actorUid, fileName, sto
     }
     await batch.commit();
   }
-  const repsReactivated = await reactivateInactiveRepsForMatchedSales(reactivatedRepUids, db);
+  const repsReactivated = await reactivateInactiveRepsForMatchedSales(newlyMatchedInactiveRepUids, db);
   await db.collection("uploadRuns").doc(uploadId).set({ uploadId, type: "tfiberSales", fileName, storagePath, uploadedBy: actorUid, uploadedAt: FieldValue.serverTimestamp(), rowsRead: rows.length, rowsValid: orders.length, rowsSkipped: skipped, rowsMatched: matched, rowsUnmatched: orders.length - matched, selectedDateIds: [], status: "complete", errors: [], summary: { provider: "tfiber", saleCount: orders.length } }, { merge: true });
   return { rowsRead: rows.length, rowsImported: orders.length, rowsSkipped: skipped, rowsMatched: matched, rowsUnmatched: orders.length - matched, repsReactivated };
 }

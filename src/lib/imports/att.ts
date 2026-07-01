@@ -46,9 +46,23 @@ export async function importATTRows({ rows, uploadId, actorUid, fileName, storag
   const db = getAdminDb();
   const reps = await loadSaleMatchableReps(db);
   const inactiveRepUids = new Set(reps.filter((rep) => rep.status === "inactive").map((rep) => rep.repUid));
-  const reactivatedRepUids = new Set<string>();
-  const existing = new Map((await orderCollection().get()).docs.map((document) => [document.id, document.data()]));
+  const [existingAtt, existingTFiber, existingManual] = await Promise.all([
+    orderCollection().get(),
+    db.collection("salesOrders").doc("tfiber").collection("orders").get(),
+    db.collection("salesOrders").doc("manual").collection("orders").get(),
+  ]);
+  const existing = new Map(existingAtt.docs.map((document) => [document.id, document.data()]));
+  const existingSalesDaysByRep = new Set<string>();
+  for (const document of [...existingAtt.docs, ...existingTFiber.docs, ...existingManual.docs]) {
+    const data = document.data();
+    const repUid = String(data.matchedRepUid || "").trim();
+    const orderDateId = String(data.orderDateId || "").trim();
+    if (!repUid || !orderDateId || !inactiveRepUids.has(repUid)) continue;
+    if (Number(data.saleCount || 1) <= 0) continue;
+    existingSalesDaysByRep.add(`${repUid}::${orderDateId}`);
+  }
   const canonical = new Map<string, { orderUid: string; data: Record<string, unknown>; unmatched: boolean }>();
+  const newlyMatchedInactiveRepUids = new Set<string>();
   let skipped = 0;
   for (const row of rows) {
     const orderId = rowOrderId(row); const orderDateId = dateId(rowDate(row));
@@ -69,7 +83,13 @@ export async function importATTRows({ rows, uploadId, actorUid, fileName, storag
     const rawRepName = formatImportedName(rowRepName(row));
     const result = previous?.lockedAssignment ? { repUid: previous.matchedRepUid as string | null, method: previous.matchMethod as string | null } : matchImportRowToRep({ rawRepName }, reps);
     const isMatched = Boolean(result.repUid);
-    if (result.repUid && inactiveRepUids.has(result.repUid)) reactivatedRepUids.add(result.repUid);
+    if (result.repUid && inactiveRepUids.has(result.repUid)) {
+      const repDayKey = `${result.repUid}::${orderDateId}`;
+      if (!existingSalesDaysByRep.has(repDayKey)) {
+        newlyMatchedInactiveRepUids.add(result.repUid);
+        existingSalesDaysByRep.add(repDayKey);
+      }
+    }
     const saleCount = packageCount(serviceDetails);
     const packageName = serviceDetails.map((item) => item.packageName).filter(Boolean).join(" | ");
     const accountStatus = serviceDetails.map((item) => item.status).filter(Boolean).join(" | ") || "Unknown";
@@ -100,7 +120,7 @@ export async function importATTRows({ rows, uploadId, actorUid, fileName, storag
     await batch.commit();
   }
   const unmatchedSales = totalSales - matchedSales;
-  const repsReactivated = await reactivateInactiveRepsForMatchedSales(reactivatedRepUids, db);
+  const repsReactivated = await reactivateInactiveRepsForMatchedSales(newlyMatchedInactiveRepUids, db);
   await db.collection("uploadRuns").doc(uploadId).set({ uploadId, type: "attSales", fileName, storagePath, uploadedBy: actorUid, uploadedAt: FieldValue.serverTimestamp(), rowsRead: rows.length, rowsValid: totalSales, rowsSkipped: skipped, rowsMatched: matchedSales, rowsUnmatched: unmatchedSales, selectedDateIds: [], status: "complete", errors: [], summary: { provider: "att", saleCount: totalSales } }, { merge: true });
   return { rowsRead: rows.length, rowsImported: totalSales, rowsSkipped: skipped, rowsMatched: matchedSales, rowsUnmatched: unmatchedSales, repsReactivated };
 }

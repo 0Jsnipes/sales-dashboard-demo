@@ -46,7 +46,11 @@ export async function loadSaleMatchableReps(db: Firestore = getAdminDb()) {
   return snapshot.docs.map((document) => document.data() as Rep);
 }
 
-export async function reactivateInactiveRepsForMatchedSales(repUids: Iterable<string>, db: Firestore = getAdminDb()) {
+export async function reactivateInactiveRepsForMatchedSales(
+  repUids: Iterable<string>,
+  db: Firestore = getAdminDb(),
+  actor = "system:matched-sale-import",
+) {
   const unique = [...new Set([...repUids].map((repUid) => repUid.trim()).filter(Boolean))];
   for (const group of chunks(unique, 400)) {
     const batch = db.batch();
@@ -57,9 +61,9 @@ export async function reactivateInactiveRepsForMatchedSales(repUids: Iterable<st
         inactiveBy: FieldValue.delete(),
         inactiveReason: FieldValue.delete(),
         reactivatedAt: FieldValue.serverTimestamp(),
-        reactivatedBy: "system:matched-sale-import",
+        reactivatedBy: actor,
         updatedAt: FieldValue.serverTimestamp(),
-        updatedBy: "system:matched-sale-import",
+        updatedBy: actor,
       });
     }
     await batch.commit();
