@@ -268,6 +268,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const [managerFilter, setManagerFilter] = useQueryState("manager", parseAsString.withDefault("all"));
   const [repFilter, setRepFilter] = useQueryState("rep", parseAsString.withDefault("all"));
   const [locationFilter, setLocationFilter] = useQueryState("location", parseAsString.withDefault("all"));
+  const [lcpFilter, setLcpFilter] = useQueryState("lcp", parseAsString.withDefault("all"));
   const [vendorFilter, setVendorFilter] = useQueryState("vendor", parseAsString.withDefault("all"));
   const [providerFilter, setProviderFilter] = useQueryState("provider", parseAsString.withDefault("all"));
   const [showNewRepHighlights, setShowNewRepHighlights] = useQueryState("showNewRepHighlights", parseAsString.withDefault("1"));
@@ -301,6 +302,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
       search: search.trim(),
       manager: managerFilter,
       location: locationFilter,
+      ...(isKnocks && lcpFilter !== "all" ? { lcp: lcpFilter } : {}),
       rep: repFilter,
       vendor: vendorFilter,
       provider: providerFilter,
@@ -323,7 +325,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, [kind, locationFilter, managerFilter, providerFilter, rangeMode, repFilter, search, vendorFilter, weekStart, workspaceNameLower]);
+  }, [isKnocks, kind, lcpFilter, locationFilter, managerFilter, providerFilter, rangeMode, repFilter, search, vendorFilter, weekStart, workspaceNameLower]);
 
   useEffect(() => {
     let active = true;
@@ -448,23 +450,31 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     const term = search.trim().toLowerCase();
     const includeZeroSales = showZeroSales !== "0";
     const selectedProvider = normalizeProviderFilter(providerFilter);
+    const selectedLcp = lcpFilter.trim().toLowerCase();
     return rows.filter((row) => {
       const matchesSearch = !term || [row.displayName, row.managerName, row.locationName, row.programName, row.rawSalesId, row.email, ...row.orders.map((order) => order.customerName), ...row.orders.map((order) => order.orderNumber)].join(" ").toLowerCase().includes(term);
       const matchesVendor = vendorFilter === "all" || row.vendorType === vendorFilter;
       const rowProviders = row.orders.map((order) => normalizeProviderFilter(order.provider)).filter(Boolean);
       const rosterProviders = (row.programIds ?? []).map(normalizeProviderFilter).filter(Boolean);
+      const rowLcps = row.orders.flatMap((order) => {
+        const raw = order.rawData && typeof order.rawData === "object" ? order.rawData as Record<string, unknown> : {};
+        const values = raw.lcps;
+        return Array.isArray(values) ? values.map((value) => String(value).trim().toLowerCase()).filter(Boolean) : [];
+      });
       const matchesProvider = providerFilter === "all"
         || rowProviders.includes(selectedProvider)
         || (!rowProviders.length && rosterProviders.includes(selectedProvider));
+      const matchesLcp = !isKnocks || lcpFilter === "all" || rowLcps.includes(selectedLcp);
       return matchesSearch
         && (managerFilter === "all" || row.managerName === managerFilter)
         && (repFilter === "all" || row.displayName === repFilter)
         && (locationFilter === "all" || row.locationName === locationFilter)
         && matchesVendor
         && matchesProvider
+        && matchesLcp
         && (includeZeroSales || row.total > 0);
     });
-  }, [locationFilter, managerFilter, providerFilter, repFilter, rows, search, showZeroSales, vendorFilter]);
+  }, [isKnocks, lcpFilter, locationFilter, managerFilter, providerFilter, repFilter, rows, search, showZeroSales, vendorFilter]);
 
   const teamChart = useMemo(() => visibleRows.map((row) => ({ name: row.displayName, sales: row.total })).slice(0, 12), [visibleRows]);
 
@@ -804,7 +814,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
             </TabsList>
           </Tabs>
 
-          <div className="grid gap-3 rounded-[24px] border border-border/60 bg-muted/20 p-4 shadow-sm md:grid-cols-2 xl:grid-cols-7">
+          <div className="grid gap-3 rounded-[24px] border border-border/60 bg-muted/20 p-4 shadow-sm md:grid-cols-2 xl:grid-cols-8">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -851,11 +861,25 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                 <SelectItem value="tfiber">T-Fiber</SelectItem>
               </SelectContent>
             </Select>
+            {isKnocks ? (
+              <Select value={lcpFilter} onValueChange={setLcpFilter}>
+                <SelectTrigger className="h-11 rounded-full border-border/60 bg-background/80 shadow-sm"><SelectValue placeholder="LCP" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All LCPs</SelectItem>
+                  {Array.from(new Set(rows.flatMap((row) => row.orders.flatMap((order) => {
+                    const raw = order.rawData && typeof order.rawData === "object" ? order.rawData as Record<string, unknown> : {};
+                    const values = raw.lcps;
+                    return Array.isArray(values) ? values.map((value) => String(value).trim()).filter(Boolean) : [];
+                  }))))
+                    .sort((a, b) => a.localeCompare(b))
+                    .map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            ) : null}
             {!isKnocks ? (
               <div className="flex h-11 items-center justify-between gap-3 rounded-full border border-border/60 bg-background/80 px-4 shadow-sm">
                 <div className="min-w-0">
                   <p className="text-sm font-medium leading-none">Highlight new reps</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Show reps added in the last 2 weeks</p>
                 </div>
                 <Switch checked={showNewRepHighlights !== "0"} onCheckedChange={(checked) => void setShowNewRepHighlights(checked ? "1" : "0")} aria-label="Highlight new reps" />
               </div>
@@ -863,7 +887,6 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
             <div className="flex h-11 items-center justify-between gap-3 rounded-full border border-border/60 bg-background/80 px-4 shadow-sm">
               <div className="min-w-0">
                 <p className="text-sm font-medium leading-none">Show zero {workspaceNameLower}</p>
-                <p className="mt-1 text-xs text-muted-foreground">Include reps with no orders</p>
               </div>
               <Switch checked={showZeroSales !== "0"} onCheckedChange={(checked) => void setShowZeroSales(checked ? "1" : "0")} aria-label={`Show reps with zero ${workspaceNameLower}`} />
             </div>

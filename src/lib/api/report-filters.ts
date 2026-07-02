@@ -8,6 +8,7 @@ export type CommonFilters = {
   month?: string;
   manager?: string;
   location?: string;
+  lcp?: string;
   rep?: string;
   repId?: string;
   provider?: string;
@@ -57,6 +58,7 @@ export function parseCommonFilters(searchParams: URLSearchParams): CommonFilters
     month: searchParams.get("month") || undefined,
     manager: searchParams.get("manager") || undefined,
     location: searchParams.get("location") || undefined,
+    lcp: searchParams.get("lcp") || undefined,
     rep: searchParams.get("rep") || undefined,
     repId: searchParams.get("repId") || undefined,
     provider: searchParams.get("provider") || undefined,

@@ -47,6 +47,7 @@ type KnockGroup = {
   days: number[];
   total: number;
   accountStatuses: Record<string, number>;
+  lcps: string[];
   orders?: KnockOrder[];
 };
 
@@ -116,6 +117,7 @@ export async function GET(request: Request) {
 
     const grouped = new Map<string, KnockGroup>();
     const selectedProvider = normalizeProvider(filters.provider);
+    const selectedLcp = String(filters.lcp || "").trim().toLowerCase();
     for (let offset = 0; offset < dayCount; offset += 1) {
       const cursor = new Date(`${range.start}T12:00:00`);
       cursor.setDate(cursor.getDate() + offset);
@@ -128,6 +130,8 @@ export async function GET(request: Request) {
             ? Number(data.tfiberKnocks ?? 0)
             : Number(data.knocks ?? data.count ?? 0);
         if (!count) continue;
+        const lcps = Array.isArray(data.lcps) ? data.lcps.map((value) => String(value).trim()).filter(Boolean) : [];
+        if (selectedLcp && selectedLcp !== "all" && !lcps.some((value) => value.toLowerCase() === selectedLcp)) continue;
         const rep = resolveRep({ ...data, repUid: document.id }, roster);
         const repUid = rep?.repUid ?? String(data.repUid || document.id || "");
         const rawName = String(data.displayName || data.rawRepName || rep?.displayName || repUid || "Unassigned rep").trim();
@@ -146,12 +150,14 @@ export async function GET(request: Request) {
           days: Array.from({ length: dayCount }, () => 0),
           total: 0,
           accountStatuses: {},
+          lcps: [],
         };
         const [year, month, day] = dateId(cursor).split("-").map(Number);
         const anchor = range.monday ?? new Date(`${range.start}T12:00:00`);
         const dayIndex = Math.max(0, Math.min(dayCount - 1, Math.round((Date.UTC(year, month - 1, day) - Date.UTC(anchor.getFullYear(), anchor.getMonth(), anchor.getDate())) / 86_400_000)));
         group.days[dayIndex] += count;
         group.total += count;
+        group.lcps = Array.from(new Set([...group.lcps, ...lcps])).sort((a, b) => a.localeCompare(b));
         const accountStatus = String(data.accountStatus || "Recorded");
         group.accountStatuses[accountStatus] = (group.accountStatuses[accountStatus] || 0) + count;
         if (includeOrders) {
@@ -231,17 +237,18 @@ export async function POST(request: Request) {
     const knockDaily = db.collection("knockDaily");
     const repMap = new Map(reps.map((rep) => [rep.repUid, rep]));
     const inactiveRepUids = new Set(reps.filter((rep) => rep.status === "inactive").map((rep) => rep.repUid));
-    const dayTotals = new Map<string, Map<string, { knocks: number; attKnocks: number; tfiberKnocks: number; source: string; rawRepName: string; rawSalesId: string; managerName: string; locationName: string }>>();
+    const dayTotals = new Map<string, Map<string, { knocks: number; attKnocks: number; tfiberKnocks: number; source: string; rawRepName: string; rawSalesId: string; managerName: string; locationName: string; lcps: Set<string> }>>();
     for (const row of parsed.rows) {
       const day = row.activityDateKey;
       const repUid = row.repId ?? `unmatched:${normalizeRepName(row.repName)}`;
       const rep = row.repId ? repMap.get(row.repId) : undefined;
       const byRep = dayTotals.get(day) ?? new Map();
-      const current = byRep.get(repUid) ?? { knocks: 0, attKnocks: 0, tfiberKnocks: 0, source, rawRepName: row.repName, rawSalesId: row.sourceRepExternalId ?? "", managerName: rep?.managerName ?? "", locationName: rep?.locationName ?? "" };
+      const current = byRep.get(repUid) ?? { knocks: 0, attKnocks: 0, tfiberKnocks: 0, source, rawRepName: row.repName, rawSalesId: row.sourceRepExternalId ?? "", managerName: rep?.managerName ?? "", locationName: rep?.locationName ?? "", lcps: new Set<string>() };
       const count = Number(row.quantity || 1);
       current.knocks += count;
       if (row.provider === "ATT") current.attKnocks += count;
       if (row.provider === "T-Fiber") current.tfiberKnocks += count;
+      if (row.provider === "T-Fiber" && row.lcp) current.lcps.add(String(row.lcp).trim());
       if (!rep && row.repName && row.repName.length < current.rawRepName.length) current.rawRepName = row.repName;
       byRep.set(repUid, current);
       dayTotals.set(day, byRep);
@@ -282,6 +289,7 @@ export async function POST(request: Request) {
           tfiberKnocks: FieldValue.increment(data.tfiberKnocks),
           knocks: FieldValue.increment(data.knocks),
           count: FieldValue.increment(data.knocks),
+          ...(data.lcps.size ? { lcps: FieldValue.arrayUnion(...Array.from(data.lcps)) } : {}),
           updatedAt: FieldValue.serverTimestamp(),
           createdAt: FieldValue.serverTimestamp(),
         }, { merge: true });

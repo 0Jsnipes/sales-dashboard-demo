@@ -94,6 +94,8 @@ export function BackfillPage() {
   const [loading, setLoading] = useState(true);
   const [repsError, setRepsError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [runningKnockLcpBackfill, setRunningKnockLcpBackfill] = useState(false);
+  const [knockLcpBackfillSummary, setKnockLcpBackfillSummary] = useState<{ processedUploads: number; updatedDocs: number; daysTouched: number } | null>(null);
   const [draft, setDraft] = useState<BackfillDraft>(initialDraft);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [repOpen, setRepOpen] = useState(false);
@@ -205,6 +207,22 @@ export function BackfillPage() {
       toast.error(message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function runKnockLcpBackfill() {
+    setRunningKnockLcpBackfill(true);
+    try {
+      const response = await authedFetch("/api/knocks/backfill-lcp", { method: "POST" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to backfill knock LCPs.");
+      setKnockLcpBackfillSummary(result.summary ?? null);
+      toast.success("Knock LCP backfill completed.");
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Unable to backfill knock LCPs.";
+      toast.error(message);
+    } finally {
+      setRunningKnockLcpBackfill(false);
     }
   }
 
@@ -417,6 +435,28 @@ export function BackfillPage() {
         </Card>
 
         <div className="space-y-4">
+          <Card className="border-border/70">
+            <CardHeader>
+              <CardTitle>Knock LCP pull</CardTitle>
+              <CardDescription>Temporary tool to repopulate T-Fiber LCPs from historical knock uploads stored in Firebase.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="rounded-2xl border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">
+                This reads prior `knockImport` files from Storage and writes `lcps` onto historical `knockDaily` records so the knocks LCP filter can populate.
+              </div>
+              {knockLcpBackfillSummary ? (
+                <div className="rounded-2xl border border-border/70 p-4 text-sm">
+                  <p><span className="font-medium">Uploads processed:</span> {knockLcpBackfillSummary.processedUploads}</p>
+                  <p><span className="font-medium">Rep/day docs updated:</span> {knockLcpBackfillSummary.updatedDocs}</p>
+                  <p><span className="font-medium">Days touched:</span> {knockLcpBackfillSummary.daysTouched}</p>
+                </div>
+              ) : null}
+              <Button className="w-full" onClick={() => void runKnockLcpBackfill()} disabled={!allowed || runningKnockLcpBackfill}>
+                {runningKnockLcpBackfill ? "Pulling LCPs..." : "Pull historical knock LCPs"}
+              </Button>
+            </CardContent>
+          </Card>
+
           <Card className="border-border/70">
             <CardHeader>
               <CardTitle>Confirmation preview</CardTitle>
