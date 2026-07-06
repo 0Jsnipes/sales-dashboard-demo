@@ -93,6 +93,8 @@ function isIsoDate(value: string) {
 }
 
 function formatIsoDate(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/);
+  if (match) return `${Number(match[2])}/${Number(match[3])}/${match[1]}`;
   const date = new Date(value);
   if (Number.isNaN(date.valueOf())) return value;
   return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;

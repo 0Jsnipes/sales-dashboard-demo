@@ -3,13 +3,37 @@ import { getAdminDb } from "@/src/lib/firebase/admin";
 import { requireActor } from "@/src/lib/firebase/server-auth";
 import type { Rep } from "@/src/types/rep";
 import { formatImportedName } from "@/src/lib/matching/display-name";
-import { buildSourceExportRows, buildSourceWorksheetData } from "@/src/lib/reports/sales-export";
+import { buildSalesExportRows, buildWorksheetData } from "@/src/lib/reports/sales-export";
 import { sanitizeOrderId } from "@/src/lib/sales/outcomes";
 import * as XLSX from "xlsx";
 
 export const runtime = "nodejs";
 
 const isoWeek = (dateIdValue: string) => { const [year, month, day] = dateIdValue.split("-").map(Number); const value = new Date(Date.UTC(year, month - 1, day)); value.setUTCDate(value.getUTCDate() + 4 - (value.getUTCDay() || 7)); const yearStart = new Date(Date.UTC(value.getUTCFullYear(), 0, 1)); const week = Math.ceil((((value.valueOf() - yearStart.valueOf()) / 86400000) + 1) / 7); return value.getUTCFullYear() + "-W" + String(week).padStart(2, "0"); };
+const EXPORT_ONLY_COLUMNS = new Set([
+  "Normalized Order ID",
+  "Matched Rep",
+  "Matched Rep UID",
+  "Manager",
+  "Location",
+  "Vendor Type",
+  "Provider",
+  "Customer",
+  "Outcome",
+  "Status",
+  "Sale Count",
+  "Sale Date",
+  "Install Date (Normalized)",
+  "Estimated Install Date",
+  "Cancellation Date",
+  "Past Due",
+]);
+
+function pruneExportColumns(rows: Record<string, unknown>[]) {
+  return rows.map((row) => Object.fromEntries(
+    Object.entries(row).filter(([key]) => !EXPORT_ONLY_COLUMNS.has(key)),
+  ));
+}
 
 export async function GET(request: Request) {
   try {
@@ -33,23 +57,61 @@ export async function GET(request: Request) {
       const displayName = rep?.displayName ?? rawRepName;
       const locationName = locationFor(rep, String(order.orderDateId));
       return {
-        orderDate: String(order.orderDateId || ""),
+        orderUid: String(order.orderUid || document.id),
+        orderDateId: String(order.orderDateId || ""),
         provider: isATT ? "ATT" : "T-Fiber",
+        providerKey: String(order.provider || ""),
         orderId: sanitizeOrderId(order.orderId || order.orderUid || document.id),
         accountStatus: String(order.accountStatus || ""),
+        installationDateId: order.installationDateId ? String(order.installationDateId) : null,
+        estimatedInstallationDateId: order.estimatedInstallationDateId ? String(order.estimatedInstallationDateId) : null,
+        cancellationDateId: order.cancellationDateId ? String(order.cancellationDateId) : null,
+        saleCount: Number(order.saleCount || 1) || 1,
         representative: displayName,
         manager: rep?.managerName ?? (isATT ? "" : String(order.rawManagerName || "")),
         location: locationName,
         vendorType: rep?.vendorType ?? "unassigned",
+        rawRepName,
+        rawSalesId: String(order.rawSalesId || ""),
+        rawManagerName: String(order.rawManagerName || ""),
+        matchedRepUid: order.matchedRepUid ? String(order.matchedRepUid) : null,
         rawData: order.rawData && typeof order.rawData === "object" ? order.rawData as Record<string, unknown> : {},
       };
-    }).filter((row) => (filters.manager === "all" || row.manager === filters.manager) && (filters.rep === "all" || row.representative === filters.rep) && (filters.location === "all" || row.location === filters.location) && (filters.vendorType === "all" || row.vendorType === filters.vendorType) && (filters.provider === "all" || row.provider.toLowerCase() === filters.provider.toLowerCase())).sort((left, right) => left.orderDate.localeCompare(right.orderDate) || left.representative.localeCompare(right.representative));
-    const sourceRows = (provider: "ATT" | "T-Fiber") => buildSourceExportRows(exported.filter((row) => row.provider === provider).map((row) => ({ provider, rawData: row.rawData })));
+    }).filter((row) => (filters.manager === "all" || row.manager === filters.manager) && (filters.rep === "all" || row.representative === filters.rep) && (filters.location === "all" || row.location === filters.location) && (filters.vendorType === "all" || row.vendorType === filters.vendorType) && (filters.provider === "all" || row.provider.toLowerCase() === filters.provider.toLowerCase())).sort((left, right) => left.orderDateId.localeCompare(right.orderDateId) || left.representative.localeCompare(right.representative));
+    const reportRows = (provider: "ATT" | "T-Fiber") => pruneExportColumns(buildSalesExportRows(exported.filter((row) => row.provider === provider).map((row) => ({
+      orderUid: row.orderUid,
+      orderDateId: row.orderDateId,
+      provider: row.provider,
+      providerKey: row.providerKey,
+      orderId: row.orderId,
+      rawRepName: row.rawRepName,
+      rawSalesId: row.rawSalesId,
+      rawManagerName: row.rawManagerName,
+      matchedRepUid: row.matchedRepUid,
+      accountStatus: row.accountStatus,
+      installationDateId: row.installationDateId,
+      estimatedInstallationDateId: row.estimatedInstallationDateId,
+      cancellationDateId: row.cancellationDateId,
+      saleCount: row.saleCount,
+      rawData: row.rawData,
+      repName: row.representative,
+      managerName: row.manager,
+      locationName: row.location,
+      vendorType: row.vendorType,
+      outcome: "",
+      status: row.accountStatus,
+      pastDue: false,
+    }))));
     const worksheet = (rows: Record<string, unknown>[]) => {
-      const data = buildSourceWorksheetData(rows);
+      const data = buildWorksheetData(rows);
       return XLSX.utils.json_to_sheet(data.rows, { header: data.headers });
     };
-    const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet(sourceRows("ATT")), "ATT"); XLSX.utils.book_append_sheet(workbook, worksheet(sourceRows("T-Fiber")), "T-Fiber");
+    const workbook = XLSX.utils.book_new();
+    const attRows = reportRows("ATT");
+    const tfiberRows = reportRows("T-Fiber");
+    if (attRows.length) XLSX.utils.book_append_sheet(workbook, worksheet(attRows), "ATT");
+    if (tfiberRows.length) XLSX.utils.book_append_sheet(workbook, worksheet(tfiberRows), "T-Fiber");
+    if (!workbook.SheetNames.length) XLSX.utils.book_append_sheet(workbook, worksheet([]), "Export");
     const file = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
     return new NextResponse(file, { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="sales-export-${allTime ? "all-time" : `${start}-to-${end}`}.xlsx"` } });
   } catch (error) { const message = error instanceof Error ? error.message : "EXPORT_FAILED"; return NextResponse.json({ error: message }, { status: message === "UNAUTHENTICATED" ? 401 : 500 }); }
