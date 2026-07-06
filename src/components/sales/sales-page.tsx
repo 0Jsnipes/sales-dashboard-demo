@@ -41,13 +41,14 @@ type ViewMode = "rep" | "team";
 
 type ActionTarget = {
   rep: SalesRepGroup;
-  type: "goal" | "alias" | "location" | "roster";
+  type: "goal" | "alias" | "location" | "roster" | "restore";
 };
 
 type SalesGridRow = SalesRepGroup & {
   createdAt?: unknown;
   email?: string;
   programIds?: string[];
+  inActiveRoster: boolean;
   source: "roster" | "sales" | "unmatched";
 };
 
@@ -294,6 +295,12 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const [locationDraft, setLocationDraft] = useState("");
   const [managerCreating, setManagerCreating] = useState(false);
   const [locationCreating, setLocationCreating] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const refreshActiveRoster = useCallback(async () => {
+    const response = await authedJson<{ reps: RosterOption[] }>("/api/reps?status=active");
+    setRosterOptions(response.reps ?? []);
+  }, []);
 
   const loadSales = useCallback(async (options?: { silent?: boolean }) => {
     const params = new URLSearchParams({
@@ -395,6 +402,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
           createdAt: rep.createdAt,
           email: rep.email,
           programIds: rep.programIds,
+          inActiveRoster: true,
           source: "sales" as const,
           managerName: rep.managerName || salesRow.managerName,
           locationName: rep.locationName || salesRow.locationName,
@@ -428,6 +436,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
         createdAt: rep.createdAt,
         email: rep.email,
         programIds: rep.programIds,
+        inActiveRoster: true,
         source: "roster" as const,
       };
     });
@@ -441,9 +450,10 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
         createdAt: undefined,
         email: undefined,
         programIds: [],
+        inActiveRoster: false,
         source: "sales" as const,
       }));
-    const unmatchedRows = salesRows.filter((row) => !row.repUid).map((row) => ({ ...row, source: "unmatched" as const }));
+    const unmatchedRows = salesRows.filter((row) => !row.repUid).map((row) => ({ ...row, inActiveRoster: false, source: "unmatched" as const }));
     return [...rosterRows, ...historicalSalesRows, ...unmatchedRows].sort((a, b) => a.displayName.localeCompare(b.displayName));
   }, [data?.reps, data?.week, reportSegments, rosterOptions, weekStart]);
 
@@ -628,8 +638,31 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
       if (!response.ok) throw new Error(result.error || "Unable to create rep.");
       toast.success("Rep added to roster.");
       setActionTarget(null);
+      await refreshActiveRoster();
+      await loadSales({ silent: true });
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to create rep.");
+    } finally {
+      setActionSaving(false);
+    }
+  }
+
+  async function restoreRepToRoster() {
+    if (!actionTarget?.rep.repUid) return;
+    setActionSaving(true);
+    try {
+      const response = await authedFetch(`/api/reps/${actionTarget.rep.repUid}`, {
+        method: "PATCH",
+        body: JSON.stringify({ action: "restore" }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to restore rep.");
+      toast.success("Rep restored to roster.");
+      setActionTarget(null);
+      await refreshActiveRoster();
+      await loadSales({ silent: true });
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to restore rep.");
     } finally {
       setActionSaving(false);
     }
@@ -731,6 +764,38 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     } finally {}
   }
 
+  async function exportSalesWorkbook() {
+    if (isKnocks || !exportHref) {
+      toast.message("Knocks export is not available from this screen.");
+      return;
+    }
+    setExporting(true);
+    try {
+      const response = await authedFetch(exportHref);
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({ error: "Unable to export sales." })) as { error?: string };
+        throw new Error(result.error || "Unable to export sales.");
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("content-disposition") ?? "";
+      const match = disposition.match(/filename="?([^"]+)"?/i);
+      const fileName = match?.[1] || `sales-export-${rangeStart}-to-${rangeEnd}.xlsx`;
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      toast.message("Downloaded the sales export workbook.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to export sales.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   if (loading && !data) return <LoadingState />;
   if (error && !data) {
     return <EmptyState title={`${workspaceName} unavailable`} description={error} />;
@@ -794,16 +859,11 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                   variant="outline"
                   size="sm"
                   className="rounded-full"
-                  onClick={() => {
-                    if (isKnocks) {
-                      toast.message("Knocks export is not available from this screen.");
-                      return;
-                    }
-                    window.location.href = exportHref;
-                  }}
+                  onClick={() => void exportSalesWorkbook()}
+                  disabled={exporting}
                 >
                   <Download className="h-4 w-4" />
-                  Export
+                  {exporting ? "Exporting..." : "Export"}
                 </Button>
             </div>
           </div>
@@ -1024,6 +1084,12 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                                 Add alias
                               </Button>
                             ) : null}
+                            {rep.repUid && !rep.inActiveRoster ? (
+                              <Button size="sm" variant="outline" className="h-9 rounded-full gap-1.5 px-3 shadow-sm" onClick={() => openAction(rep, "restore")}>
+                                <UserPlus className="h-4 w-4" />
+                                Restore to roster
+                              </Button>
+                            ) : null}
                             {!rep.repUid && (
                               <>
                                 <Button size="sm" variant="outline" className="h-9 rounded-full gap-1.5 px-3 shadow-sm" onClick={() => openAction(rep, "roster")}>
@@ -1059,7 +1125,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
         <DialogContent className="max-h-[90vh] overflow-y-auto border-border/70 bg-card/95 shadow-2xl sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>
-              {actionTarget?.type === "goal" ? `Update ${goalLabel.toLowerCase()}` : actionTarget?.type === "alias" ? "Add alias" : actionTarget?.type === "location" ? "Change location" : "Add to roster"}
+              {actionTarget?.type === "goal" ? `Update ${goalLabel.toLowerCase()}` : actionTarget?.type === "alias" ? "Add alias" : actionTarget?.type === "location" ? "Change location" : actionTarget?.type === "restore" ? "Restore to roster" : "Add to roster"}
             </DialogTitle>
             <DialogDescription>
               {actionTarget?.rep.displayName ? `Working on ${actionTarget.rep.displayName}.` : `Review and save the change without leaving ${workspaceNameLower}.`}
@@ -1137,6 +1203,13 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
             </div>
           )}
 
+          {actionTarget?.type === "restore" && (
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <p>This row is tied to an existing rep record that is not currently in the active roster.</p>
+              <p>Restore it to bring the rep back into the active roster without creating a duplicate.</p>
+            </div>
+          )}
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setActionTarget(null)}>Cancel</Button>
             <Button
@@ -1145,10 +1218,11 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                 if (actionTarget.type === "goal") void saveGoal();
                 if (actionTarget.type === "alias") void saveAlias();
                 if (actionTarget.type === "location") void saveLocation();
+                if (actionTarget.type === "restore") void restoreRepToRoster();
               }}
               disabled={actionSaving || (actionTarget?.type === "alias" && !aliasTargetRepUid) || (actionTarget?.type === "location" && !locationId)}
             >
-              {actionSaving ? "Saving..." : "Save change"}
+              {actionSaving ? "Saving..." : actionTarget?.type === "restore" ? "Restore rep" : "Save change"}
             </Button>
           </DialogFooter>
         </DialogContent>

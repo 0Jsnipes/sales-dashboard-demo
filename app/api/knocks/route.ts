@@ -1,20 +1,10 @@
 import { NextResponse } from "next/server";
-import { randomUUID } from "crypto";
-import { getStorage } from "firebase-admin/storage";
-import * as XLSX from "xlsx";
-import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { canImportSales, requireActor } from "@/src/lib/firebase/server-auth";
-import { reactivateInactiveRepsForMatchedSales } from "@/src/lib/reps/lifecycle";
 import type { Rep } from "@/src/types/rep";
 import { parseCommonFilters, parseDateRangeParams, toDateId } from "@/src/lib/api/report-filters";
-import { detectKnockSource } from "@/src/lib/knocks/source-detection";
-import { parseAttSalesRabbitKnockRows, parseTFiberKnockRows } from "@/src/lib/knocks/parse";
-import { getAdminApp } from "@/src/lib/firebase/admin";
-import { normalizeRepName } from "@/src/lib/knocks/matching";
 import { buildRepSearchIndex, normalizeEmail, normalizeSalesId, normalizeName } from "@/src/lib/matching/normalize";
-import { expectedKnockImportFileLabel, validateKnockImportFileName } from "@/src/lib/imports/file-conventions";
-import type { KnockSource } from "@/src/lib/knocks/types";
+import { importKnockWorkbook } from "@/src/lib/knocks/import";
 
 export const runtime = "nodejs";
 
@@ -223,114 +213,13 @@ export async function POST(request: Request) {
     if (!(file instanceof File)) return NextResponse.json({ error: "FILE_REQUIRED" }, { status: 400 });
     if (file.size > 20 * 1024 * 1024) return NextResponse.json({ error: "File exceeds the 20 MB upload limit." }, { status: 400 });
     const buffer = Buffer.from(await file.arrayBuffer());
-    const uploadId = randomUUID();
-    const storagePath = `imports/knocks/${uploadId}/${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-    await getStorage(getAdminApp()).bucket().file(storagePath).save(buffer, { contentType: file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", metadata: { metadata: { uploadId, uploadedBy: actor.token.uid } } });
-    const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
-    const sheet = workbook.Sheets[workbook.SheetNames[0] ?? ""];
-    if (!sheet) return NextResponse.json({ error: "The workbook does not contain a worksheet." }, { status: 400 });
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null, raw: true }).filter((row) => Object.values(row).some((value) => String(value ?? "").trim().length > 0));
-    const source = (sourceOverride === "auto" || !sourceOverride ? detectKnockSource(Object.keys(rows[0] ?? {})) : sourceOverride) as KnockSource | null;
-    if (!source) return NextResponse.json({ error: "Unable to detect knock source from workbook headers." }, { status: 400 });
-    if (!validateKnockImportFileName(source, file.name)) return NextResponse.json({ error: `Knock files for ${source === "att_salesrabbit" ? "ATT" : "T-Fiber"} must follow the ${expectedKnockImportFileLabel(source)} naming format.` }, { status: 400 });
-    const repsSnapshot = await getAdminDb().collection("reps").get();
-    const reps = repsSnapshot.docs.map((document) => document.data() as Rep);
-    const parsed = source === "att_salesrabbit" ? parseAttSalesRabbitKnockRows(rows, reps) : parseTFiberKnockRows(rows, reps);
-    const db = getAdminDb();
-    const knockDaily = db.collection("knockDaily");
-    const repMap = new Map(reps.map((rep) => [rep.repUid, rep]));
-    const inactiveRepUids = new Set(reps.filter((rep) => rep.status === "inactive").map((rep) => rep.repUid));
-    const dayTotals = new Map<string, Map<string, { knocks: number; attKnocks: number; tfiberKnocks: number; source: string; rawRepName: string; rawSalesId: string; managerName: string; locationName: string; lcps: Set<string> }>>();
-    for (const row of parsed.rows) {
-      const day = row.activityDateKey;
-      const repUid = row.repId ?? `unmatched:${normalizeRepName(row.repName)}`;
-      const rep = row.repId ? repMap.get(row.repId) : undefined;
-      const byRep = dayTotals.get(day) ?? new Map();
-      const current = byRep.get(repUid) ?? { knocks: 0, attKnocks: 0, tfiberKnocks: 0, source, rawRepName: row.repName, rawSalesId: row.sourceRepExternalId ?? "", managerName: rep?.managerName ?? "", locationName: rep?.locationName ?? "", lcps: new Set<string>() };
-      const count = Number(row.quantity || 1);
-      current.knocks += count;
-      if (row.provider === "ATT") current.attKnocks += count;
-      if (row.provider === "T-Fiber") current.tfiberKnocks += count;
-      if (row.provider === "T-Fiber" && row.lcp) current.lcps.add(String(row.lcp).trim());
-      if (!rep && row.repName && row.repName.length < current.rawRepName.length) current.rawRepName = row.repName;
-      byRep.set(repUid, current);
-      dayTotals.set(day, byRep);
-    }
-    const existingKnockCountsByRepDay = new Map<string, number>();
-    for (const day of dayTotals.keys()) {
-      const snapshot = await knockDaily.doc(day).collection("reps").get();
-      for (const document of snapshot.docs) {
-        const repUid = String(document.id || "").trim();
-        if (!repUid || !inactiveRepUids.has(repUid)) continue;
-        const data = document.data();
-        existingKnockCountsByRepDay.set(`${repUid}::${day}`, Number(data.knocks ?? data.count ?? 0));
-      }
-    }
-    const newlyActiveKnockRepUids = new Set<string>();
-    for (const [day, repsForDay] of dayTotals.entries()) {
-      const existingSnapshot = await knockDaily.doc(day).collection("reps").get();
-      const existingByRepUid = new Map(existingSnapshot.docs.map((document) => [document.id, document]));
-      const repUidsForDay = new Set<string>([...existingByRepUid.keys(), ...repsForDay.keys()]);
-      const batch = db.batch();
-      for (const repUid of repUidsForDay) {
-        const data = repsForDay.get(repUid) ?? { knocks: 0, attKnocks: 0, tfiberKnocks: 0, source, rawRepName: "", rawSalesId: "", managerName: "", locationName: "", lcps: new Set<string>() };
-        const existing = existingByRepUid.get(repUid)?.data() as Record<string, unknown> | undefined;
-        const nextAttKnocks = source === "att_salesrabbit" ? Number(data.attKnocks || 0) : Number(existing?.attKnocks ?? 0);
-        const nextTFiberKnocks = source === "tfiber" ? Number(data.tfiberKnocks || 0) : Number(existing?.tfiberKnocks ?? 0);
-        const nextKnocks = nextAttKnocks + nextTFiberKnocks;
-        if (inactiveRepUids.has(repUid) && nextKnocks > 0) {
-          const repDayKey = `${repUid}::${day}`;
-          const existingCount = existingKnockCountsByRepDay.get(repDayKey) ?? 0;
-          if (existingCount <= 0 && Number(data.knocks || 0) > 0) {
-            newlyActiveKnockRepUids.add(repUid);
-            existingKnockCountsByRepDay.set(repDayKey, nextKnocks);
-          }
-        }
-        const ref = knockDaily.doc(day).collection("reps").doc(repUid);
-        const rep = repMap.get(repUid);
-        const nextLcps = source === "tfiber"
-          ? Array.from(data.lcps)
-          : Array.isArray(existing?.lcps)
-            ? existing.lcps.map((value) => String(value).trim()).filter(Boolean)
-            : [];
-        const payload: Record<string, unknown> = {
-          repUid,
-          displayName: rep?.displayName ?? String(existing?.displayName || data.rawRepName || repUid),
-          rawRepName: data.rawRepName || String(existing?.rawRepName || ""),
-          rawSalesId: data.rawSalesId || String(existing?.rawSalesId || ""),
-          source,
-          sourceUploadId: uploadId,
-          managerName: rep?.managerName ?? data.managerName ?? String(existing?.managerName || ""),
-          locationName: rep?.locationName ?? data.locationName ?? String(existing?.locationName || ""),
-          attKnocks: nextAttKnocks,
-          tfiberKnocks: nextTFiberKnocks,
-          knocks: nextKnocks,
-          count: nextKnocks,
-          lcps: nextLcps,
-          updatedAt: FieldValue.serverTimestamp(),
-        };
-        if (!existing) payload.createdAt = FieldValue.serverTimestamp();
-        batch.set(ref, payload, { merge: true });
-      }
-      await batch.commit();
-    }
-    const repsReactivated = await reactivateInactiveRepsForMatchedSales(newlyActiveKnockRepUids, db, "system:matched-knock-import");
-    await db.collection("uploadRuns").doc(uploadId).set({
-      uploadId,
-      type: "knockImport",
+    const result = await importKnockWorkbook(buffer, {
+      actorUid: actor.token.uid,
       fileName: file.name,
-      storagePath,
-      uploadedBy: actor.token.uid,
-      uploadedAt: FieldValue.serverTimestamp(),
-      rowsRead: parsed.summary.totalRowsSeen,
-      rowsValid: parsed.summary.validRows,
-      rowsSkipped: parsed.summary.skippedRows,
-      rowsMatched: parsed.summary.matchedRows,
-      rowsUnmatched: parsed.summary.unmatchedRows,
-      status: "complete",
-      summary: { source, knockCount: parsed.summary.totalKnocks, repsReactivated },
-    }, { merge: true });
-    return NextResponse.json({ ok: true, uploadId, storagePath, summary: { ...parsed.summary, repsReactivated } }, { status: 201 });
+      sourceOverride,
+      contentType: file.type,
+    });
+    return NextResponse.json(result, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "UNKNOWN";
     const status = message === "UNAUTHENTICATED" ? 401 : message === "PROFILE_NOT_FOUND" ? 403 : 500;

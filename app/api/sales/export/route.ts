@@ -3,7 +3,7 @@ import { getAdminDb } from "@/src/lib/firebase/admin";
 import { requireActor } from "@/src/lib/firebase/server-auth";
 import type { Rep } from "@/src/types/rep";
 import { formatImportedName } from "@/src/lib/matching/display-name";
-import { buildSalesExportRows, buildWorksheetData } from "@/src/lib/reports/sales-export";
+import { buildSourceExportRows, buildSourceWorksheetData } from "@/src/lib/reports/sales-export";
 import { sanitizeOrderId } from "@/src/lib/sales/outcomes";
 import * as XLSX from "xlsx";
 
@@ -26,20 +26,27 @@ export async function GET(request: Request) {
       if (single) return String(single.locationName); const forward = repAssignments.filter((item) => item.mode === "forward" && String(item.weekISO) <= selectedWeek).sort((a, b) => String(a.weekISO).localeCompare(String(b.weekISO))).pop(); return forward ? String(forward.locationName) : rep.locationName;
     };
     const exported = [...tfiber.docs, ...att.docs].map((document) => {
-      const order = document.data(); const isATT = String(order.provider).toLowerCase() === "att"; const rep = order.matchedRepUid ? roster.get(String(order.matchedRepUid)) : undefined; const rawRepName = isATT ? formatImportedName(order.rawRepName) : String(order.rawRepName || ""); const displayName = rep?.displayName ?? rawRepName; const locationName = locationFor(rep, String(order.orderDateId));
-      return { orderDate: String(order.orderDateId || ""), provider: isATT ? "ATT" : "T-Fiber", orderId: sanitizeOrderId(order.orderId || order.orderUid || document.id), accountStatus: String(order.accountStatus || ""), representative: displayName, manager: rep?.managerName ?? (isATT ? "" : String(order.rawManagerName || "")), location: locationName, vendorType: rep?.vendorType ?? "unassigned", rawData: order.rawData && typeof order.rawData === "object" ? order.rawData as Record<string, unknown> : {} };
+      const order = document.data();
+      const isATT = String(order.provider).toLowerCase() === "att";
+      const rep = order.matchedRepUid ? roster.get(String(order.matchedRepUid)) : undefined;
+      const rawRepName = isATT ? formatImportedName(order.rawRepName) : String(order.rawRepName || "");
+      const displayName = rep?.displayName ?? rawRepName;
+      const locationName = locationFor(rep, String(order.orderDateId));
+      return {
+        orderDate: String(order.orderDateId || ""),
+        provider: isATT ? "ATT" : "T-Fiber",
+        orderId: sanitizeOrderId(order.orderId || order.orderUid || document.id),
+        accountStatus: String(order.accountStatus || ""),
+        representative: displayName,
+        manager: rep?.managerName ?? (isATT ? "" : String(order.rawManagerName || "")),
+        location: locationName,
+        vendorType: rep?.vendorType ?? "unassigned",
+        rawData: order.rawData && typeof order.rawData === "object" ? order.rawData as Record<string, unknown> : {},
+      };
     }).filter((row) => (filters.manager === "all" || row.manager === filters.manager) && (filters.rep === "all" || row.representative === filters.rep) && (filters.location === "all" || row.location === filters.location) && (filters.vendorType === "all" || row.vendorType === filters.vendorType) && (filters.provider === "all" || row.provider.toLowerCase() === filters.provider.toLowerCase())).sort((left, right) => left.orderDate.localeCompare(right.orderDate) || left.representative.localeCompare(right.representative));
-    const sourceRows = (provider: "ATT" | "T-Fiber") => {
-      const seen = new Set<string>();
-      return buildSalesExportRows(
-        exported.filter((row) => {
-          const key = `${row.orderId}::${row.orderDate}`;
-          return row.provider === provider && !seen.has(key) && Boolean(seen.add(key));
-        }),
-      );
-    };
+    const sourceRows = (provider: "ATT" | "T-Fiber") => buildSourceExportRows(exported.filter((row) => row.provider === provider).map((row) => ({ provider, rawData: row.rawData })));
     const worksheet = (rows: Record<string, unknown>[]) => {
-      const data = buildWorksheetData(rows);
+      const data = buildSourceWorksheetData(rows);
       return XLSX.utils.json_to_sheet(data.rows, { header: data.headers });
     };
     const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet(sourceRows("ATT")), "ATT"); XLSX.utils.book_append_sheet(workbook, worksheet(sourceRows("T-Fiber")), "T-Fiber");

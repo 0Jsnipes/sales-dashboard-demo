@@ -53,6 +53,33 @@ FIREBASE_CLIENT_EMAIL
 FIREBASE_PRIVATE_KEY
 FIREBASE_DATABASE_ID=default
 FIREBASE_STORAGE_BUCKET
+NEXT_PUBLIC_REPORTS_INBOUND_EMAIL
+REPORTS_INBOUND_SECRET
 ```
 
 For `FIREBASE_PRIVATE_KEY`, paste the service-account private key either with real line breaks or with escaped `\n` characters. Do not expose the non-`NEXT_PUBLIC_` values in client-side code.
+
+## Email imports
+
+The app can accept emailed report attachments through `POST /api/imports/email`.
+
+- Protect the endpoint with `REPORTS_INBOUND_SECRET`
+- Configure your inbound email provider to post attachments to:
+  `https://<your-domain>/api/imports/email?token=<REPORTS_INBOUND_SECRET>`
+- Optional UI-only display address: `NEXT_PUBLIC_REPORTS_INBOUND_EMAIL`
+
+If you are using Gmail API instead of an inbound-webhook provider, use:
+
+- `POST /api/imports/email/gmail`
+- `GMAIL_CLIENT_ID`
+- `GMAIL_CLIENT_SECRET`
+- `GMAIL_REFRESH_TOKEN`
+- Optional `GMAIL_REPORTS_QUERY`
+- Optional `GMAIL_PROCESSED_LABEL_ID`
+
+Attachment conventions:
+
+- ATT sales: `Sales_order` CSV
+- T-Fiber sales: `AB Marketing Orders` workbook
+- T-Fiber knocks: `Book1` workbook
+- ATT knocks: `report` / `reports` workbook

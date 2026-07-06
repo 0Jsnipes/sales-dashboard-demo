@@ -239,6 +239,7 @@ function SourceCard({
 export function ImportsPage() {
   const { profile } = useAuth();
   const reducedMotion = useReducedMotion();
+  const inboundEmail = process.env.NEXT_PUBLIC_REPORTS_INBOUND_EMAIL?.trim() || "";
   const [history, setHistory] = useState<UploadHistoryRow[]>([]);
   const [latestSummary, setLatestSummary] = useState<Summary | null>(null);
   const [uploads, setUploads] = useState<ServerUploadRow[]>([]);
@@ -357,6 +358,38 @@ export function ImportsPage() {
       </Alert>
 
       <KnockImportPreview />
+
+      {inboundEmail ? (
+        <Card className="border-border/70">
+          <CardHeader>
+            <CardTitle>Email reports</CardTitle>
+            <CardDescription>Send source files to the site inbox or pull unread Gmail attachments into the same import pipeline.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
+              <p className="font-medium">{inboundEmail}</p>
+              <p className="mt-1 text-muted-foreground">ATT sales: `Sales_order`, T-Fiber sales: `AB Marketing Orders`, T-Fiber knocks: `Book1`, ATT knocks: `report` / `reports`.</p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                try {
+                  const response = await authedFetch("/api/imports/email/gmail", { method: "POST" });
+                  const result = await response.json() as { error?: string; processedMessages?: number };
+                  if (!response.ok) throw new Error(result.error || "Unable to pull Gmail reports.");
+                  toast.success(`Processed ${result.processedMessages ?? 0} Gmail message(s).`);
+                  void loadUploads();
+                } catch (cause) {
+                  toast.error(cause instanceof Error ? cause.message : "Unable to pull Gmail reports.");
+                }
+              }}
+              disabled={!allowed}
+            >
+              Pull Gmail inbox
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {!allowed && (
         <Card className="border-warning/30 bg-warning/5">

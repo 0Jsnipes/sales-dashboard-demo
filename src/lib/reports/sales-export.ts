@@ -1,4 +1,9 @@
-import { sanitizeOrderId } from "@/src/lib/sales/outcomes";
+type SourceExportProvider = "ATT" | "T-Fiber";
+
+type SourceExportOrder = {
+  provider: SourceExportProvider;
+  rawData: Record<string, unknown>;
+};
 
 type ExportProvider = "ATT" | "T-Fiber" | "Manual" | "Unknown";
 
@@ -52,6 +57,10 @@ function exportDate(value: unknown) {
   return value;
 }
 
+function sanitizeOrderId(value: unknown) {
+  return text(value).replace(/^[="'\s]+|[="'\s]+$/g, "");
+}
+
 function normalizedRawRow(rawData: Record<string, unknown> | undefined) {
   const raw = rawData && typeof rawData === "object" ? rawData : {};
   return Object.fromEntries(
@@ -77,6 +86,50 @@ function vendorTypeLabel(value: unknown) {
   if (source === "subvendor") return "Subvendors";
   if (source === "unassigned") return "Unassigned";
   return text(value);
+}
+
+function isIsoDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}(?:T.*)?$/.test(value);
+}
+
+function formatIsoDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return value;
+  return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
+}
+
+function normalizeCellValue(value: unknown) {
+  if (value instanceof Date && !Number.isNaN(value.valueOf())) {
+    return `${value.getMonth() + 1}/${value.getDate()}/${value.getFullYear()}`;
+  }
+  if (typeof value === "string" && isIsoDate(value)) {
+    return formatIsoDate(value);
+  }
+  return value ?? "";
+}
+
+export function buildSourceExportRows(orders: SourceExportOrder[]) {
+  return orders.map((order) => Object.fromEntries(
+    Object.entries(order.rawData ?? {}).map(([key, value]) => [key, normalizeCellValue(value)]),
+  ));
+}
+
+export function buildSourceWorksheetData(rows: Record<string, unknown>[]) {
+  if (!rows.length) {
+    return {
+      headers: ["Message"],
+      rows: [{ Message: "No matching source rows for the selected range and filters." }],
+    };
+  }
+
+  const headers: string[] = [];
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      if (!headers.includes(key)) headers.push(key);
+    }
+  }
+
+  return { headers, rows };
 }
 
 export function buildSalesExportRow(order: ExportOrder) {
