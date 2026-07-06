@@ -371,8 +371,8 @@ export function ImportsPage() {
         <SourceCard
           title="AT&T Sales Report"
           description="CSV upload with audit retention and automatic row matching."
-          hint="Every AT&T row is imported once and evaluated before it is written to reporting."
-          acceptLabel="ATT CSV files"
+          hint="Use the Sales_order naming format for ATT sales uploads."
+          acceptLabel="Sales_order - ATT (.csv)"
           sourceKey="attSales"
           endpoint="/api/imports/att"
           accept={{ "text/csv": [".csv"] }}
@@ -382,8 +382,8 @@ export function ImportsPage() {
         <SourceCard
           title="T-Fiber Sales Report"
           description="Workbook upload with retained source files and match evaluation."
-          hint="Rows that cannot be matched remain quarantined for later review."
-          acceptLabel="T-Fiber Excel files"
+          hint="Use the AB Marketing Orders naming format for T-Fiber sales uploads."
+          acceptLabel="AB Marketing Orders - T-fiber (.xlsx/.xls)"
           sourceKey="tfiberSales"
           endpoint="/api/imports/tfiber"
           accept={{ "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx", ".xls"], "application/vnd.ms-excel": [".xls"] }}
@@ -393,13 +393,13 @@ export function ImportsPage() {
         <Card className="border-border/70">
           <CardHeader>
             <CardTitle>Knock report</CardTitle>
-            <CardDescription>Field activity uploads will live here next.</CardDescription>
+            <CardDescription>Use `Book1` for T-Fiber knocks and `report` for ATT knocks.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-5 text-center">
               <PackageSearch className="mx-auto h-6 w-6 text-muted-foreground" />
-              <p className="mt-3 font-medium">Knock report workflow coming soon</p>
-              <p className="mt-1 text-sm text-muted-foreground">This card is reserved for future CSV intake and validation.</p>
+              <p className="mt-3 font-medium">Knock upload naming is enforced</p>
+              <p className="mt-1 text-sm text-muted-foreground">T-Fiber knocks: `Book1`. ATT knocks: `report` / `reports`.</p>
             </div>
             <Button variant="outline" className="w-full" disabled>
               Coming soon

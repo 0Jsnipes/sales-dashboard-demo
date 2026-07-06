@@ -3,10 +3,11 @@ import { getStorage } from "firebase-admin/storage";
 import { getAdminApp, getAdminDb } from "@/src/lib/firebase/admin";
 
 export type SalesUploadType = "attSales" | "tfiberSales";
+export type KnockUploadType = "knockImport";
 
 export type SalesUploadRun = {
   uploadId: string;
-  type: SalesUploadType | string;
+  type: SalesUploadType | KnockUploadType | string;
   fileName: string;
   storagePath?: string;
   uploadedBy?: string;
@@ -33,6 +34,10 @@ export type SalesUploadListItem = {
   rowsSkipped: number;
   rowsMatched: number;
   rowsUnmatched: number;
+};
+
+export type KnockUploadRun = SalesUploadRun & {
+  type: KnockUploadType;
 };
 
 function toIsoDate(value: SalesUploadRun["uploadedAt"]) {
@@ -119,4 +124,40 @@ export async function deleteAllSalesUploads() {
   const results = [];
   for (const upload of uploads) results.push(await deleteSalesUploadById(upload.uploadId));
   return { uploads: uploads.length, results };
+}
+
+export async function deleteKnockUpload(uploadId: string) {
+  const runRef = getAdminDb().collection("uploadRuns").doc(uploadId);
+  const runSnapshot = await runRef.get();
+  if (!runSnapshot.exists) {
+    return { uploadId, deletedKnockDocs: 0, daysTouched: 0, deletedStorage: false, deletedRun: false };
+  }
+
+  const run = runSnapshot.data() as KnockUploadRun;
+  if (run.type !== "knockImport") {
+    return { uploadId, deletedKnockDocs: 0, daysTouched: 0, deletedStorage: false, deletedRun: false };
+  }
+
+  const knockSnapshot = await getAdminDb()
+    .collectionGroup("reps")
+    .where("sourceUploadId", "==", uploadId)
+    .get();
+
+  const daysTouched = new Set(
+    knockSnapshot.docs
+      .map((document) => document.ref.parent.parent?.id)
+      .filter((value): value is string => Boolean(value)),
+  );
+
+  await deleteInBatches(knockSnapshot.docs.map((document) => ({ ref: document.ref })));
+  const deletedStorage = await deleteStorageFile(run.storagePath);
+  await runRef.delete();
+
+  return {
+    uploadId,
+    deletedKnockDocs: knockSnapshot.size,
+    daysTouched: daysTouched.size,
+    deletedStorage,
+    deletedRun: true,
+  };
 }

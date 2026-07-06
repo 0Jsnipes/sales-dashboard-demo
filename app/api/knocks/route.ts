@@ -13,6 +13,8 @@ import { parseAttSalesRabbitKnockRows, parseTFiberKnockRows } from "@/src/lib/kn
 import { getAdminApp } from "@/src/lib/firebase/admin";
 import { normalizeRepName } from "@/src/lib/knocks/matching";
 import { buildRepSearchIndex, normalizeEmail, normalizeSalesId, normalizeName } from "@/src/lib/matching/normalize";
+import { expectedKnockImportFileLabel, validateKnockImportFileName } from "@/src/lib/imports/file-conventions";
+import type { KnockSource } from "@/src/lib/knocks/types";
 
 export const runtime = "nodejs";
 
@@ -228,8 +230,9 @@ export async function POST(request: Request) {
     const sheet = workbook.Sheets[workbook.SheetNames[0] ?? ""];
     if (!sheet) return NextResponse.json({ error: "The workbook does not contain a worksheet." }, { status: 400 });
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null, raw: true }).filter((row) => Object.values(row).some((value) => String(value ?? "").trim().length > 0));
-    const source = sourceOverride === "auto" || !sourceOverride ? detectKnockSource(Object.keys(rows[0] ?? {})) : sourceOverride;
+    const source = (sourceOverride === "auto" || !sourceOverride ? detectKnockSource(Object.keys(rows[0] ?? {})) : sourceOverride) as KnockSource | null;
     if (!source) return NextResponse.json({ error: "Unable to detect knock source from workbook headers." }, { status: 400 });
+    if (!validateKnockImportFileName(source, file.name)) return NextResponse.json({ error: `Knock files for ${source === "att_salesrabbit" ? "ATT" : "T-Fiber"} must follow the ${expectedKnockImportFileLabel(source)} naming format.` }, { status: 400 });
     const repsSnapshot = await getAdminDb().collection("reps").get();
     const reps = repsSnapshot.docs.map((document) => document.data() as Rep);
     const parsed = source === "att_salesrabbit" ? parseAttSalesRabbitKnockRows(rows, reps) : parseTFiberKnockRows(rows, reps);
@@ -265,34 +268,49 @@ export async function POST(request: Request) {
     }
     const newlyActiveKnockRepUids = new Set<string>();
     for (const [day, repsForDay] of dayTotals.entries()) {
+      const existingSnapshot = await knockDaily.doc(day).collection("reps").get();
+      const existingByRepUid = new Map(existingSnapshot.docs.map((document) => [document.id, document]));
+      const repUidsForDay = new Set<string>([...existingByRepUid.keys(), ...repsForDay.keys()]);
       const batch = db.batch();
-      for (const [repUid, data] of repsForDay.entries()) {
-        if (inactiveRepUids.has(repUid) && Number(data.knocks || 0) > 0) {
+      for (const repUid of repUidsForDay) {
+        const data = repsForDay.get(repUid) ?? { knocks: 0, attKnocks: 0, tfiberKnocks: 0, source, rawRepName: "", rawSalesId: "", managerName: "", locationName: "", lcps: new Set<string>() };
+        const existing = existingByRepUid.get(repUid)?.data() as Record<string, unknown> | undefined;
+        const nextAttKnocks = source === "att_salesrabbit" ? Number(data.attKnocks || 0) : Number(existing?.attKnocks ?? 0);
+        const nextTFiberKnocks = source === "tfiber" ? Number(data.tfiberKnocks || 0) : Number(existing?.tfiberKnocks ?? 0);
+        const nextKnocks = nextAttKnocks + nextTFiberKnocks;
+        if (inactiveRepUids.has(repUid) && nextKnocks > 0) {
           const repDayKey = `${repUid}::${day}`;
           const existingCount = existingKnockCountsByRepDay.get(repDayKey) ?? 0;
-          if (existingCount <= 0) {
+          if (existingCount <= 0 && Number(data.knocks || 0) > 0) {
             newlyActiveKnockRepUids.add(repUid);
-            existingKnockCountsByRepDay.set(repDayKey, Number(data.knocks || 0));
+            existingKnockCountsByRepDay.set(repDayKey, nextKnocks);
           }
         }
         const ref = knockDaily.doc(day).collection("reps").doc(repUid);
-        batch.set(ref, {
+        const rep = repMap.get(repUid);
+        const nextLcps = source === "tfiber"
+          ? Array.from(data.lcps)
+          : Array.isArray(existing?.lcps)
+            ? existing.lcps.map((value) => String(value).trim()).filter(Boolean)
+            : [];
+        const payload: Record<string, unknown> = {
           repUid,
-          displayName: repMap.get(repUid)?.displayName ?? data.rawRepName,
-          rawRepName: data.rawRepName,
-          rawSalesId: data.rawSalesId,
-          source: data.source,
+          displayName: rep?.displayName ?? String(existing?.displayName || data.rawRepName || repUid),
+          rawRepName: data.rawRepName || String(existing?.rawRepName || ""),
+          rawSalesId: data.rawSalesId || String(existing?.rawSalesId || ""),
+          source,
           sourceUploadId: uploadId,
-          managerName: data.managerName,
-          locationName: data.locationName,
-          attKnocks: FieldValue.increment(data.attKnocks),
-          tfiberKnocks: FieldValue.increment(data.tfiberKnocks),
-          knocks: FieldValue.increment(data.knocks),
-          count: FieldValue.increment(data.knocks),
-          ...(data.lcps.size ? { lcps: FieldValue.arrayUnion(...Array.from(data.lcps)) } : {}),
+          managerName: rep?.managerName ?? data.managerName ?? String(existing?.managerName || ""),
+          locationName: rep?.locationName ?? data.locationName ?? String(existing?.locationName || ""),
+          attKnocks: nextAttKnocks,
+          tfiberKnocks: nextTFiberKnocks,
+          knocks: nextKnocks,
+          count: nextKnocks,
+          lcps: nextLcps,
           updatedAt: FieldValue.serverTimestamp(),
-          createdAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
+        };
+        if (!existing) payload.createdAt = FieldValue.serverTimestamp();
+        batch.set(ref, payload, { merge: true });
       }
       await batch.commit();
     }
@@ -310,7 +328,7 @@ export async function POST(request: Request) {
       rowsMatched: parsed.summary.matchedRows,
       rowsUnmatched: parsed.summary.unmatchedRows,
       status: "complete",
-      summary: { source, knockCount: parsed.summary.validRows, repsReactivated },
+      summary: { source, knockCount: parsed.summary.totalKnocks, repsReactivated },
     }, { merge: true });
     return NextResponse.json({ ok: true, uploadId, storagePath, summary: { ...parsed.summary, repsReactivated } }, { status: 201 });
   } catch (error) {

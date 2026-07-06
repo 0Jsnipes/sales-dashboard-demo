@@ -44,6 +44,7 @@ export async function PATCH(request: Request, { params }: Params) {
       return NextResponse.json({ rep: updated, rematchedTFiberOrders, rematchedATTOrders });
     }
     if (body.action === "addAlias") {
+      if (actor.profile.role !== "superAdmin") return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
       const alias = body.alias?.trim();
       if (!alias || alias.length > 120) return NextResponse.json({ error: "INVALID_ALIAS" }, { status: 400 });
       const aliases = rep.aliases.some((current) => normalizeName(current) === normalizeName(alias)) ? rep.aliases : [...rep.aliases, alias];

@@ -4,6 +4,7 @@ import { getStorage } from "firebase-admin/storage";
 import { canImportSales, requireActor } from "@/src/lib/firebase/server-auth";
 import { getAdminApp, getAdminDb } from "@/src/lib/firebase/admin";
 import { importTFiberRows, parseTFiberWorkbook } from "@/src/lib/imports/tfiber";
+import { expectedImportFileLabel, validateImportFileName } from "@/src/lib/imports/file-conventions";
 
 export const runtime = "nodejs";
 export async function POST(request: Request) {
@@ -14,6 +15,7 @@ export async function POST(request: Request) {
     const file = form.get("file");
     if (!(file instanceof File)) return NextResponse.json({ error: "FILE_REQUIRED" }, { status: 400 });
     if (!/\.(xlsx|xls)$/i.test(file.name)) return NextResponse.json({ error: "T-Fiber imports must be .xlsx or .xls files." }, { status: 400 });
+    if (!validateImportFileName("tfiberSales", file.name)) return NextResponse.json({ error: `T-Fiber sales files must follow the ${expectedImportFileLabel("tfiberSales")} naming format.` }, { status: 400 });
     if (file.size > 20 * 1024 * 1024) return NextResponse.json({ error: "File exceeds the 20 MB upload limit." }, { status: 400 });
     const uploadId = randomUUID();
     const buffer = Buffer.from(await file.arrayBuffer());

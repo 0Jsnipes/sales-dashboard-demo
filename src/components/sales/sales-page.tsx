@@ -255,9 +255,10 @@ type WorkspaceKind = "sales" | "knocks";
 type GoalField = "weeklySalesGoal" | "weeklyKnocksGoal";
 
 export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
-  useAuth();
+  const { profile } = useAuth();
   const reducedMotion = useReducedMotion();
   const isKnocks = kind === "knocks";
+  const canAddAlias = profile?.role === "superAdmin";
   const workspaceName = isKnocks ? "Knocks" : "Sales";
   const workspaceNameLower = isKnocks ? "knocks" : "sales";
   const goalField: GoalField = isKnocks ? "weeklyKnocksGoal" : "weeklySalesGoal";
@@ -506,7 +507,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
 
   function openAction(rep: SalesRepGroup, type: ActionTarget["type"]) {
     setActionTarget({ rep, type });
-    setAliasTargetRepUid("");
+    setAliasTargetRepUid(type === "alias" ? rep.repUid ?? "" : "");
     setLocationId(rep.locationName || "");
     setLocationMode("forward");
     setLocationWeek(weekISOForWeekStart(weekStart));
@@ -1017,12 +1018,14 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                         <TableCell className="text-center font-semibold">{formatNumber(rep.total)}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex flex-wrap justify-end gap-2">
+                            {canAddAlias ? (
+                              <Button size="sm" variant="outline" className="h-9 rounded-full gap-1.5 px-3 shadow-sm" onClick={() => openAction(rep, "alias")}>
+                                <Pencil className="h-4 w-4" />
+                                Add alias
+                              </Button>
+                            ) : null}
                             {!rep.repUid && (
                               <>
-                                <Button size="sm" variant="outline" className="h-9 rounded-full gap-1.5 px-3 shadow-sm" onClick={() => openAction(rep, "alias")}>
-                                  <Pencil className="h-4 w-4" />
-                                  Add alias
-                                </Button>
                                 <Button size="sm" variant="outline" className="h-9 rounded-full gap-1.5 px-3 shadow-sm" onClick={() => openAction(rep, "roster")}>
                                   <UserPlus className="h-4 w-4" />
                                   Add to roster

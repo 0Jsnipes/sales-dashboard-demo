@@ -20,6 +20,7 @@ type PreviewResponse = {
   summary: {
     totalRowsSeen: number;
     validRows: number;
+    totalKnocks: number;
     skippedRows: number;
     matchedRows: number;
     unmatchedRows: number;
@@ -120,7 +121,7 @@ export function KnockImportPreview() {
     <Card className="border-border/70">
       <CardHeader className="space-y-2">
         <CardTitle>Preview Knock Import</CardTitle>
-        <CardDescription>Preview only - this does not save knocks yet.</CardDescription>
+        <CardDescription>Preview only. T-Fiber knocks must use `Book1`; ATT knocks must use `report` / `reports`.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-3 md:grid-cols-[1fr_240px_auto]">
@@ -128,7 +129,7 @@ export function KnockImportPreview() {
             <input {...getInputProps()} aria-label="Knock import file" />
             <UploadCloud className="mx-auto h-6 w-6 text-muted-foreground" />
             <p className="mt-2 font-medium">{file ? file.name : "Drag and drop an .xlsx file"}</p>
-            <p className="mt-1 text-sm text-muted-foreground">AT&T SalesRabbit or T-Fiber workbook</p>
+            <p className="mt-1 text-sm text-muted-foreground">T-Fiber: `Book1` workbook. ATT: `report` workbook.</p>
           </div>
           <div className="space-y-2">
             <p className="text-sm font-medium">Source</p>
@@ -159,6 +160,7 @@ export function KnockImportPreview() {
           <>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
               {[
+                ["Knocks counted", result.summary.totalKnocks],
                 ["Valid rows", result.summary.validRows],
                 ["Matched rows", result.summary.matchedRows],
                 ["Unmatched rows", result.summary.unmatchedRows],

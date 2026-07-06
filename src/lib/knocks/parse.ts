@@ -19,6 +19,9 @@ function normalizeCommon(row: RawRow, source: KnockSource): NormalizedKnockRow |
   const date = parseFlexibleDate(rawDate);
   if (!repName && !rawStatus && !date) return null;
   if (!date) return null;
+  // SalesRabbit/T-Fiber exports include helper count columns that reflect grouped totals,
+  // not per-activity quantities. Each row in these files should count as one knock.
+  const quantity = 1;
   const rowBase: NormalizedKnockRow = {
     knockUid: "",
     source,
@@ -43,7 +46,7 @@ function normalizeCommon(row: RawRow, source: KnockSource): NormalizedKnockRow |
     address: source === "att_salesrabbit" ? null : { street: text(row.street_1) || null, city: text(row.City) || null, state: text(row.state) || null, zip: text(row.Zip) || null },
     leadName: source === "att_salesrabbit" ? text(row["Lead Name"]) || null : text(row.Company) || null,
     proximity: text(row.Proximity) || null,
-    quantity: Number(row.Quantity ?? row["Record Count"] ?? 1) || 1,
+    quantity,
     matchStatus: "unmatched",
     raw: row,
   };
@@ -82,9 +85,11 @@ function buildPreview(rows: RawRow[], source: KnockSource, reps: Rep[]) {
   }
   const dates = output.map((row) => row.activityDateKey).filter(Boolean).sort();
   const uniqueLeads = new Set(output.map((row) => row.sourceLeadId || row.sourceActivityId || row.knockUid)).size;
+  const totalKnocks = output.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
   const summary: KnockPreviewSummary = {
     totalRowsSeen: rows.length,
     validRows: output.length,
+    totalKnocks,
     skippedRows,
     matchedRows: output.filter((row) => row.matchStatus === "matched").length,
     unmatchedRows: output.filter((row) => row.matchStatus === "unmatched").length,

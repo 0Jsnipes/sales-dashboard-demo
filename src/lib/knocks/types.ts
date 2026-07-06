@@ -61,6 +61,7 @@ export type NormalizedKnockRow = {
 export type KnockPreviewSummary = {
   totalRowsSeen: number;
   validRows: number;
+  totalKnocks: number;
   skippedRows: number;
   matchedRows: number;
   unmatchedRows: number;

@@ -235,6 +235,7 @@ export function RosterPage() {
   const [qualityFilter, setQualityFilter] = useState<string>("all");
 
   const canEdit = profile?.role === "superAdmin" || (profile?.role === "admin" && profile.permissions.canEditRoster);
+  const canAddAlias = profile?.role === "superAdmin";
 
   const request = useCallback((path: string, init?: RequestInit) => authedFetch(path, init), []);
 
@@ -776,7 +777,7 @@ export function RosterPage() {
                     {selectedRep.aliases.map((alias) => <Badge key={alias} variant="outline">{alias}</Badge>)}
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <Button size="sm" onClick={() => { setAddAliasTarget(selectedRep); setAliasDraft(""); }}>Add alias</Button>
+                    {canAddAlias ? <Button size="sm" onClick={() => { setAddAliasTarget(selectedRep); setAliasDraft(""); }}>Add alias</Button> : null}
                     <Button size="sm" variant="outline" onClick={() => { setEditing(selectedRep); setForm(repToForm(selectedRep)); setEditorOpen(true); }}>Edit rep</Button>
                   </div>
                 </ProfileCard>

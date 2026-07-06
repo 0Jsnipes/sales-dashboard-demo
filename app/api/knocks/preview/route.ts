@@ -3,8 +3,10 @@ import { canImportSales, requireActor } from "@/src/lib/firebase/server-auth";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { detectKnockSource } from "@/src/lib/knocks/source-detection";
 import { parseAttSalesRabbitKnockRows, parseTFiberKnockRows } from "@/src/lib/knocks/parse";
+import { expectedKnockImportFileLabel, validateKnockImportFileName } from "@/src/lib/imports/file-conventions";
 import * as XLSX from "xlsx";
 import type { Rep } from "@/src/types/rep";
+import type { KnockSource } from "@/src/lib/knocks/types";
 
 export const runtime = "nodejs";
 
@@ -24,8 +26,9 @@ export async function POST(request: Request) {
     const sheet = workbook.Sheets[workbook.SheetNames[0] ?? ""];
     if (!sheet) return NextResponse.json({ error: "The workbook does not contain a worksheet." }, { status: 400 });
     const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null, raw: true }).filter((row) => Object.values(row).some((value) => String(value ?? "").trim().length > 0));
-    const detected = sourceOverride === "auto" || !sourceOverride ? detectKnockSource(Object.keys(rawRows[0] ?? {})) : sourceOverride;
+    const detected = (sourceOverride === "auto" || !sourceOverride ? detectKnockSource(Object.keys(rawRows[0] ?? {})) : sourceOverride) as KnockSource | null;
     if (!detected) return NextResponse.json({ error: "Unable to detect knock source from workbook headers." }, { status: 400 });
+    if (!validateKnockImportFileName(detected, file.name)) return NextResponse.json({ error: `Knock files for ${detected === "att_salesrabbit" ? "ATT" : "T-Fiber"} must follow the ${expectedKnockImportFileLabel(detected)} naming format.` }, { status: 400 });
     const parsed = detected === "att_salesrabbit" ? parseAttSalesRabbitKnockRows(rawRows, reps) : parseTFiberKnockRows(rawRows, reps);
     return NextResponse.json({
       ok: true,

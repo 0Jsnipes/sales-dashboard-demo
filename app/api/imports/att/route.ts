@@ -4,6 +4,7 @@ import { getStorage } from "firebase-admin/storage";
 import { canImportSales, requireActor } from "@/src/lib/firebase/server-auth";
 import { getAdminApp, getAdminDb } from "@/src/lib/firebase/admin";
 import { importATTRows, parseATTReport } from "@/src/lib/imports/att";
+import { expectedImportFileLabel, validateImportFileName } from "@/src/lib/imports/file-conventions";
 
 export const runtime = "nodejs";
 
@@ -14,6 +15,7 @@ export async function POST(request: Request) {
     const form = await request.formData(); const file = form.get("file");
     if (!(file instanceof File)) return NextResponse.json({ error: "FILE_REQUIRED" }, { status: 400 });
     if (!/\.csv$/i.test(file.name)) return NextResponse.json({ error: "ATT imports must be .csv files." }, { status: 400 });
+    if (!validateImportFileName("attSales", file.name)) return NextResponse.json({ error: `ATT sales files must follow the ${expectedImportFileLabel("attSales")} naming format.` }, { status: 400 });
     if (file.size > 20 * 1024 * 1024) return NextResponse.json({ error: "File exceeds the 20 MB upload limit." }, { status: 400 });
     const uploadId = randomUUID(); const buffer = Buffer.from(await file.arrayBuffer());
     const storagePath = `imports/att/${uploadId}/${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;

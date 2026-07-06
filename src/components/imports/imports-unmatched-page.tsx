@@ -21,6 +21,7 @@ import { authedFetch, authedJson } from "@/src/lib/api/client";
 import { startOfWeek, toDateId } from "@/src/lib/date/week";
 import { matchImportRowToRep } from "@/src/lib/matching/matchRep";
 import { getMatchConfidenceBadge, groupUnmatchedBySource, normalizeAlias, normalizeImportedName } from "@/src/lib/imports/ui";
+import { useAuth } from "@/src/components/auth-provider";
 import type { Rep } from "@/src/types/rep";
 
 type SalesRow = {
@@ -59,7 +60,9 @@ function ConfidencePill({ confidence }: { confidence: number }) {
 }
 
 export function ImportsUnmatchedPage() {
+  const { profile } = useAuth();
   const reducedMotion = useReducedMotion();
+  const canAddAlias = profile?.role === "superAdmin";
   const [query, setQuery] = useState("");
   const [provider, setProvider] = useState("all");
   const [sales, setSales] = useState<SalesResponse | null>(null);
@@ -310,10 +313,12 @@ export function ImportsUnmatchedPage() {
                             <CheckCircle2 className="h-4 w-4" />
                             {resolvingId === row.id ? "Resolving..." : "Resolve"}
                           </Button>
-                          <Button size="xs" variant="ghost" onClick={() => openAliasDialog(row)}>
-                            <Users className="h-4 w-4" />
-                            Add alias
-                          </Button>
+                          {canAddAlias ? (
+                            <Button size="xs" variant="ghost" onClick={() => openAliasDialog(row)}>
+                              <Users className="h-4 w-4" />
+                              Add alias
+                            </Button>
+                          ) : null}
                           <Button size="xs" variant="ghost" asChild>
                             <Link href={`/roster?add=1&name=${encodeURIComponent(row.rawName)}&salesId=${encodeURIComponent(row.rawSalesId)}`}>
                               <ChevronRight className="h-4 w-4" />
@@ -446,9 +451,11 @@ export function ImportsUnmatchedPage() {
                 <Button className="w-full" onClick={() => void resolveRow(mobileSheetRow)} disabled={resolvingId === mobileSheetRow.id}>
                   Resolve row
                 </Button>
-                <Button variant="outline" className="w-full" onClick={() => openAliasDialog(mobileSheetRow)}>
-                  Add alias
-                </Button>
+                {canAddAlias ? (
+                  <Button variant="outline" className="w-full" onClick={() => openAliasDialog(mobileSheetRow)}>
+                    Add alias
+                  </Button>
+                ) : null}
                 <Button variant="ghost" className="w-full" asChild>
                   <Link href={`/roster?add=1&name=${encodeURIComponent(mobileSheetRow.rawName)}&salesId=${encodeURIComponent(mobileSheetRow.rawSalesId)}`}>
                     Add new roster rep
