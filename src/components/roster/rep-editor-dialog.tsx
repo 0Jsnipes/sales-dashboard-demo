@@ -62,6 +62,7 @@ type Props = {
   canCreateLocation: boolean;
   onManagerDraftChange: (value: string) => void;
   onLocationDraftChange: (value: string) => void;
+  onRequestAddLocation?: () => void;
   onOpenChange: (open: boolean) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 };
@@ -77,8 +78,9 @@ function Field({ label, helper, children }: { label: string; helper?: string; ch
 }
 
 const PROGRAM_OPTIONS = ["ATT", "T-Fiber"] as const;
+const ADD_LOCATION_VALUE = "__add_location__";
 
-export function RepEditorDialog({ open, title, description, saveLabel, saving, form, setForm, managers, locations, managerDraft, locationDraft, onCreateManager, onCreateLocation, managerCreating, locationCreating, canCreateManager, canCreateLocation, onManagerDraftChange, onLocationDraftChange, onOpenChange, onSubmit }: Props) {
+export function RepEditorDialog({ open, title, description, saveLabel, saving, form, setForm, managers, locations, managerDraft, locationDraft, onCreateManager, onCreateLocation, managerCreating, locationCreating, canCreateManager, canCreateLocation, onManagerDraftChange, onLocationDraftChange, onRequestAddLocation, onOpenChange, onSubmit }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
@@ -127,9 +129,16 @@ export function RepEditorDialog({ open, title, description, saveLabel, saving, f
             </Field>
             <Field label="Location">
               <div className="space-y-2">
-                <Select value={form.locationId} onValueChange={(value) => setForm({ ...form, locationId: value, locationName: locations.find((item) => item.locationId === value)?.name ?? locationDraft.trim() })}>
+                <Select value={form.locationId} onValueChange={(value) => {
+                  if (value === ADD_LOCATION_VALUE) {
+                    onRequestAddLocation?.();
+                    return;
+                  }
+                  setForm({ ...form, locationId: value, locationName: locations.find((item) => item.locationId === value)?.name ?? locationDraft.trim() });
+                }}>
                   <SelectTrigger><SelectValue placeholder="Location" /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={ADD_LOCATION_VALUE}>Add location</SelectItem>
                     {locations.map((location) => <SelectItem key={location.locationId} value={location.locationId}>{location.name}</SelectItem>)}
                   </SelectContent>
                 </Select>

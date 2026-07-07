@@ -44,6 +44,11 @@ type ActionTarget = {
   type: "goal" | "alias" | "location" | "roster" | "restore";
 };
 
+type LocationCreateTarget =
+  | { kind: "newRep" }
+  | { kind: "assignment" }
+  | { kind: "inline"; rep: Pick<SalesRepGroup, "repUid" | "locationName"> };
+
 type SalesGridRow = SalesRepGroup & {
   createdAt?: unknown;
   email?: string;
@@ -51,6 +56,8 @@ type SalesGridRow = SalesRepGroup & {
   inActiveRoster: boolean;
   source: "roster" | "sales" | "unmatched";
 };
+
+const ADD_LOCATION_VALUE = "__add_location__";
 
 function normalizeProviderFilter(value: string) {
   const source = value.trim().toLowerCase();
@@ -295,6 +302,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const [locationDraft, setLocationDraft] = useState("");
   const [managerCreating, setManagerCreating] = useState(false);
   const [locationCreating, setLocationCreating] = useState(false);
+  const [locationCreateTarget, setLocationCreateTarget] = useState<LocationCreateTarget | null>(null);
   const [exporting, setExporting] = useState(false);
 
   const refreshActiveRoster = useCallback(async () => {
@@ -691,9 +699,10 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     }
   }
 
-  async function createLocation() {
+  async function createLocation(targetOverride?: LocationCreateTarget) {
     const name = locationDraft.trim();
     if (!name) return;
+    const target = targetOverride ?? locationCreateTarget;
     setLocationCreating(true);
     try {
       const response = await authedFetch("/api/locations", {
@@ -704,9 +713,17 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
       if (!response.ok) throw new Error(result.error || "Unable to create location.");
       const created = result.location as LocationOption;
       setLocations((current) => [...current.filter((item) => item.locationId !== created.locationId), created].sort((a, b) => a.name.localeCompare(b.name)));
-      setNewRepForm((current) => ({ ...current, locationId: created.locationId, locationName: created.name }));
+      if (target?.kind === "newRep") {
+        setNewRepForm((current) => ({ ...current, locationId: created.locationId, locationName: created.name }));
+      }
+      if (target?.kind === "assignment") {
+        setLocationId(created.locationId);
+      }
       setLocationDraft("");
+      const inlineTarget = target?.kind === "inline" ? target.rep : null;
+      setLocationCreateTarget(null);
       toast.success(`Location ${created.name} added.`);
+      if (inlineTarget) await updateInlineLocation(inlineTarget, created.locationId, { showSuccessToast: false });
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to create location.");
     } finally {
@@ -738,7 +755,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     } finally {}
   }
 
-  async function updateInlineLocation(rep: SalesRepGroup, nextLocationId: string) {
+  async function updateInlineLocation(rep: Pick<SalesRepGroup, "repUid" | "locationName">, nextLocationId: string, options?: { showSuccessToast?: boolean }) {
     if (!rep.repUid) return;
     const previousLocationName = rep.locationName;
     const nextLocationName = locations.find((item) => item.locationId === nextLocationId)?.name ?? "";
@@ -756,12 +773,17 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Unable to assign location.");
-      toast.success("Location updated.");
+      if (options?.showSuccessToast !== false) toast.success("Location updated.");
       setRosterOptions((current) => current.map((item) => item.repUid === rep.repUid ? { ...item, locationName: nextLocationName } : item));
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to assign location.");
       setData((current) => current ? { ...current, reps: current.reps.map((row) => row.repUid === rep.repUid ? { ...row, locationName: previousLocationName } : row) } : current);
     } finally {}
+  }
+
+  function openCreateLocationDialog(target: LocationCreateTarget) {
+    setLocationCreateTarget(target);
+    setLocationDraft("");
   }
 
   async function exportSalesWorkbook() {
@@ -1037,11 +1059,18 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                         </TableCell>
                         <TableCell className="hidden xl:table-cell">
                           {rep.repUid ? (
-                            <Select value={locations.find((item) => item.name === rep.locationName)?.locationId || ""} onValueChange={(value) => void updateInlineLocation(rep, value)}>
+                            <Select value={locations.find((item) => item.name === rep.locationName)?.locationId || ""} onValueChange={(value) => {
+                              if (value === ADD_LOCATION_VALUE) {
+                                openCreateLocationDialog({ kind: "inline", rep: { repUid: rep.repUid, locationName: rep.locationName } });
+                                return;
+                              }
+                              void updateInlineLocation(rep, value);
+                            }}>
                               <SelectTrigger className="mx-auto h-9 w-full max-w-[170px] rounded-full border-border/60 bg-background/80 px-3 shadow-sm">
                                 <SelectValue placeholder="Location" />
                               </SelectTrigger>
                               <SelectContent>
+                                <SelectItem value={ADD_LOCATION_VALUE}>Add location</SelectItem>
                                 {locations.map((location) => <SelectItem key={location.locationId} value={location.locationId}>{location.name}</SelectItem>)}
                               </SelectContent>
                             </Select>
@@ -1176,9 +1205,16 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="locationId">Location</Label>
-                <Select value={locationId} onValueChange={setLocationId}>
+                <Select value={locationId} onValueChange={(value) => {
+                  if (value === ADD_LOCATION_VALUE) {
+                    openCreateLocationDialog({ kind: "assignment" });
+                    return;
+                  }
+                  setLocationId(value);
+                }}>
                   <SelectTrigger id="locationId" className="h-11 rounded-full border-border/60 bg-background/80 shadow-sm"><SelectValue placeholder="Choose location" /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={ADD_LOCATION_VALUE}>Add location</SelectItem>
                     {locations.map((location) => <SelectItem key={location.locationId} value={location.locationId}>{location.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -1240,13 +1276,14 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
         managerDraft={managerDraft}
         locationDraft={locationDraft}
         onCreateManager={() => void createManager()}
-        onCreateLocation={() => void createLocation()}
+        onCreateLocation={() => void createLocation({ kind: "newRep" })}
         managerCreating={managerCreating}
         locationCreating={locationCreating}
         canCreateManager={Boolean(managerDraft.trim())}
         canCreateLocation={Boolean(locationDraft.trim())}
         onManagerDraftChange={setManagerDraft}
         onLocationDraftChange={setLocationDraft}
+        onRequestAddLocation={() => openCreateLocationDialog({ kind: "newRep" })}
         onOpenChange={(open) => {
           if (open) return;
           setActionTarget(null);
@@ -1258,6 +1295,31 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
           void createRep();
         }}
       />
+      <Dialog open={Boolean(locationCreateTarget)} onOpenChange={(open) => {
+        if (open) return;
+        setLocationCreateTarget(null);
+        setLocationDraft("");
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add location</DialogTitle>
+            <DialogDescription>Create a location and use it immediately in this workflow.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="new-location-name">Location name</Label>
+            <Input id="new-location-name" value={locationDraft} onChange={(event) => setLocationDraft(event.target.value)} placeholder="New location name" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setLocationCreateTarget(null);
+              setLocationDraft("");
+            }}>Cancel</Button>
+            <Button onClick={() => void createLocation()} disabled={locationCreating || !locationDraft.trim()}>
+              {locationCreating ? "Adding..." : "Add location"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }

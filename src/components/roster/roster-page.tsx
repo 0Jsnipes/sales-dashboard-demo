@@ -18,6 +18,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -56,6 +57,7 @@ type RepForm = {
 type Readiness = "ready" | "missing_email" | "missing_manager" | "missing_location" | "missing_sales_id" | "unknown";
 type RosterStatus = Rep["status"] | "all";
 type RosterFilters = { manager?: string; location?: string; vendor?: string; search?: string };
+type LocationCreateTarget = "editor" | "assignment";
 
 const blankForm: RepForm = {
   displayName: "",
@@ -72,6 +74,8 @@ const blankForm: RepForm = {
   weeklySalesGoal: "0",
   weeklyKnocksGoal: "0",
 };
+
+const ADD_LOCATION_VALUE = "__add_location__";
 
 function split(value: string) {
   return Array.from(new Set(value.split(",").map((item) => item.trim()).filter(Boolean)));
@@ -228,6 +232,9 @@ export function RosterPage() {
   const [locationWeek, setLocationWeek] = useState(currentWeekISO());
   const [locationMode, setLocationMode] = useState<"forward" | "single">("forward");
   const [locationId, setLocationId] = useState("");
+  const [locationDraft, setLocationDraft] = useState("");
+  const [locationCreating, setLocationCreating] = useState(false);
+  const [locationCreateTarget, setLocationCreateTarget] = useState<LocationCreateTarget | null>(null);
   const [form, setForm] = useState<RepForm>(blankForm);
   const [managerFilter, setManagerFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
@@ -465,6 +472,35 @@ export function RosterPage() {
       toast.error(cause instanceof Error ? cause.message : "Unable to assign location.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function createLocation() {
+    const name = locationDraft.trim();
+    if (!name) return;
+    setLocationCreating(true);
+    try {
+      const response = await request("/api/locations", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to create location.");
+      const created = result.location as Location;
+      setLocations((current) => [...current.filter((item) => item.locationId !== created.locationId), created].sort((a, b) => a.name.localeCompare(b.name)));
+      if (locationCreateTarget === "editor") {
+        setForm((current) => ({ ...current, locationId: created.locationId, locationName: created.name }));
+      }
+      if (locationCreateTarget === "assignment") {
+        setLocationId(created.locationId);
+      }
+      setLocationCreateTarget(null);
+      setLocationDraft("");
+      toast.success(`Location ${created.name} added.`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to create location.");
+    } finally {
+      setLocationCreating(false);
     }
   }
 
@@ -849,9 +885,17 @@ export function RosterPage() {
                 </Select>
               </Field>
               <Field label="Location">
-                <Select value={form.locationId} onValueChange={(value) => setForm({ ...form, locationId: value, locationName: locations.find((item) => item.locationId === value)?.name ?? "" })}>
+                <Select value={form.locationId} onValueChange={(value) => {
+                  if (value === ADD_LOCATION_VALUE) {
+                    setLocationCreateTarget("editor");
+                    setLocationDraft("");
+                    return;
+                  }
+                  setForm({ ...form, locationId: value, locationName: locations.find((item) => item.locationId === value)?.name ?? "" });
+                }}>
                   <SelectTrigger><SelectValue placeholder="Location" /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={ADD_LOCATION_VALUE}>Add location</SelectItem>
                     {locations.map((location) => <SelectItem key={location.locationId} value={location.locationId}>{location.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -906,9 +950,19 @@ export function RosterPage() {
               </Select>
             </Field>
             <Field label="Location">
-              <Select value={locationId} onValueChange={setLocationId}>
+              <Select value={locationId} onValueChange={(value) => {
+                if (value === ADD_LOCATION_VALUE) {
+                  setLocationCreateTarget("assignment");
+                  setLocationDraft("");
+                  return;
+                }
+                setLocationId(value);
+              }}>
                 <SelectTrigger><SelectValue placeholder="Choose location" /></SelectTrigger>
-                <SelectContent>{locations.map((location) => <SelectItem key={location.locationId} value={location.locationId}>{location.name}</SelectItem>)}</SelectContent>
+                <SelectContent>
+                  <SelectItem value={ADD_LOCATION_VALUE}>Add location</SelectItem>
+                  {locations.map((location) => <SelectItem key={location.locationId} value={location.locationId}>{location.name}</SelectItem>)}
+                </SelectContent>
               </Select>
             </Field>
             <Field label="Apply">
@@ -924,6 +978,32 @@ export function RosterPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setLocationDialogRep(null)}>Cancel</Button>
             <Button onClick={() => void saveLocationAssignment()} disabled={saving || !locationId}>{saving ? "Saving..." : "Save assignment"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(locationCreateTarget)} onOpenChange={(open) => {
+        if (open) return;
+        setLocationCreateTarget(null);
+        setLocationDraft("");
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add location</DialogTitle>
+            <DialogDescription>Create a location and use it immediately in this workflow.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="roster-location-name">Location name</Label>
+            <Input id="roster-location-name" value={locationDraft} onChange={(event) => setLocationDraft(event.target.value)} placeholder="New location name" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setLocationCreateTarget(null);
+              setLocationDraft("");
+            }}>Cancel</Button>
+            <Button onClick={() => void createLocation()} disabled={locationCreating || !locationDraft.trim()}>
+              {locationCreating ? "Adding..." : "Add location"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
