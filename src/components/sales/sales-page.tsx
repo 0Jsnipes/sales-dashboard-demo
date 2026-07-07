@@ -228,9 +228,10 @@ function formatRangeLabel(mode: "wtd" | "mtd", start: string, end: string) {
   return weekRangeLabel(start, end);
 }
 
-function weekOptions(anchorWeekStart: string, count = 10) {
-  return Array.from({ length: count }, (_, index) => {
-    const value = shiftWeekStart(anchorWeekStart, -7 * index);
+function weekOptions(anchorWeekStart: string, pastCount = 104, futureCount = 12) {
+  return Array.from({ length: pastCount + futureCount + 1 }, (_, index) => {
+    const weekOffset = futureCount - index;
+    const value = shiftWeekStart(anchorWeekStart, 7 * weekOffset);
     const end = shiftWeekStart(value, 6);
     return { value, label: weekRangeLabel(value, end) };
   });
@@ -372,22 +373,48 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const rangeEnd = rangeMode === "mtd"
     ? toDateId(new Date())
     : weekToDateEnd(weekStart);
+  const ytdStart = toDateId(new Date(new Date().getFullYear(), 0, 1));
+  const ytdEnd = toDateId(new Date());
   const displayRangeEnd = rangeMode === "mtd"
     ? rangeEnd
     : toDateId(endOfWeek(new Date(`${weekStart}T12:00:00`)));
   const exportHref = useMemo(() => {
-    if (isKnocks) return "";
     const params = new URLSearchParams({
-      start: rangeStart,
-      end: rangeEnd,
       manager: managerFilter,
       rep: repFilter,
       location: locationFilter,
-      vendorType: vendorFilter,
+      vendor: vendorFilter,
       provider: providerFilter,
     });
+    if (isKnocks) {
+      params.set("start", rangeStart);
+      params.set("end", rangeEnd);
+      if (lcpFilter !== "all") params.set("lcp", lcpFilter);
+      return `/api/knocks/export?${params.toString()}`;
+    }
+    params.set("vendorType", vendorFilter);
+    params.set("start", rangeStart);
+    params.set("end", rangeEnd);
     return `/api/sales/export?${params.toString()}`;
-  }, [isKnocks, locationFilter, managerFilter, providerFilter, rangeEnd, rangeStart, repFilter, vendorFilter]);
+  }, [isKnocks, lcpFilter, locationFilter, managerFilter, providerFilter, rangeEnd, rangeStart, repFilter, vendorFilter]);
+  const exportYtdHref = useMemo(() => {
+    const params = new URLSearchParams({
+      start: ytdStart,
+      end: ytdEnd,
+      manager: managerFilter,
+      rep: repFilter,
+      location: locationFilter,
+      provider: providerFilter,
+    });
+    if (isKnocks) {
+      params.set("vendor", vendorFilter);
+      if (lcpFilter !== "all") params.set("lcp", lcpFilter);
+      return `/api/knocks/export?${params.toString()}`;
+    }
+    params.set("ytd", "true");
+    params.set("vendorType", vendorFilter);
+    return `/api/sales/export?${params.toString()}`;
+  }, [isKnocks, lcpFilter, locationFilter, managerFilter, providerFilter, repFilter, vendorFilter, ytdEnd, ytdStart]);
 
   const reportSegments = useMemo(() => buildRangeSegments(rangeMode === "mtd" ? "mtd" : "wtd", data?.week.start ?? rangeStart, rangeMode === "mtd" ? data?.week.end ?? rangeEnd : displayRangeEnd), [data?.week.end, data?.week.start, displayRangeEnd, rangeEnd, rangeMode, rangeStart]);
   const segmentIndexByDateId = useMemo(() => {
@@ -786,22 +813,18 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     setLocationDraft("");
   }
 
-  async function exportSalesWorkbook() {
-    if (isKnocks || !exportHref) {
-      toast.message("Knocks export is not available from this screen.");
-      return;
-    }
+  async function downloadExport(href: string, fallbackFileName: string, successMessage: string, errorMessage: string) {
     setExporting(true);
     try {
-      const response = await authedFetch(exportHref);
+      const response = await authedFetch(href);
       if (!response.ok) {
-        const result = await response.json().catch(() => ({ error: "Unable to export sales." })) as { error?: string };
-        throw new Error(result.error || "Unable to export sales.");
+        const result = await response.json().catch(() => ({ error: errorMessage })) as { error?: string };
+        throw new Error(result.error || errorMessage);
       }
       const blob = await response.blob();
       const disposition = response.headers.get("content-disposition") ?? "";
       const match = disposition.match(/filename="?([^"]+)"?/i);
-      const fileName = match?.[1] || `sales-export-${rangeStart}-to-${rangeEnd}.xlsx`;
+      const fileName = match?.[1] || fallbackFileName;
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -810,12 +833,32 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
       anchor.click();
       anchor.remove();
       URL.revokeObjectURL(url);
-      toast.message("Downloaded the sales export workbook.");
+      toast.message(successMessage);
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : "Unable to export sales.");
+      toast.error(cause instanceof Error ? cause.message : errorMessage);
     } finally {
       setExporting(false);
     }
+  }
+
+  async function exportCurrentWorkbook() {
+    if (!exportHref) return;
+    await downloadExport(
+      exportHref,
+      isKnocks ? `knocks-export-${rangeStart}-to-${rangeEnd}.xlsx` : `sales-export-${rangeStart}-to-${rangeEnd}.xlsx`,
+      isKnocks ? "Downloaded the knocks export workbook." : "Downloaded the sales export workbook.",
+      isKnocks ? "Unable to export knocks." : "Unable to export sales.",
+    );
+  }
+
+  async function exportYtdWorkbook() {
+    if (!exportYtdHref) return;
+    await downloadExport(
+      exportYtdHref,
+      isKnocks ? `knocks-export-ytd-${ytdStart}-to-${ytdEnd}.xlsx` : `sales-export-ytd-${ytdStart}-to-${ytdEnd}.xlsx`,
+      isKnocks ? "Downloaded the YTD knocks export workbook." : "Downloaded the YTD sales export workbook.",
+      isKnocks ? "Unable to export YTD knocks." : "Unable to export YTD sales.",
+    );
   }
 
   if (loading && !data) return <LoadingState />;
@@ -849,12 +892,12 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
               </div>
               <p className="text-sm text-muted-foreground">{currentLabel}</p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap xl:justify-end">
               <Button variant="outline" size="icon-sm" className="rounded-full" onClick={() => setWeekStart(shiftWeekStart(weekStart, -7))} aria-label="Previous week">
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <Select value={weekStart} onValueChange={setWeekStart}>
-                <SelectTrigger className="h-10 w-[min(100%,240px)] gap-2 rounded-full border-border/60 bg-background/80 px-4 shadow-sm sm:w-[240px] md:w-[260px]">
+                <SelectTrigger className="h-10 w-[min(100%,240px)] gap-2 rounded-full border-border/60 bg-background/80 px-4 shadow-sm sm:w-[240px] md:w-[260px] xl:w-[220px]">
                   <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" />
                   <SelectValue placeholder="Select week" className="min-w-0 flex-1 truncate text-center text-sm" />
                 </SelectTrigger>
@@ -873,19 +916,29 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                 <Button size="sm" variant={rangeMode === "wtd" ? "default" : "ghost"} className="h-8 rounded-full px-3" onClick={() => setRangeMode("wtd")}>WTD</Button>
                 <Button size="sm" variant={rangeMode === "mtd" ? "default" : "ghost"} className="h-8 rounded-full px-3" onClick={() => setRangeMode("mtd")}>MTD</Button>
               </div>
-              <Button variant="outline" size="sm" className="rounded-full" onClick={() => void loadSales()}>
+              <Button variant="outline" size="sm" className="rounded-full whitespace-nowrap" onClick={() => void loadSales()}>
                 <RefreshCcw className="h-4 w-4" />
                 Refresh
               </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="rounded-full"
-                  onClick={() => void exportSalesWorkbook()}
+                  className="rounded-full whitespace-nowrap"
+                  onClick={() => void exportCurrentWorkbook()}
                   disabled={exporting}
                 >
                   <Download className="h-4 w-4" />
-                  {exporting ? "Exporting..." : "Export"}
+                  {exporting ? "Exporting..." : isKnocks ? "Export knocks" : "Export"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full whitespace-nowrap"
+                  onClick={() => void exportYtdWorkbook()}
+                  disabled={exporting}
+                >
+                  <Download className="h-4 w-4" />
+                  {exporting ? "Exporting..." : isKnocks ? "Export YTD knocks" : "Export YTD"}
                 </Button>
             </div>
           </div>

@@ -38,7 +38,7 @@ function pruneExportColumns(rows: Record<string, unknown>[]) {
 export async function GET(request: Request) {
   try {
     await requireActor(request);
-    const url = new URL(request.url); const start = url.searchParams.get("start"); const end = url.searchParams.get("end"); const allTime = url.searchParams.get("allTime") === "true";
+    const url = new URL(request.url); const start = url.searchParams.get("start"); const end = url.searchParams.get("end"); const allTime = url.searchParams.get("allTime") === "true"; const ytd = url.searchParams.get("ytd") === "true";
     if (!allTime && (!/^\d{4}-\d{2}-\d{2}$/.test(start ?? "") || !/^\d{4}-\d{2}-\d{2}$/.test(end ?? "") || start! > end!)) return NextResponse.json({ error: "Choose a valid export date range." }, { status: 400 });
     const db = getAdminDb();
     const orders = (provider: "tfiber" | "att") => { const collection = db.collection("salesOrders").doc(provider).collection("orders"); return allTime ? collection.get() : collection.where("orderDateId", ">=", start!).where("orderDateId", "<=", end!).get(); };
@@ -113,6 +113,7 @@ export async function GET(request: Request) {
     if (tfiberRows.length) XLSX.utils.book_append_sheet(workbook, worksheet(tfiberRows), "T-Fiber");
     if (!workbook.SheetNames.length) XLSX.utils.book_append_sheet(workbook, worksheet([]), "Export");
     const file = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
-    return new NextResponse(file, { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="sales-export-${allTime ? "all-time" : `${start}-to-${end}`}.xlsx"` } });
+    const fileName = allTime ? "sales-export-all-time.xlsx" : ytd ? `sales-export-ytd-${start}-to-${end}.xlsx` : `sales-export-${start}-to-${end}.xlsx`;
+    return new NextResponse(file, { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="${fileName}"` } });
   } catch (error) { const message = error instanceof Error ? error.message : "EXPORT_FAILED"; return NextResponse.json({ error: message }, { status: message === "UNAUTHENTICATED" ? 401 : 500 }); }
 }
