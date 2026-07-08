@@ -32,6 +32,7 @@ export interface Rep {
   inactiveReason?: "manual" | "noSalesThreeWeeks" | string;
   reactivatedAt?: unknown;
   reactivatedBy?: string;
+  firstSaleDateId?: string;
   lastSaleDateId?: string;
   createdAt?: unknown;
   createdBy?: string;

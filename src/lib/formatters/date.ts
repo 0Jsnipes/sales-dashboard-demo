@@ -16,14 +16,16 @@ function toValidDate(value: unknown) {
   }
 
   if (typeof value === "object") {
-    const candidate = value as { toDate?: () => Date; seconds?: number; nanoseconds?: number };
+    const candidate = value as { toDate?: () => Date; seconds?: number; nanoseconds?: number; _seconds?: number; _nanoseconds?: number };
     if (typeof candidate.toDate === "function") {
       const date = candidate.toDate();
       return date instanceof Date && !Number.isNaN(date.valueOf()) ? date : null;
     }
 
-    if (typeof candidate.seconds === "number") {
-      const millis = candidate.seconds * 1000 + Math.floor((candidate.nanoseconds ?? 0) / 1_000_000);
+    const seconds = typeof candidate.seconds === "number" ? candidate.seconds : candidate._seconds;
+    const nanoseconds = typeof candidate.nanoseconds === "number" ? candidate.nanoseconds : candidate._nanoseconds;
+    if (typeof seconds === "number") {
+      const millis = seconds * 1000 + Math.floor((nanoseconds ?? 0) / 1_000_000);
       const date = new Date(millis);
       return Number.isNaN(date.valueOf()) ? null : date;
     }

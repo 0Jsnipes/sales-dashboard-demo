@@ -1088,7 +1088,12 @@ export function PerformancePage() {
                     tickFormatter={(value) => format(new Date(`${value}T12:00:00`), "MMM d")}
                   />
                   <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
-                  <RechartsTooltip labelFormatter={(value) => format(new Date(`${value as string}T12:00:00`), "MMM d, yyyy")} />
+                  <RechartsTooltip
+                    contentStyle={{ backgroundColor: "rgba(15, 23, 42, 0.96)", border: "1px solid rgba(148, 163, 184, 0.35)", borderRadius: "16px", boxShadow: "0 20px 45px -24px rgba(15, 23, 42, 0.85)" }}
+                    labelStyle={{ color: "rgba(241, 245, 249, 0.92)", fontWeight: 600 }}
+                    itemStyle={{ color: "rgb(96, 165, 250)", fontWeight: 600 }}
+                    labelFormatter={(value) => format(new Date(`${value as string}T12:00:00`), "MMM d, yyyy")}
+                  />
                   <Line type="monotone" dataKey="sales" stroke="var(--primary)" strokeWidth={3} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
@@ -1166,7 +1171,12 @@ export function PerformancePage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                   <XAxis dataKey="name" tickLine={false} axisLine={false} />
                   <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
-                  <RechartsTooltip formatter={(value) => [formatNumber(Number(value)), "Sales"]} />
+                  <RechartsTooltip
+                    contentStyle={{ backgroundColor: "rgba(15, 23, 42, 0.96)", border: "1px solid rgba(148, 163, 184, 0.35)", borderRadius: "16px", boxShadow: "0 20px 45px -24px rgba(15, 23, 42, 0.85)" }}
+                    labelStyle={{ color: "rgba(241, 245, 249, 0.92)", fontWeight: 600 }}
+                    itemStyle={{ color: "rgb(96, 165, 250)", fontWeight: 600 }}
+                    formatter={(value) => [formatNumber(Number(value)), "Sales"]}
+                  />
                   <Bar dataKey="value" radius={[12, 12, 0, 0]}>
                     {orderBreakdownData.map((entry) => (
                       <Cell key={entry.name} fill={entry.fill} />

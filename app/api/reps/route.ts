@@ -44,6 +44,7 @@ export async function GET(request: Request) {
     }
     const reps = snapshot.docs.map((document) => document.data());
     const repUids = reps.map((rep) => String((rep as { repUid?: string }).repUid || "")).filter(Boolean);
+    const firstSaleDateByRepUid = new Map<string, string>();
     const lastSaleDateByRepUid = new Map<string, string>();
     for (const group of chunks(repUids, 30)) {
       const [attSnapshot, tfiberSnapshot, manualSnapshot] = await Promise.all([
@@ -56,6 +57,8 @@ export async function GET(request: Request) {
         const repUid = String(data.matchedRepUid || "");
         const orderDateId = String(data.orderDateId || "");
         if (!repUid || !orderDateId) continue;
+        const first = firstSaleDateByRepUid.get(repUid) || "";
+        if (!first || orderDateId < first) firstSaleDateByRepUid.set(repUid, orderDateId);
         const current = lastSaleDateByRepUid.get(repUid) || "";
         if (!current || orderDateId > current) lastSaleDateByRepUid.set(repUid, orderDateId);
       }
@@ -78,7 +81,11 @@ export async function GET(request: Request) {
     });
     const enriched = filtered.map((rep) => {
       const repUid = String((rep as { repUid?: string }).repUid || "");
-      return { ...rep, lastSaleDateId: lastSaleDateByRepUid.get(repUid) || "" };
+      return {
+        ...rep,
+        firstSaleDateId: firstSaleDateByRepUid.get(repUid) || "",
+        lastSaleDateId: lastSaleDateByRepUid.get(repUid) || "",
+      };
     });
     return NextResponse.json({ reps: enriched.sort((a, b) => String((a as { displayName?: string }).displayName || "").localeCompare(String((b as { displayName?: string }).displayName || ""))), meta: { filtersApplied: Object.entries(filters).filter(([, value]) => Boolean(value)), count: enriched.length, autoInactive } });
   } catch (error) { return errorResponse(error); }

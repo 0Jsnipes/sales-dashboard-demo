@@ -81,6 +81,17 @@ function split(value: string) {
   return Array.from(new Set(value.split(",").map((item) => item.trim()).filter(Boolean)));
 }
 
+function formatApiError(error: unknown, fallback: string) {
+  if (!error) return fallback;
+  if (typeof error === "string") return error;
+  if (typeof error !== "object") return fallback;
+  const candidate = error as { fieldErrors?: Record<string, string[] | undefined>; formErrors?: string[] };
+  const fieldMessages = Object.entries(candidate.fieldErrors ?? {})
+    .flatMap(([field, messages]) => (messages ?? []).filter(Boolean).map((message) => `${field}: ${message}`));
+  const formMessages = (candidate.formErrors ?? []).filter(Boolean);
+  return [...formMessages, ...fieldMessages][0] ?? fallback;
+}
+
 function currentWeekISO() {
   return isoWeek(new Date());
 }
@@ -419,6 +430,10 @@ export function RosterPage() {
       toast.error("Rep name is required.");
       return;
     }
+    if (!form.locationId.trim() || !form.locationName.trim()) {
+      toast.error("Location is required.");
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -441,7 +456,7 @@ export function RosterPage() {
         body: JSON.stringify(editing ? { action: "update", rep: payload } : payload),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Unable to save representative.");
+      if (!response.ok) throw new Error(formatApiError(result.error, "Unable to save representative."));
       toast.success(editing ? "Representative saved." : "Representative created.");
       setEditorOpen(false);
       setEditing(null);

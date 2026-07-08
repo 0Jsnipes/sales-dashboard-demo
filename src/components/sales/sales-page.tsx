@@ -52,6 +52,7 @@ type LocationCreateTarget =
 type SalesGridRow = SalesRepGroup & {
   createdAt?: unknown;
   email?: string;
+  firstSaleDateId?: string;
   programIds?: string[];
   inActiveRoster: boolean;
   source: "roster" | "sales" | "unmatched";
@@ -78,13 +79,15 @@ function toValidDate(value: unknown) {
     return Number.isNaN(date.valueOf()) ? null : date;
   }
   if (typeof value === "object") {
-    const candidate = value as { toDate?: () => Date; seconds?: number; nanoseconds?: number };
+    const candidate = value as { toDate?: () => Date; seconds?: number; nanoseconds?: number; _seconds?: number; _nanoseconds?: number };
     if (typeof candidate.toDate === "function") {
       const date = candidate.toDate();
       return date instanceof Date && !Number.isNaN(date.valueOf()) ? date : null;
     }
-    if (typeof candidate.seconds === "number") {
-      const millis = candidate.seconds * 1000 + Math.floor((candidate.nanoseconds ?? 0) / 1_000_000);
+    const seconds = typeof candidate.seconds === "number" ? candidate.seconds : candidate._seconds;
+    const nanoseconds = typeof candidate.nanoseconds === "number" ? candidate.nanoseconds : candidate._nanoseconds;
+    if (typeof seconds === "number") {
+      const millis = seconds * 1000 + Math.floor((nanoseconds ?? 0) / 1_000_000);
       const date = new Date(millis);
       return Number.isNaN(date.valueOf()) ? null : date;
     }
@@ -92,13 +95,46 @@ function toValidDate(value: unknown) {
   return null;
 }
 
-function isRecentlyAdded(value: unknown, days = 14) {
-  const createdAt = toValidDate(value);
-  if (!createdAt) return false;
-  const now = new Date();
-  const windowEnd = new Date(createdAt);
+function getNewRepHighlightWindow(startDateId: string | null | undefined, days = 14) {
+  if (!startDateId) return null;
+  const startDate = toValidDate(startDateId);
+  if (!startDate) return null;
+  const start = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  const windowEnd = new Date(start);
   windowEnd.setDate(windowEnd.getDate() + days);
-  return now >= createdAt && now < windowEnd;
+  return {
+    start,
+    end: windowEnd,
+    startDateId: toDateId(start),
+    endDateId: toDateId(windowEnd),
+  };
+}
+
+function getFirstSaleDateId(row: Pick<SalesGridRow, "vendorType" | "orders" | "firstSaleDateId">) {
+  if (row.vendorType !== "organic") return null;
+  if (row.firstSaleDateId) return row.firstSaleDateId;
+  const dateIds = row.orders.map((order) => order.orderDateId).filter((value): value is string => Boolean(value));
+  if (!dateIds.length) return null;
+  return [...dateIds].sort((a, b) => a.localeCompare(b))[0];
+}
+
+function isWithinNewRepHighlightWindow(row: Pick<SalesGridRow, "vendorType" | "orders" | "firstSaleDateId">, days = 14) {
+  const window = getNewRepHighlightWindow(getFirstSaleDateId(row), days);
+  if (!window) return false;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return today >= window.start && today <= window.end;
+}
+
+function formatApiError(error: unknown, fallback: string) {
+  if (!error) return fallback;
+  if (typeof error === "string") return error;
+  if (typeof error !== "object") return fallback;
+  const candidate = error as { fieldErrors?: Record<string, string[] | undefined>; formErrors?: string[] };
+  const fieldMessages = Object.entries(candidate.fieldErrors ?? {})
+    .flatMap(([field, messages]) => (messages ?? []).filter(Boolean).map((message) => `${field}: ${message}`));
+  const formMessages = (candidate.formErrors ?? []).filter(Boolean);
+  return [...formMessages, ...fieldMessages][0] ?? fallback;
 }
 
 function LoadingState() {
@@ -281,7 +317,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const [lcpFilter, setLcpFilter] = useQueryState("lcp", parseAsString.withDefault("all"));
   const [vendorFilter, setVendorFilter] = useQueryState("vendor", parseAsString.withDefault("all"));
   const [providerFilter, setProviderFilter] = useQueryState("provider", parseAsString.withDefault("all"));
-  const [showNewRepHighlights, setShowNewRepHighlights] = useQueryState("showNewRepHighlights", parseAsString.withDefault("1"));
+  const [showNewRepHighlights, setShowNewRepHighlights] = useQueryState("showNewRepHighlights", parseAsString.withDefault("0"));
   const [viewMode, setViewMode] = useQueryState("view", parseAsString.withDefault("rep"));
   const [rangeMode, setRangeMode] = useQueryState("range", parseAsString.withDefault("wtd"));
   const [showZeroSales, setShowZeroSales] = useQueryState("showZeroSales", parseAsString.withDefault("1"));
@@ -297,7 +333,6 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const [goalDraft, setGoalDraft] = useState("0");
   const [newRepForm, setNewRepForm] = useState<RepEditorForm>(blankRepEditorForm);
   const [locationId, setLocationId] = useState("");
-  const [locationMode, setLocationMode] = useState<"forward" | "single">("forward");
   const [locationWeek, setLocationWeek] = useState("");
   const [managerDraft, setManagerDraft] = useState("");
   const [locationDraft, setLocationDraft] = useState("");
@@ -436,11 +471,12 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
           ...salesRow,
           createdAt: rep.createdAt,
           email: rep.email,
+          firstSaleDateId: rep.firstSaleDateId,
           programIds: rep.programIds,
           inActiveRoster: true,
           source: "sales" as const,
           managerName: rep.managerName || salesRow.managerName,
-          locationName: rep.locationName || salesRow.locationName,
+          locationName: salesRow.locationName || rep.locationName,
           weeklySalesGoal: rep.weeklySalesGoal ?? salesRow.weeklySalesGoal,
           weeklyKnocksGoal: rep.weeklyKnocksGoal ?? salesRow.weeklyKnocksGoal,
         };
@@ -470,6 +506,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
         week: data?.week ?? { start: weekStart, end: weekStart },
         createdAt: rep.createdAt,
         email: rep.email,
+        firstSaleDateId: rep.firstSaleDateId,
         programIds: rep.programIds,
         inActiveRoster: true,
         source: "roster" as const,
@@ -484,11 +521,12 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
         ...row,
         createdAt: undefined,
         email: undefined,
+        firstSaleDateId: undefined,
         programIds: [],
         inActiveRoster: false,
         source: "sales" as const,
       }));
-    const unmatchedRows = salesRows.filter((row) => !row.repUid).map((row) => ({ ...row, inActiveRoster: false, source: "unmatched" as const }));
+    const unmatchedRows = salesRows.filter((row) => !row.repUid).map((row) => ({ ...row, firstSaleDateId: undefined, inActiveRoster: false, source: "unmatched" as const }));
     return [...rosterRows, ...historicalSalesRows, ...unmatchedRows].sort((a, b) => a.displayName.localeCompare(b.displayName));
   }, [data?.reps, data?.week, reportSegments, rosterOptions, weekStart]);
 
@@ -497,7 +535,9 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     const includeZeroSales = showZeroSales !== "0";
     const selectedProvider = normalizeProviderFilter(providerFilter);
     const selectedLcp = lcpFilter.trim().toLowerCase();
+    const highlightOnly = !isKnocks && showNewRepHighlights !== "0";
     return rows.filter((row) => {
+      const isHighlightedRep = isWithinNewRepHighlightWindow(row);
       const matchesSearch = !term || [row.displayName, row.managerName, row.locationName, row.programName, row.rawSalesId, row.email, ...row.orders.map((order) => order.customerName), ...row.orders.map((order) => order.orderNumber)].join(" ").toLowerCase().includes(term);
       const matchesVendor = vendorFilter === "all" || row.vendorType === vendorFilter;
       const rowProviders = row.orders.map((order) => normalizeProviderFilter(order.provider)).filter(Boolean);
@@ -518,20 +558,28 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
         && matchesVendor
         && matchesProvider
         && matchesLcp
-        && (includeZeroSales || row.total > 0);
+        && (!highlightOnly || isHighlightedRep)
+        && (highlightOnly || includeZeroSales || row.total > 0);
     });
-  }, [isKnocks, lcpFilter, locationFilter, managerFilter, providerFilter, repFilter, rows, search, showZeroSales, vendorFilter]);
+  }, [isKnocks, lcpFilter, locationFilter, managerFilter, providerFilter, repFilter, rows, search, showNewRepHighlights, showZeroSales, vendorFilter]);
 
   const teamChart = useMemo(() => visibleRows.map((row) => ({ name: row.displayName, sales: row.total })), [visibleRows]);
 
     const rowSegments = useMemo(() => visibleRows.map((row) => {
     const counts = reportSegments.map(() => 0);
+    const highlightWindow = !isKnocks && showNewRepHighlights !== "0" ? getNewRepHighlightWindow(getFirstSaleDateId(row)) : null;
     for (const order of row.orders) {
       const index = segmentIndexByDateId.get(order.orderDateId);
       if (index !== undefined) counts[index] += Number(order.saleCount || 1);
     }
-    return { row, counts };
-  }), [segmentIndexByDateId, reportSegments, visibleRows]);
+    return {
+      row,
+      counts,
+      highlightedSegmentIndices: !isKnocks && showNewRepHighlights !== "0"
+        ? reportSegments.map((segment) => Boolean(highlightWindow && segment.dateIds.some((dateId) => dateId >= highlightWindow.startDateId && dateId <= highlightWindow.endDateId)))
+        : reportSegments.map(() => false),
+    };
+  }), [isKnocks, segmentIndexByDateId, reportSegments, showNewRepHighlights, visibleRows]);
 
   const totals = useMemo(() => {
     const summary = { total: 0, goal: 0, segments: reportSegments.map(() => 0) };
@@ -551,14 +599,13 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const hasNoData = !loading && visibleRows.length === 0;
 
   function openAction(rep: SalesRepGroup, type: ActionTarget["type"]) {
-    setActionTarget({ rep, type });
-    setAliasTargetRepUid(type === "alias" ? rep.repUid ?? "" : "");
-    setLocationId(rep.locationName || "");
-    setLocationMode("forward");
-    setLocationWeek(weekISOForWeekStart(weekStart));
-    setGoalDraft(String(Number(rep[goalField] || 0)));
     const matchedManager = managers.find((item) => item.name === rep.managerName);
     const matchedLocation = locations.find((item) => item.name === rep.locationName);
+    setActionTarget({ rep, type });
+    setAliasTargetRepUid(type === "alias" ? rep.repUid ?? "" : "");
+    setLocationId(matchedLocation?.locationId ?? "");
+    setLocationWeek(weekISOForWeekStart(weekStart));
+    setGoalDraft(String(Number(rep[goalField] || 0)));
     setNewRepForm({
       ...blankRepEditorForm,
       displayName: rep.displayName || "",
@@ -628,7 +675,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
           weekISO: locationWeek,
           locationId,
           locationName: nextLocationName,
-          mode: locationMode,
+          mode: "forward",
           persistRepLocation: false,
         }),
       });
@@ -636,7 +683,6 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
       if (!response.ok) throw new Error(result.error || "Unable to assign location.");
       toast.success("Location updated.");
       setActionTarget(null);
-      setRosterOptions((current) => current.map((item) => item.repUid === actionTarget.rep.repUid ? { ...item, locationName: nextLocationName } : item));
       setData((current) => current ? {
         ...current,
         reps: current.reps.map((row) => row.repUid === actionTarget.rep.repUid ? { ...row, locationName: nextLocationName } : row),
@@ -650,6 +696,14 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
 
   async function createRep() {
     if (!actionTarget) return;
+    if (!newRepForm.displayName.trim()) {
+      toast.error("Display name is required.");
+      return;
+    }
+    if (!newRepForm.locationId.trim() || !newRepForm.locationName.trim()) {
+      toast.error("Location is required.");
+      return;
+    }
     setActionSaving(true);
     try {
       const response = await authedFetch("/api/reps", {
@@ -671,7 +725,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
         }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Unable to create rep.");
+      if (!response.ok) throw new Error(formatApiError(result.error, "Unable to create rep."));
       toast.success("Rep added to roster.");
       setActionTarget(null);
       await refreshActiveRoster();
@@ -802,7 +856,6 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Unable to assign location.");
       if (options?.showSuccessToast !== false) toast.success("Location updated.");
-      setRosterOptions((current) => current.map((item) => item.repUid === rep.repUid ? { ...item, locationName: nextLocationName } : item));
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to assign location.");
       setData((current) => current ? { ...current, reps: current.reps.map((row) => row.repUid === rep.repUid ? { ...row, locationName: previousLocationName } : row) } : current);
@@ -1016,9 +1069,9 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
             {!isKnocks ? (
               <div className="flex h-11 items-center justify-between gap-3 rounded-full border border-border/60 bg-background/80 px-4 shadow-sm">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium leading-none">Highlight new reps</p>
+                  <p className="text-sm font-medium leading-none">New rep window</p>
                 </div>
-                <Switch checked={showNewRepHighlights !== "0"} onCheckedChange={(checked) => void setShowNewRepHighlights(checked ? "1" : "0")} aria-label="Highlight new reps" />
+                <Switch checked={showNewRepHighlights !== "0"} onCheckedChange={(checked) => void setShowNewRepHighlights(checked ? "1" : "0")} aria-label="Show new rep window" />
               </div>
             ) : null}
             <div className="flex h-11 items-center justify-between gap-3 rounded-full border border-border/60 bg-background/80 px-4 shadow-sm">
@@ -1089,19 +1142,12 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {rowSegments.map(({ row: rep, counts }) => (
-                      <TableRow
-                        key={rep.key}
-                        className={cn(
-                          "h-16 border-border/60 transition-colors hover:bg-muted/20",
-                          !isKnocks && showNewRepHighlights !== "0" && isRecentlyAdded(rep.createdAt) ? "bg-emerald-50/80 hover:bg-emerald-50 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/30" : undefined,
-                        )}
-                      >
+                    {rowSegments.map(({ row: rep, counts, highlightedSegmentIndices }) => (
+                      <TableRow key={rep.key} className="h-16 border-border/60 transition-colors hover:bg-muted/20">
                         <TableCell className="font-medium">
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
                               <div className="truncate">{rep.displayName}</div>
-                              {!isKnocks && showNewRepHighlights !== "0" && isRecentlyAdded(rep.createdAt) ? <Badge variant="success">New</Badge> : null}
                             </div>
                             <div className="mt-1 text-xs text-muted-foreground xl:hidden">
                               {rep.managerName || "No manager"} / {rep.locationName || "No location"}
@@ -1135,8 +1181,15 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                         {counts.map((value, index) => {
                           const daily = value;
                           return (
-                            <TableCell key={reportSegments[index]?.key ?? index} className={cn("text-center transition-colors", weekColumnClass(index))}>
-                              {daily ? <Badge variant="success">{daily}</Badge> : <span className="text-muted-foreground">0</span>}
+                            <TableCell
+                              key={reportSegments[index]?.key ?? index}
+                              className={cn(
+                                "text-center transition-colors",
+                                weekColumnClass(index),
+                                highlightedSegmentIndices[index] ? "bg-yellow-100/45 text-foreground dark:bg-yellow-200/18 dark:text-foreground" : undefined,
+                              )}
+                            >
+                              {daily ? <Badge variant="success">{daily}</Badge> : <span className={highlightedSegmentIndices[index] ? "text-foreground/80" : "text-muted-foreground"}>0</span>}
                             </TableCell>
                           );
                         })}
@@ -1273,23 +1326,11 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="locationWeek">Week</Label>
-                  <Input id="locationWeek" className="h-11 rounded-full border-border/60 bg-background/80 shadow-sm" value={locationWeek} onChange={(event) => setLocationWeek(event.target.value)} placeholder="YYYY-W##" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="locationMode">Mode</Label>
-                  <Select value={locationMode} onValueChange={(value) => setLocationMode(value as "forward" | "single")}>
-                    <SelectTrigger id="locationMode" className="h-11 rounded-full border-border/60 bg-background/80 shadow-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="forward">Forward from week</SelectItem>
-                      <SelectItem value="single">Single week</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="locationWeek">Week</Label>
+                <Input id="locationWeek" className="h-11 rounded-full border-border/60 bg-background/80 shadow-sm" value={locationWeek} onChange={(event) => setLocationWeek(event.target.value)} placeholder="YYYY-W##" />
               </div>
-              <p className="text-xs text-muted-foreground">This updates the rep&apos;s location through the existing location assignment API.</p>
+              <p className="text-xs text-muted-foreground">This updates the rep&apos;s location for the selected week and all future weeks.</p>
             </div>
           )}
 
