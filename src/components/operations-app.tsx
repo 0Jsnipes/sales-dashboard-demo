@@ -48,7 +48,7 @@ function OperationsShell({ view }: { view: "dashboard" | "performance" | "report
     view === "sales" ? { title: "Sales", subtitle: "Weekly sales rows, filters, and goal management." } :
     view === "knocks" ? { title: "Knocks", subtitle: "Knock reporting workspace and intake landing zone." } :
     view === "roster" ? { title: "Roster", subtitle: "Reps, managers, locations, and identity management." } :
-    view === "onboarding" ? { title: "Onboarding", subtitle: "Checklist-driven rep onboarding workflow." } :
+    view === "onboarding" ? { title: "Tools", subtitle: "Operational tools, resource links, and recruiting references." } :
     view === "imports" ? { title: "Imports", subtitle: "Upload, validate, and review incoming operational files." } :
     view === "unmatched" ? { title: "Unmatched review", subtitle: "Resolve ambiguous import matches safely." } :
     view === "backfill" ? { title: "Backfill", subtitle: "Create audited historical sales records." } :

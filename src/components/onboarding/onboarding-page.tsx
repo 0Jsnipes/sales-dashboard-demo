@@ -143,8 +143,8 @@ export function OnboardingPage() {
         <Card className="border-border/70">
           <CardHeader className="flex-row items-start justify-between gap-4">
             <div>
-              <CardTitle>Onboarding</CardTitle>
-              <CardDescription>Program links, UID tools, background checks, and rep onboarding resources.</CardDescription>
+              <CardTitle>Tools</CardTitle>
+              <CardDescription>Program links, UID tools, background checks, recruiting references, and operational resources.</CardDescription>
             </div>
             <Button variant="outline" disabled={!allowed} aria-label="Add resource">
               Add resource
