@@ -522,7 +522,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     });
   }, [isKnocks, lcpFilter, locationFilter, managerFilter, providerFilter, repFilter, rows, search, showZeroSales, vendorFilter]);
 
-  const teamChart = useMemo(() => visibleRows.map((row) => ({ name: row.displayName, sales: row.total })).slice(0, 12), [visibleRows]);
+  const teamChart = useMemo(() => visibleRows.map((row) => ({ name: row.displayName, sales: row.total })), [visibleRows]);
 
     const rowSegments = useMemo(() => visibleRows.map((row) => {
     const counts = reportSegments.map(() => 0);
@@ -629,6 +629,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
           locationId,
           locationName: nextLocationName,
           mode: locationMode,
+          persistRepLocation: false,
         }),
       });
       const result = await response.json();
@@ -794,7 +795,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
           weekISO: weekISOForWeekStart(weekStart),
           locationId: nextLocationId,
           locationName: nextLocationName,
-          mode: "single",
+          mode: "forward",
           persistRepLocation: false,
         }),
       });
@@ -897,7 +898,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <Select value={weekStart} onValueChange={setWeekStart}>
-                <SelectTrigger className="h-10 w-[min(100%,240px)] gap-2 rounded-full border-border/60 bg-background/80 px-4 shadow-sm sm:w-[240px] md:w-[260px] xl:w-[220px]">
+                <SelectTrigger className="h-12 w-[min(100%,280px)] gap-2 rounded-full border-border/60 bg-background/80 px-5 shadow-sm sm:w-[280px] md:w-[320px] xl:w-[300px]">
                   <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" />
                   <SelectValue placeholder="Select week" className="min-w-0 flex-1 truncate text-center text-sm" />
                 </SelectTrigger>

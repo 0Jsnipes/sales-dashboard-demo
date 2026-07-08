@@ -162,10 +162,33 @@ export async function GET(request: Request) {
     const statusStart = range.from ? monday : new Date(today.getFullYear(), today.getMonth(), 1);
     const statusEnd = range.to ? lastDay : today;
     const elapsedDays = Math.max(1, weekday === 0 ? 7 : weekday);
-    const comparisonCurrentStart = weekday === 1 ? addDays(monday, -7) : monday;
-    const comparisonCurrentEnd = weekday === 1 ? addDays(monday, -1) : lastDay;
-    const comparisonPreviousStart = addDays(comparisonCurrentStart, -7);
-    const comparisonPreviousEnd = addDays(comparisonCurrentEnd, -7);
+    const hasExplicitRange = Boolean(range.from || range.to);
+    let comparisonCurrentStart: Date;
+    let comparisonCurrentEnd: Date;
+    let comparisonPreviousStart: Date;
+    let comparisonPreviousEnd: Date;
+
+    if (hasExplicitRange) {
+      comparisonCurrentStart = monday;
+      comparisonCurrentEnd = lastDay;
+      const comparisonLength = Math.max(1, Math.round((comparisonCurrentEnd.valueOf() - comparisonCurrentStart.valueOf()) / 86400000) + 1);
+      comparisonPreviousStart = addDays(comparisonCurrentStart, -7);
+      comparisonPreviousEnd = addDays(comparisonPreviousStart, comparisonLength - 1);
+    } else if (weekday === 1) {
+      // On Mondays there is no completed data for the current week yet, so compare
+      // the previous full week against the week before it.
+      comparisonCurrentStart = addDays(monday, -7);
+      comparisonCurrentEnd = addDays(monday, -1);
+      comparisonPreviousStart = addDays(monday, -14);
+      comparisonPreviousEnd = addDays(monday, -8);
+    } else {
+      // For the in-progress week, compare only completed days through yesterday.
+      const completedDays = Math.max(1, weekday - 1);
+      comparisonCurrentStart = monday;
+      comparisonCurrentEnd = addDays(monday, completedDays - 1);
+      comparisonPreviousStart = addDays(monday, -7);
+      comparisonPreviousEnd = addDays(comparisonPreviousStart, completedDays - 1);
+    }
 
     const getOrders = async (start: Date, end: Date) => {
       const startId = dateId(start);

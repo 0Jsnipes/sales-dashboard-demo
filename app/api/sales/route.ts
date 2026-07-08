@@ -4,6 +4,7 @@ import { requireActor } from "@/src/lib/firebase/server-auth";
 import type { Rep } from "@/src/types/rep";
 import { formatImportedName } from "@/src/lib/matching/display-name";
 import { applyOutcomeFilter, applyTextSearchFilter, parseCommonFilters, parseDateRangeParams, toDateId } from "@/src/lib/api/report-filters";
+import { isoWeek } from "@/src/lib/date/week";
 import { sanitizeOrderId } from "@/src/lib/sales/outcomes";
 
 export const runtime = "nodejs";
@@ -108,7 +109,7 @@ export async function GET(request: Request) {
       db.collection("repLocationAssignments").get(),
     ]);
     const roster = new Map(repsSnapshot.docs.map((document) => [document.id, document.data() as Rep]));
-    const selectedWeek = range.monday ? dateId(range.monday) : range.start;
+    const selectedWeek = range.monday ? isoWeek(range.monday) : isoWeek(new Date(`${range.start}T12:00:00`));
     const dayCount = Math.max(1, Math.floor((new Date(`${range.end}T12:00:00`).getTime() - new Date(`${range.start}T12:00:00`).getTime()) / 86_400_000) + 1);
     const resolveLocation = (rep: Rep | undefined) => {
       if (!rep) return "";
