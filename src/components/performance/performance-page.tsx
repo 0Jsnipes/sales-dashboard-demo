@@ -548,6 +548,7 @@ export function PerformancePage() {
   const [reassignOrder, setReassignOrder] = useState<PerformanceOrder | null>(null);
   const [reassignRepUid, setReassignRepUid] = useState("");
   const [reassigning, setReassigning] = useState(false);
+  const [exportingReport, setExportingReport] = useState(false);
   const [orderFilters, setOrderFilters] = useState<OrderFilterState>({
     search: "",
     manager: "all",
@@ -799,33 +800,6 @@ export function PerformancePage() {
   const selectedProviderLabel = providerFilter === "all" ? "All providers" : providerFilter;
   const selectedVendorLabel = vendorFilter === "all" ? "All vendor types" : vendorTypeLabel(vendorFilter);
 
-  const summaryRows = useMemo(
-    () => [
-      ["Range", currentRangeLabel],
-      ["Dates", currentRangeDates],
-      ["Manager", managerFilter === "all" ? "All managers" : managerFilter],
-      ["Location", locationFilter === "all" ? "All locations" : locationFilter],
-      ["Rep", selectedRepLabel],
-      ["Provider", selectedProviderLabel],
-      ["Vendor type", selectedVendorLabel],
-      ["Sales units", scopedTotals.sales],
-      ["Knocks", scopedTotals.knocks],
-      ["ATT knocks", scopedTotals.attKnocks],
-      ["T-Fiber knocks", scopedTotals.tfiberKnocks],
-      ["Conversion", `${scopedTotals.conversion}%`],
-      ["Installed", scopedTotals.installed],
-      ["Pending", scopedTotals.pending],
-      ["Past due", scopedTotals.pastDue],
-      ["Preorder", scopedTotals.preorder],
-      ["Canceled", scopedTotals.canceled],
-      ["Churned", scopedTotals.churned],
-      ["Unknown", scopedTotals.unknown],
-      ["Active reps", scopedTotals.activeReps],
-      ["Orders", scopedTotals.orderCount],
-    ],
-    [currentRangeDates, currentRangeLabel, locationFilter, managerFilter, scopedTotals, selectedProviderLabel, selectedRepLabel, selectedVendorLabel],
-  );
-
   if (loading && !data) return <LoadingState />;
   if (error && !data) return <EmptyState title="Performance unavailable" description={error} />;
   if (!data) return null;
@@ -843,13 +817,40 @@ export function PerformancePage() {
   const cancellationRate = calculateCancellationRate(scopedTotals.sales, scopedTotals.canceled);
 
   const exportSummary = async () => {
-    const summarySheet = summaryRows.map(([metric, value]) => ({ Metric: metric, Value: value, Scope: topFiltersLabel }));
-    await downloadWorkbook(`performance-report-${toDateId(new Date())}.xlsx`, [
-      { name: "Summary", rows: summarySheet },
-      { name: "Orders", rows: buildSalesExportRows(scopedOrders) },
-      { name: "Past Due", rows: buildSalesExportRows(pastDueRows) },
-    ]);
-    toast.message("Downloaded the performance report workbook.");
+    setExportingReport(true);
+    try {
+      const params = new URLSearchParams({
+        range: mode,
+        manager: managerFilter,
+        location: locationFilter,
+        rep: repFilter,
+        provider: providerFilter,
+        vendor: vendorFilter,
+      });
+      if (mode === "custom") {
+        params.set("from", start);
+        params.set("to", end);
+      }
+      const response = await authedFetch(`/api/performance/export?${params.toString()}`);
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({ error: "Unable to export the performance report." })) as { error?: string };
+        throw new Error(result.error || "Unable to export the performance report.");
+      }
+      const blob = await response.blob();
+      const match = response.headers.get("content-disposition")?.match(/filename="?(.*?)"?$/i);
+      const fileName = match?.[1] || `performance-report-${toDateId(new Date())}.xlsx`;
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = fileName;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+      toast.message("Downloaded the performance report workbook.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to export the performance report.");
+    } finally {
+      setExportingReport(false);
+    }
   };
 
   const exportOrders = async (orders: PerformanceOrder[], prefix: string) => {
@@ -925,9 +926,9 @@ export function PerformancePage() {
               <p className="mt-2 text-sm text-muted-foreground">Live Firestore data from salesOrders, knockDaily, and reps.</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={exportSummary}>
+              <Button variant="outline" onClick={exportSummary} disabled={exportingReport}>
                 <Download className="h-4 w-4" />
-                Export / report
+                {exportingReport ? "Exporting..." : "Export / report"}
               </Button>
               <Button variant="outline" asChild>
                 <Link href="/imports/unmatched">Review unmatched</Link>

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { AlertTriangle, ArrowRight, BarChart3, CheckCircle2, Clock3, FileUp, Gauge, Target, TrendingUp, TriangleAlert, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, BarChart3, CheckCircle2, Clock3, Download, FileUp, Gauge, Target, TrendingUp, TriangleAlert, Users } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -14,7 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { authedJson } from "@/src/lib/api/client";
+import { authedFetch, authedJson } from "@/src/lib/api/client";
 import { toDateId, weekRangeLabel } from "@/src/lib/date/week";
 import { formatDateTime } from "@/src/lib/formatters/date";
 import { formatCompact, formatDelta, formatNumber } from "@/src/lib/formatters/number";
@@ -199,6 +199,7 @@ export function DashboardPage() {
   const [data, setData] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exportingYtdPivot, setExportingYtdPivot] = useState(false);
   const reducedMotion = useReducedMotion();
 
   useEffect(() => {
@@ -302,6 +303,33 @@ export function DashboardPage() {
     { label: "ATT", source: data.freshness.att },
     { label: "T-Fiber", source: data.freshness.tfiber },
   ];
+  const selectedYear = Number(data.week.start.slice(0, 4)) || new Date().getFullYear();
+
+  async function exportYtdWeeklyPivot() {
+    setExportingYtdPivot(true);
+    try {
+      const response = await authedFetch(`/api/overview/export-ytd-pivot?year=${selectedYear}`);
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({ error: "Unable to export YTD weekly pivot." })) as { error?: string };
+        throw new Error(result.error || "Unable to export YTD weekly pivot.");
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("content-disposition") ?? "";
+      const match = disposition.match(/filename="?([^"]+)"?/i);
+      const fileName = match?.[1] || `YTD_Weekly_Sales_Pivot_Dashboard_${toDateId(new Date())}.xlsx`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      toast.success("Downloaded the YTD weekly pivot workbook.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to export YTD weekly pivot.");
+    } finally {
+      setExportingYtdPivot(false);
+    }
+  }
 
   return (
     <motion.div initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }} className="space-y-6">
@@ -317,6 +345,10 @@ export function DashboardPage() {
               <p className="mt-2 text-sm text-muted-foreground">Overview data from salesOrders, uploadRuns, reps, and weekly goals.</p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => void exportYtdWeeklyPivot()} disabled={exportingYtdPivot}>
+                <Download className="h-4 w-4" />
+                {exportingYtdPivot ? "Exporting..." : "Export YTD Pivot"}
+              </Button>
               <Button variant="outline" asChild>
                 <Link href="/performance">
                   <ArrowRight className="h-4 w-4" />
