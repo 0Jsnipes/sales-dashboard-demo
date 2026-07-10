@@ -23,11 +23,6 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    match /weeklyReports/{weekISO}/reps/{repUid} {
-      allow read: if isAdmin() || isOwner(repUid) || manages(repUid);
-      allow write: if false; // Admin SDK only; rebuild routes verify role server-side.
-    }
-
     match /goals/{weekISO}/reps/{repUid} {
       allow read: if isAdmin() || isOwner(repUid) || manages(repUid);
       allow write: if false;

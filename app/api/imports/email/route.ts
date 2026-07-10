@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { timingSafeEqual } from "crypto";
 import { importEmailAttachments } from "@/src/lib/imports/email-import";
 
 export const runtime = "nodejs";
@@ -8,7 +9,10 @@ function inboundSecretValid(request: Request) {
   if (!expected) return false;
   const url = new URL(request.url);
   const token = request.headers.get("x-reports-inbound-secret")?.trim() || url.searchParams.get("token")?.trim() || "";
-  return token === expected;
+  const expectedBuf = Buffer.from(expected);
+  const tokenBuf = Buffer.from(token);
+  if (tokenBuf.length !== expectedBuf.length) return false;
+  return timingSafeEqual(tokenBuf, expectedBuf);
 }
 
 function attachmentFiles(form: FormData) {
