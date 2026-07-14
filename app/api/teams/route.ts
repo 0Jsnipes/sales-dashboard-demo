@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { canManageRoster, canViewTeams, requireActor } from "@/src/lib/firebase/server-auth";
+import { canImportSales, canManageRoster, canViewTeams, requireActor } from "@/src/lib/firebase/server-auth";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { createTeam, getTeams } from "@/src/lib/teams/team-service";
 import { errorResponse } from "@/src/lib/api/error-response";
@@ -35,6 +35,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       teams: teams.map((team) => ({ ...team, memberDetails: team.members.map((repUid) => memberById.get(repUid)).filter(Boolean) })),
       canManage,
+      canPrepareExports: canImportSales(actor),
     });
   } catch (error) {
     return errorResponse("teams", error);

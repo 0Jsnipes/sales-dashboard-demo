@@ -1,11 +1,9 @@
 import "server-only";
 
-import { getStorage } from "firebase-admin/storage";
 import * as XLSX from "xlsx";
-import { getAdminApp, getAdminDb } from "@/src/lib/firebase/admin";
-import { parseKnockWorkbook } from "@/src/lib/knocks/parse";
+import { getAdminDb } from "@/src/lib/firebase/admin";
+import { readKnockExportCacheRows } from "@/src/lib/knocks/export-cache";
 import { buildSourceExportRows, buildSourceWorksheetData } from "@/src/lib/reports/sales-export";
-import type { Rep } from "@/src/types/rep";
 import type { Team } from "@/src/types/team";
 
 type ExportRange = { start: string; end: string };
@@ -52,69 +50,14 @@ export async function buildTeamSalesExport(team: Team, range: ExportRange) {
   return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
 }
 
-function uploadTime(value: unknown) {
-  if (value && typeof value === "object" && "toMillis" in value && typeof (value as { toMillis?: unknown }).toMillis === "function") {
-    return (value as { toMillis: () => number }).toMillis();
-  }
-  if (value instanceof Date) return value.valueOf();
-  const parsed = new Date(String(value ?? ""));
-  return Number.isNaN(parsed.valueOf()) ? 0 : parsed.valueOf();
-}
-
 export async function buildTeamKnocksExport(team: Team, range: ExportRange) {
-  const db = getAdminDb();
-  const [runsSnapshot, repsSnapshot] = await Promise.all([
-    db.collection("uploadRuns").where("type", "==", "knockImport").get(),
-    db.collection("reps").get(),
-  ]);
-  const reps = repsSnapshot.docs.map((document) => ({ repUid: document.id, ...document.data() }) as Rep);
   const members = new Set(team.members);
-  const bucket = getStorage(getAdminApp()).bucket();
-  const runs = runsSnapshot.docs
-    .map((document) => {
-      const data = document.data();
-      return { uploadId: document.id, status: String(data.status || ""), storagePath: String(data.storagePath || ""), uploadedAt: data.uploadedAt };
-    })
-    .filter((run) => run.status === "complete" && run.storagePath)
-    .sort((left, right) => uploadTime(left.uploadedAt) - uploadTime(right.uploadedAt) || left.uploadId.localeCompare(right.uploadId));
-
-  const parsedRuns = await Promise.all(runs.map(async (run) => {
-    try {
-      const [buffer] = await bucket.file(String(run.storagePath)).download();
-      return parseKnockWorkbook(buffer, reps);
-    } catch {
-      return null;
-    }
-  }));
-
-  // A later source upload replaces that source's earlier rows for every date it contains,
-  // mirroring the replacement behavior used by knockDaily during import.
-  const currentRowsBySourceDate = new Map<string, NonNullable<(typeof parsedRuns)[number]>["rows"]>();
-  for (const parsed of parsedRuns) {
-    if (!parsed) continue;
-    const byDate = new Map<string, typeof parsed.rows>();
-    for (const row of parsed.rows) {
-      const rows = byDate.get(row.activityDateKey) ?? [];
-      rows.push(row);
-      byDate.set(row.activityDateKey, rows);
-    }
-    for (const [dateId, rows] of byDate) currentRowsBySourceDate.set(`${parsed.rows[0]?.source ?? "unknown"}:${dateId}`, rows);
-  }
-
-  const attRows: SourceRow[] = [];
-  const tfiberRows: SourceRow[] = [];
-  for (const key of [...currentRowsBySourceDate.keys()].sort()) {
-    const dateId = key.slice(key.lastIndexOf(":") + 1);
-    if (dateId < range.start || dateId > range.end) continue;
-    for (const row of currentRowsBySourceDate.get(key) ?? []) {
-      if (!row.repId || !members.has(row.repId)) continue;
-      const target = row.provider === "ATT" ? attRows : tfiberRows;
-      target.push({ provider: row.provider, rawData: row.raw });
-    }
-  }
-
+  const cachedRows = await readKnockExportCacheRows(range.start, range.end, team.members);
+  const matching = cachedRows
+    .filter((row) => Boolean(row.repUid && members.has(row.repUid)))
+    .sort((left, right) => left.activityDateKey.localeCompare(right.activityDateKey) || left.rowIndex - right.rowIndex);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, sourceWorksheet(attRows), "ATT");
-  XLSX.utils.book_append_sheet(workbook, sourceWorksheet(tfiberRows), "T-Fiber");
+  XLSX.utils.book_append_sheet(workbook, sourceWorksheet(matching.filter((row) => row.provider === "ATT").map((row) => ({ provider: row.provider, rawData: row.rawData }))), "ATT");
+  XLSX.utils.book_append_sheet(workbook, sourceWorksheet(matching.filter((row) => row.provider === "T-Fiber").map((row) => ({ provider: row.provider, rawData: row.rawData }))), "T-Fiber");
   return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Archive, CircleDot, Download, Pencil, Plus, Search, UsersRound } from "lucide-react";
+import { Archive, CircleDot, DatabaseZap, Download, Pencil, Plus, Search, UsersRound } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +42,7 @@ export function TeamsPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [reps, setReps] = useState<Rep[]>([]);
   const [canManage, setCanManage] = useState(false);
+  const [canPrepareExports, setCanPrepareExports] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,12 +58,14 @@ export function TeamsPage() {
   const [customStart, setCustomStart] = useState(dateId(new Date()));
   const [customEnd, setCustomEnd] = useState(dateId(new Date()));
   const [exporting, setExporting] = useState(false);
+  const [preparingExports, setPreparingExports] = useState(false);
 
   const load = useCallback(() => {
-    return authedJson<{ teams: Team[]; canManage: boolean }>("/api/teams")
+    return authedJson<{ teams: Team[]; canManage: boolean; canPrepareExports: boolean }>("/api/teams")
       .then(async (teamResult) => {
         setTeams(teamResult.teams ?? []);
         setCanManage(teamResult.canManage);
+        setCanPrepareExports(teamResult.canPrepareExports);
         if (teamResult.canManage) {
           const roster = await authedJson<{ reps: Rep[] }>("/api/reps?status=all");
           setReps(roster.reps ?? []);
@@ -209,6 +212,21 @@ export function TeamsPage() {
     }
   }
 
+  async function prepareExportData() {
+    setPreparingExports(true);
+    try {
+      const response = await authedFetch("/api/knocks/export-cache", { method: "POST" });
+      const result = await response.json() as { uploadsProcessed?: number; uploadsSkipped?: number; daysWritten?: number; rowsWritten?: number; error?: string };
+      if (!response.ok) throw new Error(result.error || "Unable to prepare export data.");
+      toast.success(`Export data prepared: ${result.rowsWritten ?? 0} rows across ${result.daysWritten ?? 0} days.`);
+      if (result.uploadsSkipped) toast.warning(`${result.uploadsSkipped} unavailable source upload${result.uploadsSkipped === 1 ? " was" : "s were"} skipped.`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to prepare export data.");
+    } finally {
+      setPreparingExports(false);
+    }
+  }
+
   if (loading && !teams.length) {
     return <div className="space-y-4"><Skeleton className="h-36 rounded-2xl" /><Skeleton className="h-72 rounded-2xl" /></div>;
   }
@@ -223,7 +241,7 @@ export function TeamsPage() {
               <CardTitle className="flex items-center gap-2 text-2xl"><UsersRound className="h-6 w-6 text-primary" />Reporting teams</CardTitle>
               <CardDescription className="mt-2">Group reps for analytics and exports independently from manager hierarchy.</CardDescription>
             </div>
-            {canManage ? <Button onClick={() => openEditor()}><Plus className="h-4 w-4" />Create Team</Button> : null}
+            <div className="flex flex-wrap gap-2">{canPrepareExports ? <Button variant="outline" disabled={preparingExports} onClick={() => void prepareExportData()}><DatabaseZap className="h-4 w-4" />{preparingExports ? "Preparing exports..." : "Prepare export data"}</Button> : null}{canManage ? <Button onClick={() => openEditor()}><Plus className="h-4 w-4" />Create Team</Button> : null}</div>
           </div>
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
             <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" placeholder="Search teams" value={query} onChange={(event) => setQuery(event.target.value)} /></div>

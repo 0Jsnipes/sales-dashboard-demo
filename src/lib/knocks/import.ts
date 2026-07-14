@@ -10,6 +10,7 @@ import { parseAttSalesRabbitKnockRows, parseTFiberKnockRows } from "@/src/lib/kn
 import { normalizeRepName } from "@/src/lib/knocks/matching";
 import { expectedKnockImportFileLabel, validateKnockImportFileName } from "@/src/lib/imports/file-conventions";
 import type { KnockSource } from "@/src/lib/knocks/types";
+import { replaceKnockExportCacheRows } from "@/src/lib/knocks/export-cache";
 
 type KnockImportOptions = {
   actorUid: string;
@@ -157,6 +158,7 @@ export async function importKnockWorkbook(buffer: Buffer, options: KnockImportOp
   }
 
   const repsReactivated = await reactivateInactiveRepsForMatchedSales(newlyActiveKnockRepUids, db, "system:matched-knock-import");
+  await replaceKnockExportCacheRows(parsed.rows, uploadId, db);
   await db.collection("uploadRuns").doc(uploadId).set({
     uploadId,
     type: "knockImport",
