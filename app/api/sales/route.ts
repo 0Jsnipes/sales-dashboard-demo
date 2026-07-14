@@ -4,9 +4,10 @@ import { requireActor } from "@/src/lib/firebase/server-auth";
 import type { Rep } from "@/src/types/rep";
 import { formatImportedName } from "@/src/lib/matching/display-name";
 import { applyOutcomeFilter, applyTextSearchFilter, parseCommonFilters, parseDateRangeParams, toDateId } from "@/src/lib/api/report-filters";
-import { isoWeek } from "@/src/lib/date/week";
+import { startOfWeek } from "@/src/lib/date/week";
 import { sanitizeOrderId } from "@/src/lib/sales/outcomes";
 import { errorResponse } from "@/src/lib/api/error-response";
+import { groupAssignmentsByRep, normalizeAssignmentDoc, resolveRepLocation, type RepLocationAssignment } from "@/src/lib/reps/location-assignments";
 
 export const runtime = "nodejs";
 
@@ -110,16 +111,18 @@ export async function GET(request: Request) {
       db.collection("repLocationAssignments").get(),
     ]);
     const roster = new Map(repsSnapshot.docs.map((document) => [document.id, document.data() as Rep]));
-    const selectedWeek = range.monday ? isoWeek(range.monday) : isoWeek(new Date(`${range.start}T12:00:00`));
+    // The Sales page groups by rep for the whole viewed range, so location is
+    // resolved once per rep against the range's own week (not per order) — the
+    // same simplification the previous implementation made, just rebased onto
+    // the app's canonical weekStart id instead of a second ISO-week system.
+    const selectedWeekStart = range.monday ? toDateId(range.monday) : toDateId(startOfWeek(new Date(`${range.start}T12:00:00`)));
     const dayCount = Math.max(1, Math.floor((new Date(`${range.end}T12:00:00`).getTime() - new Date(`${range.start}T12:00:00`).getTime()) / 86_400_000) + 1);
-    const resolveLocation = (rep: Rep | undefined) => {
-      if (!rep) return "";
-      const assignments = assignmentsSnapshot.docs.map((document) => document.data()).filter((item) => item.repUid === rep.repUid);
-      const single = assignments.find((item) => item.mode === "single" && item.weekISO === selectedWeek);
-      if (single) return String(single.locationName);
-      const forward = assignments.filter((item) => item.mode === "forward" && String(item.weekISO) <= selectedWeek).sort((a, b) => String(a.weekISO).localeCompare(String(b.weekISO))).pop();
-      return forward ? String(forward.locationName) : rep.locationName;
-    };
+    const assignmentsByRep = groupAssignmentsByRep(
+      assignmentsSnapshot.docs
+        .map((document) => normalizeAssignmentDoc(document.data()))
+        .filter((item): item is RepLocationAssignment => item !== null),
+    );
+    const resolveLocation = (rep: Rep | undefined) => resolveRepLocation(rep, selectedWeekStart, assignmentsByRep).locationName;
 
     const allOrders = [...tfiberSnapshot.docs, ...attSnapshot.docs, ...manualSnapshot.docs].map((document) => document.data() as SalesOrder);
     const filteredOrders = applyOutcomeFilter(

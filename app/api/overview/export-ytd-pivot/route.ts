@@ -2,21 +2,16 @@ import { NextResponse } from "next/server";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { requireActor } from "@/src/lib/firebase/server-auth";
 import type { Rep } from "@/src/types/rep";
+import { startOfWeek, toDateId } from "@/src/lib/date/week";
 import { formatImportedName } from "@/src/lib/matching/display-name";
 import { sanitizeOrderId } from "@/src/lib/sales/outcomes";
 import { buildYtdWeeklySalesPivotWorkbook, type YtdPivotInputRow } from "@/src/lib/exports/ytdWeeklyPivotExport";
+import { groupAssignmentsByRep, normalizeAssignmentDoc, resolveRepLocation, type RepLocationAssignment } from "@/src/lib/reps/location-assignments";
 import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
-const isoWeek = (dateIdValue: string) => {
-  const [year, month, day] = dateIdValue.split("-").map(Number);
-  const value = new Date(Date.UTC(year, month - 1, day));
-  value.setUTCDate(value.getUTCDate() + 4 - (value.getUTCDay() || 7));
-  const yearStart = new Date(Date.UTC(value.getUTCFullYear(), 0, 1));
-  const week = Math.ceil((((value.valueOf() - yearStart.valueOf()) / 86400000) + 1) / 7);
-  return `${value.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
-};
+const weekStartFromDateId = (dateIdValue: string) => toDateId(startOfWeek(new Date(`${dateIdValue}T12:00:00`)));
 
 function providerKey(value: unknown) {
   const source = String(value || "").toLowerCase().replace(/[^a-z]/g, "");
@@ -51,20 +46,13 @@ export async function GET(request: Request) {
     ]);
 
     const roster = new Map(repsSnapshot.docs.map((document) => [document.id, document.data() as Rep]));
-    const assignments = assignmentsSnapshot.docs.map((document) => document.data());
+    const assignmentsByRep = groupAssignmentsByRep(
+      assignmentsSnapshot.docs
+        .map((document) => normalizeAssignmentDoc(document.data()))
+        .filter((item): item is RepLocationAssignment => item !== null),
+    );
 
-    const locationFor = (rep: Rep | undefined, orderDateId: string) => {
-      if (!rep) return "";
-      const selectedWeek = isoWeek(orderDateId);
-      const repAssignments = assignments.filter((item) => item.repUid === rep.repUid);
-      const single = repAssignments.find((item) => item.mode === "single" && item.weekISO === selectedWeek);
-      if (single) return String(single.locationName);
-      const forward = repAssignments
-        .filter((item) => item.mode === "forward" && String(item.weekISO) <= selectedWeek)
-        .sort((a, b) => String(a.weekISO).localeCompare(String(b.weekISO)))
-        .pop();
-      return forward ? String(forward.locationName) : rep.locationName;
-    };
+    const locationFor = (rep: Rep | undefined, orderDateId: string) => resolveRepLocation(rep, weekStartFromDateId(orderDateId), assignmentsByRep).locationName;
 
     const toRow = (document: FirebaseFirestore.QueryDocumentSnapshot, fallbackProvider: "ATT" | "T-Fiber", originalRowNumber: number): YtdPivotInputRow => {
       const order = document.data();

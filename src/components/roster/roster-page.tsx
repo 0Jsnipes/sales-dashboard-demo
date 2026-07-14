@@ -31,7 +31,8 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { authedFetch, authedJson } from "@/src/lib/api/client";
-import { isoWeek, startOfWeek } from "@/src/lib/date/week";
+import { startOfWeek, toDateId } from "@/src/lib/date/week";
+import { AssignLocationDialog } from "@/src/components/roster/assign-location-dialog";
 import type { Rep } from "@/src/types/rep";
 import type { Location } from "@/src/types/location";
 import type { ManagerOption } from "@/src/types/manager";
@@ -57,7 +58,7 @@ type RepForm = {
 type Readiness = "ready" | "missing_email" | "missing_manager" | "missing_location" | "missing_sales_id" | "unknown";
 type RosterStatus = Rep["status"] | "all";
 type RosterFilters = { manager?: string; location?: string; vendor?: string; search?: string };
-type LocationCreateTarget = "editor" | "assignment";
+type LocationCreateTarget = "editor";
 
 const blankForm: RepForm = {
   displayName: "",
@@ -92,18 +93,8 @@ function formatApiError(error: unknown, fallback: string) {
   return [...formMessages, ...fieldMessages][0] ?? fallback;
 }
 
-function currentWeekISO() {
-  return isoWeek(new Date());
-}
-
-function weekOptions() {
-  const now = new Date();
-  const monday = startOfWeek(now);
-  return Array.from({ length: 18 }, (_, index) => {
-    const date = new Date(monday);
-    date.setDate(date.getDate() + (index - 4) * 7);
-    return { value: isoWeek(date), label: `Week of ${date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}` };
-  });
+function currentWeekStart() {
+  return toDateId(startOfWeek(new Date()));
 }
 
 function initials(value: string) {
@@ -240,9 +231,6 @@ export function RosterPage() {
   const [aliasDraft, setAliasDraft] = useState("");
   const [addAliasTarget, setAddAliasTarget] = useState<Rep | null>(null);
   const [locationDialogRep, setLocationDialogRep] = useState<Rep | null>(null);
-  const [locationWeek, setLocationWeek] = useState(currentWeekISO());
-  const [locationMode, setLocationMode] = useState<"forward" | "single">("forward");
-  const [locationId, setLocationId] = useState("");
   const [locationDraft, setLocationDraft] = useState("");
   const [locationCreating, setLocationCreating] = useState(false);
   const [locationCreateTarget, setLocationCreateTarget] = useState<LocationCreateTarget | null>(null);
@@ -469,27 +457,6 @@ export function RosterPage() {
     }
   }
 
-  async function saveLocationAssignment() {
-    if (!locationDialogRep || !locationId) return;
-    setSaving(true);
-    try {
-      const response = await request(`/api/reps/${locationDialogRep.repUid}/location`, {
-        method: "POST",
-        body: JSON.stringify({ weekISO: locationWeek, locationId, locationName: locations.find((item) => item.locationId === locationId)?.name ?? "", mode: locationMode }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Unable to assign location.");
-      toast.success("Location assignment saved.");
-      setLocationDialogRep(null);
-      setLocationId("");
-      await refreshRoster();
-    } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : "Unable to assign location.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function createLocation() {
     const name = locationDraft.trim();
     if (!name) return;
@@ -505,9 +472,6 @@ export function RosterPage() {
       setLocations((current) => [...current.filter((item) => item.locationId !== created.locationId), created].sort((a, b) => a.name.localeCompare(b.name)));
       if (locationCreateTarget === "editor") {
         setForm((current) => ({ ...current, locationId: created.locationId, locationName: created.name }));
-      }
-      if (locationCreateTarget === "assignment") {
-        setLocationId(created.locationId);
       }
       setLocationCreateTarget(null);
       setLocationDraft("");
@@ -951,51 +915,14 @@ export function RosterPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(locationDialogRep)} onOpenChange={(open) => !open && setLocationDialogRep(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Assign location</DialogTitle>
-            <DialogDescription>Change the representative&apos;s location for a specific week or forward from that week.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4">
-            <Field label="Week">
-              <Select value={locationWeek} onValueChange={setLocationWeek}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{weekOptions().map((week) => <SelectItem key={week.value} value={week.value}>{week.label}</SelectItem>)}</SelectContent>
-              </Select>
-            </Field>
-            <Field label="Location">
-              <Select value={locationId} onValueChange={(value) => {
-                if (value === ADD_LOCATION_VALUE) {
-                  setLocationCreateTarget("assignment");
-                  setLocationDraft("");
-                  return;
-                }
-                setLocationId(value);
-              }}>
-                <SelectTrigger><SelectValue placeholder="Choose location" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ADD_LOCATION_VALUE}>Add location</SelectItem>
-                  {locations.map((location) => <SelectItem key={location.locationId} value={location.locationId}>{location.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Apply">
-              <Select value={locationMode} onValueChange={(value) => setLocationMode(value as "forward" | "single")}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="forward">This week and future weeks</SelectItem>
-                  <SelectItem value="single">This week only</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLocationDialogRep(null)}>Cancel</Button>
-            <Button onClick={() => void saveLocationAssignment()} disabled={saving || !locationId}>{saving ? "Saving..." : "Save assignment"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <AssignLocationDialog
+        open={Boolean(locationDialogRep)}
+        onOpenChange={(open) => !open && setLocationDialogRep(null)}
+        rep={locationDialogRep ? { repUid: locationDialogRep.repUid, displayName: locationDialogRep.displayName } : null}
+        locations={locations}
+        defaultWeekStart={currentWeekStart()}
+        onSaved={() => void refreshRoster()}
+      />
 
       <Dialog open={Boolean(locationCreateTarget)} onOpenChange={(open) => {
         if (open) return;

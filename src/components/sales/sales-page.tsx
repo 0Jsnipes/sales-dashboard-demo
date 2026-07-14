@@ -21,10 +21,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { authedFetch, authedJson } from "@/src/lib/api/client";
 import { formatNumber } from "@/src/lib/formatters/number";
-import { endOfWeek, isoWeek, startOfWeek, toDateId, weekRangeLabel } from "@/src/lib/date/week";
+import { endOfWeek, startOfWeek, toDateId, weekRangeLabel } from "@/src/lib/date/week";
 import { useAuth } from "@/src/components/auth-provider";
 import { extractSalesOrder, type RawSalesOrder, type SalesDataset, type SalesRepGroup } from "@/src/lib/sales/grouping";
 import { RepEditorDialog, blankRepEditorForm, type RepEditorForm } from "@/src/components/roster/rep-editor-dialog";
+import { AssignLocationDialog } from "@/src/components/roster/assign-location-dialog";
 import type { ManagerOption } from "@/src/types/manager";
 import type { Rep } from "@/src/types/rep";
 import { normalizePermissions } from "@/src/lib/access";
@@ -42,13 +43,10 @@ type ViewMode = "rep" | "team";
 
 type ActionTarget = {
   rep: SalesRepGroup;
-  type: "goal" | "alias" | "location" | "roster" | "restore";
+  type: "goal" | "alias" | "roster" | "restore";
 };
 
-type LocationCreateTarget =
-  | { kind: "newRep" }
-  | { kind: "assignment" }
-  | { kind: "inline"; rep: Pick<SalesRepGroup, "repUid" | "locationName"> };
+type LocationCreateTarget = { kind: "newRep" };
 
 type SalesGridRow = SalesRepGroup & {
   createdAt?: unknown;
@@ -58,8 +56,6 @@ type SalesGridRow = SalesRepGroup & {
   inActiveRoster: boolean;
   source: "roster" | "sales" | "unmatched";
 };
-
-const ADD_LOCATION_VALUE = "__add_location__";
 
 function normalizeProviderFilter(value: string) {
   const source = value.trim().toLowerCase();
@@ -336,8 +332,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const [aliasTargetRepUid, setAliasTargetRepUid] = useState("");
   const [goalDraft, setGoalDraft] = useState("0");
   const [newRepForm, setNewRepForm] = useState<RepEditorForm>(blankRepEditorForm);
-  const [locationId, setLocationId] = useState("");
-  const [locationWeek, setLocationWeek] = useState("");
+  const [locationDialogRep, setLocationDialogRep] = useState<SalesRepGroup | null>(null);
   const [managerDraft, setManagerDraft] = useState("");
   const [locationDraft, setLocationDraft] = useState("");
   const [managerCreating, setManagerCreating] = useState(false);
@@ -609,8 +604,6 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     const matchedLocation = locations.find((item) => item.name === rep.locationName);
     setActionTarget({ rep, type });
     setAliasTargetRepUid(type === "alias" ? rep.repUid ?? "" : "");
-    setLocationId(matchedLocation?.locationId ?? "");
-    setLocationWeek(weekISOForWeekStart(weekStart));
     setGoalDraft(String(Number(rep[goalField] || 0)));
     setNewRepForm({
       ...blankRepEditorForm,
@@ -665,36 +658,6 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
       await loadSales({ silent: true });
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to add alias.");
-    } finally {
-      setActionSaving(false);
-    }
-  }
-
-  async function saveLocation() {
-    if (!actionTarget?.rep.repUid || !locationId) return;
-    setActionSaving(true);
-    try {
-      const nextLocationName = locations.find((item) => item.locationId === locationId)?.name ?? "";
-      const response = await authedFetch(`/api/reps/${actionTarget.rep.repUid}/location`, {
-        method: "POST",
-        body: JSON.stringify({
-          weekISO: locationWeek,
-          locationId,
-          locationName: nextLocationName,
-          mode: "forward",
-          persistRepLocation: false,
-        }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Unable to assign location.");
-      toast.success("Location updated.");
-      setActionTarget(null);
-      setData((current) => current ? {
-        ...current,
-        reps: current.reps.map((row) => row.repUid === actionTarget.rep.repUid ? { ...row, locationName: nextLocationName } : row),
-      } : current);
-    } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : "Unable to assign location.");
     } finally {
       setActionSaving(false);
     }
@@ -804,14 +767,9 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
       if (target?.kind === "newRep") {
         setNewRepForm((current) => ({ ...current, locationId: created.locationId, locationName: created.name }));
       }
-      if (target?.kind === "assignment") {
-        setLocationId(created.locationId);
-      }
       setLocationDraft("");
-      const inlineTarget = target?.kind === "inline" ? target.rep : null;
       setLocationCreateTarget(null);
       toast.success(`Location ${created.name} added.`);
-      if (inlineTarget) await updateInlineLocation(inlineTarget, created.locationId, { showSuccessToast: false });
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to create location.");
     } finally {
@@ -840,31 +798,6 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to save goal.");
       syncGoalState(rep.repUid, previousGoal);
-    } finally {}
-  }
-
-  async function updateInlineLocation(rep: Pick<SalesRepGroup, "repUid" | "locationName">, nextLocationId: string, options?: { showSuccessToast?: boolean }) {
-    if (!rep.repUid) return;
-    const previousLocationName = rep.locationName;
-    const nextLocationName = locations.find((item) => item.locationId === nextLocationId)?.name ?? "";
-    setData((current) => current ? { ...current, reps: current.reps.map((row) => row.repUid === rep.repUid ? { ...row, locationName: nextLocationName } : row) } : current);
-    try {
-      const response = await authedFetch(`/api/reps/${rep.repUid}/location`, {
-        method: "POST",
-        body: JSON.stringify({
-          weekISO: weekISOForWeekStart(weekStart),
-          locationId: nextLocationId,
-          locationName: nextLocationName,
-          mode: "forward",
-          persistRepLocation: false,
-        }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Unable to assign location.");
-      if (options?.showSuccessToast !== false) toast.success("Location updated.");
-    } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : "Unable to assign location.");
-      setData((current) => current ? { ...current, reps: current.reps.map((row) => row.repUid === rep.repUid ? { ...row, locationName: previousLocationName } : row) } : current);
     } finally {}
   }
 
@@ -1180,21 +1113,14 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                         </TableCell>
                         <TableCell className="hidden xl:table-cell">
                           {rep.repUid ? (
-                            <Select value={locations.find((item) => item.name === rep.locationName)?.locationId || ""} onValueChange={(value) => {
-                              if (value === ADD_LOCATION_VALUE) {
-                                openCreateLocationDialog({ kind: "inline", rep: { repUid: rep.repUid, locationName: rep.locationName } });
-                                return;
-                              }
-                              void updateInlineLocation(rep, value);
-                            }}>
-                              <SelectTrigger className="mx-auto h-9 w-full max-w-[170px] rounded-full border-border/60 bg-background/80 px-3 shadow-sm">
-                                <SelectValue placeholder="Location" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value={ADD_LOCATION_VALUE}>Add location</SelectItem>
-                                {locations.map((location) => <SelectItem key={location.locationId} value={location.locationId}>{location.name}</SelectItem>)}
-                              </SelectContent>
-                            </Select>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="mx-auto h-9 w-full max-w-[170px] rounded-full border-border/60 bg-background/80 px-3 shadow-sm"
+                              onClick={() => setLocationDialogRep(rep)}
+                            >
+                              <span className="truncate">{rep.locationName || "Unassigned"}</span>
+                            </Button>
                           ) : (
                             <span className="block truncate">{rep.locationName || "Unassigned"}</span>
                           )}
@@ -1282,7 +1208,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
         <DialogContent className="max-h-[90vh] overflow-y-auto border-border/70 bg-card/95 shadow-2xl sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>
-              {actionTarget?.type === "goal" ? `Update ${goalLabel.toLowerCase()}` : actionTarget?.type === "alias" ? "Add alias" : actionTarget?.type === "location" ? "Change location" : actionTarget?.type === "restore" ? "Restore to roster" : "Add to roster"}
+              {actionTarget?.type === "goal" ? `Update ${goalLabel.toLowerCase()}` : actionTarget?.type === "alias" ? "Add alias" : actionTarget?.type === "restore" ? "Restore to roster" : "Add to roster"}
             </DialogTitle>
             <DialogDescription>
               {actionTarget?.rep.displayName ? `Working on ${actionTarget.rep.displayName}.` : `Review and save the change without leaving ${workspaceNameLower}.`}
@@ -1329,32 +1255,6 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
             </div>
           )}
 
-          {actionTarget?.type === "location" && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="locationId">Location</Label>
-                <Select value={locationId} onValueChange={(value) => {
-                  if (value === ADD_LOCATION_VALUE) {
-                    openCreateLocationDialog({ kind: "assignment" });
-                    return;
-                  }
-                  setLocationId(value);
-                }}>
-                  <SelectTrigger id="locationId" className="h-11 rounded-full border-border/60 bg-background/80 shadow-sm"><SelectValue placeholder="Choose location" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={ADD_LOCATION_VALUE}>Add location</SelectItem>
-                    {locations.map((location) => <SelectItem key={location.locationId} value={location.locationId}>{location.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="locationWeek">Week</Label>
-                <Input id="locationWeek" className="h-11 rounded-full border-border/60 bg-background/80 shadow-sm" value={locationWeek} onChange={(event) => setLocationWeek(event.target.value)} placeholder="YYYY-W##" />
-              </div>
-              <p className="text-xs text-muted-foreground">This updates the rep&apos;s location for the selected week and all future weeks.</p>
-            </div>
-          )}
-
           {actionTarget?.type === "restore" && (
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>This row is tied to an existing rep record that is not currently in the active roster.</p>
@@ -1369,10 +1269,9 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                 if (!actionTarget) return;
                 if (actionTarget.type === "goal") void saveGoal();
                 if (actionTarget.type === "alias") void saveAlias();
-                if (actionTarget.type === "location") void saveLocation();
                 if (actionTarget.type === "restore") void restoreRepToRoster();
               }}
-              disabled={actionSaving || (actionTarget?.type === "alias" && !aliasTargetRepUid) || (actionTarget?.type === "location" && !locationId)}
+              disabled={actionSaving || (actionTarget?.type === "alias" && !aliasTargetRepUid)}
             >
               {actionSaving ? "Saving..." : actionTarget?.type === "restore" ? "Restore rep" : "Save change"}
             </Button>
@@ -1436,12 +1335,28 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <AssignLocationDialog
+        open={Boolean(locationDialogRep)}
+        onOpenChange={(open) => !open && setLocationDialogRep(null)}
+        rep={locationDialogRep?.repUid ? { repUid: locationDialogRep.repUid, displayName: locationDialogRep.displayName } : null}
+        locations={locations}
+        defaultWeekStart={weekStart}
+        onSaved={(result) => {
+          // Resolution can depend on other assignments beyond this single
+          // field, so patch the visible row only when it affects the week
+          // currently on screen, then let the background refetch reconcile
+          // against the real server-side resolution either way.
+          if (result.weekStart === weekStart) {
+            setData((current) => current ? {
+              ...current,
+              reps: current.reps.map((row) => row.repUid === result.repUid ? { ...row, locationName: result.locationName } : row),
+            } : current);
+          }
+          void loadSales({ silent: true });
+        }}
+      />
     </motion.div>
   );
-}
-
-function weekISOForWeekStart(value: string) {
-  return isoWeek(new Date(`${value}T12:00:00`));
 }
 
 function ChartTooltip({ active, payload, metricLabel = "Sales" }: { active?: boolean; payload?: Array<{ payload?: { name?: string; sales?: number } }>; metricLabel?: string }) {

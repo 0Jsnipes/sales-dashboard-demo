@@ -1,9 +1,16 @@
 import { addDays, startOfMonth, subDays } from "date-fns";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { parseDateRangeParams, toDateId } from "@/src/lib/api/report-filters";
+import { startOfWeek as mondayOfWeek } from "@/src/lib/date/week";
 import { formatImportedName } from "@/src/lib/matching/display-name";
 import { buildRepSearchIndex, normalizeEmail, normalizeName, normalizeSalesId } from "@/src/lib/matching/normalize";
 import { normalizePerformanceOutcome } from "@/src/lib/performance/performance-utils";
+import {
+  groupAssignmentsByRep,
+  normalizeAssignmentDoc,
+  resolveRepLocation,
+  type RepLocationAssignment,
+} from "@/src/lib/reps/location-assignments";
 import { readFirstText, resolveTFiberPastDueAsOfDate, sanitizeOrderId } from "@/src/lib/sales/outcomes";
 import type { SaleOutcome, SalesOrderRecord } from "@/src/lib/sales/outcomes";
 import type { Rep } from "@/src/types/rep";
@@ -11,13 +18,6 @@ import type { Rep } from "@/src/types/rep";
 type OrderDoc = Record<string, unknown> & {
   id: string;
   providerKey: string;
-};
-
-type AssignmentDoc = Record<string, unknown> & {
-  repUid?: string;
-  weekISO?: string;
-  mode?: "forward" | "single";
-  locationName?: string;
 };
 
 export type PerformanceOrder = SalesOrderRecord & {
@@ -125,13 +125,8 @@ function providerLabel(value: unknown) {
   return "Manual";
 }
 
-function isoWeek(dateId: string) {
-  const [year, month, day] = dateId.split("-").map(Number);
-  const value = new Date(Date.UTC(year, month - 1, day));
-  value.setUTCDate(value.getUTCDate() + 4 - (value.getUTCDay() || 7));
-  const yearStart = new Date(Date.UTC(value.getUTCFullYear(), 0, 1));
-  const week = Math.ceil((((value.valueOf() - yearStart.valueOf()) / 86400000) + 1) / 7);
-  return `${value.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+function weekStartFromDateId(dateId: string) {
+  return toDateId(mondayOfWeek(new Date(`${dateId}T12:00:00`)));
 }
 
 function orderDedupeKey(order: OrderDoc) {
@@ -272,17 +267,8 @@ function resolveEstimatedInstallDateId(order: OrderDoc) {
   ) || undefined;
 }
 
-function resolveLocation(rep: Rep | null | undefined, orderDateId: string, assignmentsByRep: Map<string, AssignmentDoc[]>) {
-  if (!rep) return "";
-  const assignments = assignmentsByRep.get(rep.repUid) ?? [];
-  const week = isoWeek(orderDateId);
-  const single = assignments.find((item) => item.mode === "single" && item.weekISO === week);
-  if (single?.locationName) return String(single.locationName);
-  const forward = assignments
-    .filter((item) => item.mode === "forward" && String(item.weekISO || "") <= week)
-    .sort((a, b) => String(a.weekISO || "").localeCompare(String(b.weekISO || "")))
-    .pop();
-  return forward?.locationName ? String(forward.locationName) : rep.locationName || "";
+function resolveLocation(rep: Rep | null | undefined, orderDateId: string, assignmentsByRep: Map<string, RepLocationAssignment[]>) {
+  return resolveRepLocation(rep, weekStartFromDateId(orderDateId), assignmentsByRep).locationName;
 }
 
 function initRepStat(rep: Rep): RepSummary {
@@ -359,15 +345,11 @@ export async function buildPerformanceWindow(range: { start: string; end: string
   ]);
 
   const roster = new Map(repsSnapshot.docs.map((document) => [document.id, document.data() as Rep]));
-  const assignmentsByRep = new Map<string, AssignmentDoc[]>();
-  for (const document of assignmentsSnapshot.docs) {
-    const data = document.data() as AssignmentDoc;
-    const repUid = String(data.repUid || "");
-    if (!repUid) continue;
-    const list = assignmentsByRep.get(repUid) ?? [];
-    list.push(data);
-    assignmentsByRep.set(repUid, list);
-  }
+  const assignmentsByRep = groupAssignmentsByRep(
+    assignmentsSnapshot.docs
+      .map((document) => normalizeAssignmentDoc(document.data()))
+      .filter((item): item is RepLocationAssignment => item !== null),
+  );
 
   const salesOrders = dedupeOrders(
     salesSnapshots.flatMap((snapshot, index) => snapshot.docs.map((document) => ({

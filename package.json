@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dedupe:sales-orders": "node scripts/dedupe-sales-orders.mjs"
+    "dedupe:sales-orders": "node scripts/dedupe-sales-orders.mjs",
+    "migrate:rep-location-assignments": "node scripts/migrate-rep-location-assignments.mjs"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",

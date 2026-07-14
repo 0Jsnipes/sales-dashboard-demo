@@ -2,15 +2,17 @@ import { NextResponse } from "next/server";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { requireActor } from "@/src/lib/firebase/server-auth";
 import type { Rep } from "@/src/types/rep";
+import { startOfWeek, toDateId } from "@/src/lib/date/week";
 import { formatImportedName } from "@/src/lib/matching/display-name";
 import { buildSalesExportRows, buildWorksheetData } from "@/src/lib/reports/sales-export";
+import { groupAssignmentsByRep, normalizeAssignmentDoc, resolveRepLocation, type RepLocationAssignment } from "@/src/lib/reps/location-assignments";
 import { sanitizeOrderId } from "@/src/lib/sales/outcomes";
 import * as XLSX from "xlsx";
 import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
-const isoWeek = (dateIdValue: string) => { const [year, month, day] = dateIdValue.split("-").map(Number); const value = new Date(Date.UTC(year, month - 1, day)); value.setUTCDate(value.getUTCDate() + 4 - (value.getUTCDay() || 7)); const yearStart = new Date(Date.UTC(value.getUTCFullYear(), 0, 1)); const week = Math.ceil((((value.valueOf() - yearStart.valueOf()) / 86400000) + 1) / 7); return value.getUTCFullYear() + "-W" + String(week).padStart(2, "0"); };
+const weekStartFromDateId = (dateIdValue: string) => toDateId(startOfWeek(new Date(`${dateIdValue}T12:00:00`)));
 const EXPORT_ONLY_COLUMNS = new Set([
   "Normalized Order ID",
   "Matched Rep",
@@ -44,12 +46,14 @@ export async function GET(request: Request) {
     const db = getAdminDb();
     const orders = (provider: "tfiber" | "att") => { const collection = db.collection("salesOrders").doc(provider).collection("orders"); return allTime ? collection.get() : collection.where("orderDateId", ">=", start!).where("orderDateId", "<=", end!).get(); };
     const [tfiber, att, repsSnapshot, assignmentsSnapshot] = await Promise.all([orders("tfiber"), orders("att"), db.collection("reps").get(), db.collection("repLocationAssignments").get()]);
-    const roster = new Map(repsSnapshot.docs.map((document) => [document.id, document.data() as Rep])); const assignments = assignmentsSnapshot.docs.map((document) => document.data());
+    const roster = new Map(repsSnapshot.docs.map((document) => [document.id, document.data() as Rep]));
+    const assignmentsByRep = groupAssignmentsByRep(
+      assignmentsSnapshot.docs
+        .map((document) => normalizeAssignmentDoc(document.data()))
+        .filter((item): item is RepLocationAssignment => item !== null),
+    );
     const filters = { manager: url.searchParams.get("manager") || "all", rep: url.searchParams.get("rep") || "all", location: url.searchParams.get("location") || "all", vendorType: url.searchParams.get("vendorType") || "all", provider: url.searchParams.get("provider") || "all" };
-    const locationFor = (rep: Rep | undefined, orderDateId: string) => {
-      if (!rep) return ""; const selectedWeek = isoWeek(orderDateId); const repAssignments = assignments.filter((item) => item.repUid === rep.repUid); const single = repAssignments.find((item) => item.mode === "single" && item.weekISO === selectedWeek);
-      if (single) return String(single.locationName); const forward = repAssignments.filter((item) => item.mode === "forward" && String(item.weekISO) <= selectedWeek).sort((a, b) => String(a.weekISO).localeCompare(String(b.weekISO))).pop(); return forward ? String(forward.locationName) : rep.locationName;
-    };
+    const locationFor = (rep: Rep | undefined, orderDateId: string) => resolveRepLocation(rep, weekStartFromDateId(orderDateId), assignmentsByRep).locationName;
     const exported = [...tfiber.docs, ...att.docs].map((document) => {
       const order = document.data();
       const isATT = String(order.provider).toLowerCase() === "att";
