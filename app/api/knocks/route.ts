@@ -71,18 +71,29 @@ function currentWeek(weekStart?: string | null) {
   return { monday, sunday };
 }
 
-function currentMonth() {
+// `monthParam` (YYYY-MM) lets MTD navigate to any month, not just the current
+// one. The current month still caps at today (true "month to date"); any
+// other month shows its full range since "to date" only means something for
+// the month that's actually in progress.
+function currentMonth(monthParam?: string) {
   const today = new Date();
+  if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) {
+    const [year, monthNumber] = monthParam.split("-").map(Number);
+    const start = new Date(year, monthNumber - 1, 1);
+    const isCurrentMonth = year === today.getFullYear() && monthNumber === today.getMonth() + 1;
+    const end = isCurrentMonth ? today : new Date(year, monthNumber, 0);
+    return { start, end };
+  }
   return { start: new Date(today.getFullYear(), today.getMonth(), 1), end: today };
 }
 
 function buildRange(searchParams: URLSearchParams, rangeMode: string | null) {
   const dateRange = parseDateRangeParams(searchParams);
-  if (dateRange.from && dateRange.to) return { start: dateRange.from, end: dateRange.to };
   if (rangeMode === "mtd") {
-    const { start, end } = currentMonth();
+    const { start, end } = currentMonth(dateRange.month);
     return { start: dateId(start), end: dateId(end), monday: start };
   }
+  if (dateRange.from && dateRange.to) return { start: dateRange.from, end: dateRange.to };
   const { monday, sunday } = currentWeek(dateRange.weekStart ?? searchParams.get("weekStart"));
   return { start: dateRange.weekStart ?? dateId(monday), end: dateId(sunday), monday, sunday };
 }

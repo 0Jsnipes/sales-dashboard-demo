@@ -254,11 +254,42 @@ function buildRangeSegments(mode: "wtd" | "mtd", start: string, end: string) {
   return segments;
 }
 
-function formatRangeLabel(mode: "wtd" | "mtd", start: string, end: string) {
+function formatRangeLabel(mode: "wtd" | "mtd", start: string, end: string, monthId: string) {
   if (mode === "mtd") {
-    return `${new Date().toLocaleDateString(undefined, { month: "long", year: "numeric" })} MTD`;
+    return `${monthLabel(monthId)} MTD`;
   }
   return weekRangeLabel(start, end);
+}
+
+function toMonthId(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function firstOfMonth(monthId: string) {
+  const [year, month] = monthId.split("-").map(Number);
+  return new Date(year, month - 1, 1);
+}
+
+function lastOfMonth(monthId: string) {
+  const [year, month] = monthId.split("-").map(Number);
+  return new Date(year, month, 0);
+}
+
+function shiftMonthId(monthId: string, delta: number) {
+  const [year, month] = monthId.split("-").map(Number);
+  return toMonthId(new Date(year, month - 1 + delta, 1));
+}
+
+function monthLabel(monthId: string) {
+  return firstOfMonth(monthId).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+}
+
+function monthOptions(anchorMonthId: string, pastCount = 24, futureCount = 6) {
+  return Array.from({ length: pastCount + futureCount + 1 }, (_, index) => {
+    const offset = futureCount - index;
+    const value = shiftMonthId(anchorMonthId, offset);
+    return { value, label: monthLabel(value) };
+  });
 }
 
 function weekOptions(anchorWeekStart: string, pastCount = 104, futureCount = 12) {
@@ -319,6 +350,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const [showNewRepHighlights, setShowNewRepHighlights] = useQueryState("showNewRepHighlights", parseAsString.withDefault("0"));
   const [viewMode, setViewMode] = useQueryState("view", parseAsString.withDefault("rep"));
   const [rangeMode, setRangeMode] = useQueryState("range", parseAsString.withDefault("wtd"));
+  const [monthId, setMonthId] = useQueryState("month", parseAsString.withDefault(toMonthId(new Date())));
   const [showZeroSales, setShowZeroSales] = useQueryState("showZeroSales", parseAsString.withDefault("1"));
   const [onlyZeroSales, setOnlyZeroSales] = useQueryState("onlyZeroSales", parseAsString.withDefault("0"));
   const [data, setData] = useState<SalesDataset | null>(null);
@@ -349,6 +381,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     const params = new URLSearchParams({
       weekStart,
       range: rangeMode,
+      ...(rangeMode === "mtd" ? { month: monthId } : {}),
       includeOrders: "true",
       search: search.trim(),
       manager: managerFilter,
@@ -376,7 +409,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, [isKnocks, kind, lcpFilter, locationFilter, managerFilter, providerFilter, rangeMode, repFilter, search, vendorFilter, weekStart, workspaceNameLower]);
+  }, [isKnocks, kind, lcpFilter, locationFilter, managerFilter, monthId, providerFilter, rangeMode, repFilter, search, vendorFilter, weekStart, workspaceNameLower]);
 
   useEffect(() => {
     let active = true;
@@ -401,11 +434,12 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
       .catch(() => undefined);
   }, []);
 
+  const isCurrentMonthSelected = monthId === toMonthId(new Date());
   const rangeStart = rangeMode === "mtd"
-    ? toDateId(new Date(new Date().getFullYear(), new Date().getMonth(), 1))
+    ? toDateId(firstOfMonth(monthId))
     : weekStart;
   const rangeEnd = rangeMode === "mtd"
-    ? toDateId(new Date())
+    ? (isCurrentMonthSelected ? toDateId(new Date()) : toDateId(lastOfMonth(monthId)))
     : weekToDateEnd(weekStart);
   const ytdStart = toDateId(new Date(new Date().getFullYear(), 0, 1));
   const ytdEnd = toDateId(new Date());
@@ -595,7 +629,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     return summary;
   }, [goalField, reportSegments, segmentIndexByDateId, visibleRows]);
 
-  const currentLabel = formatRangeLabel(rangeMode === "mtd" ? "mtd" : "wtd", data?.week.start ?? rangeStart, rangeMode === "mtd" ? data?.week.end ?? rangeEnd : displayRangeEnd);
+  const currentLabel = formatRangeLabel(rangeMode === "mtd" ? "mtd" : "wtd", data?.week.start ?? rangeStart, rangeMode === "mtd" ? data?.week.end ?? rangeEnd : displayRangeEnd, monthId);
   const isTeamView = viewMode === "team";
   const hasNoData = !loading && visibleRows.length === 0;
 
@@ -886,23 +920,51 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
               <p className="text-sm text-muted-foreground">{currentLabel}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap xl:justify-end">
-              <Button variant="outline" size="icon-sm" className="rounded-full" onClick={() => setWeekStart(shiftWeekStart(weekStart, -7))} aria-label="Previous week">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                className="rounded-full"
+                onClick={() => (rangeMode === "mtd" ? setMonthId(shiftMonthId(monthId, -1)) : setWeekStart(shiftWeekStart(weekStart, -7)))}
+                aria-label={rangeMode === "mtd" ? "Previous month" : "Previous week"}
+              >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <Select value={weekStart} onValueChange={setWeekStart}>
-                <SelectTrigger className="h-12 w-[min(100%,280px)] gap-2 rounded-full border-border/60 bg-background/80 px-5 shadow-sm sm:w-[280px] md:w-[320px] xl:w-[300px]">
-                  <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <SelectValue placeholder="Select week" className="min-w-0 flex-1 truncate text-center text-sm" />
-                </SelectTrigger>
-                <SelectContent>
-                  {weekOptions(weekStart).map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button variant="outline" size="icon-sm" className="rounded-full" onClick={() => setWeekStart(shiftWeekStart(weekStart, 7))} aria-label="Next week">
+              {rangeMode === "mtd" ? (
+                <Select value={monthId} onValueChange={setMonthId}>
+                  <SelectTrigger className="h-12 w-[min(100%,280px)] gap-2 rounded-full border-border/60 bg-background/80 px-5 shadow-sm sm:w-[280px] md:w-[320px] xl:w-[300px]">
+                    <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <SelectValue placeholder="Select month" className="min-w-0 flex-1 truncate text-center text-sm" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {monthOptions(monthId).map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Select value={weekStart} onValueChange={setWeekStart}>
+                  <SelectTrigger className="h-12 w-[min(100%,280px)] gap-2 rounded-full border-border/60 bg-background/80 px-5 shadow-sm sm:w-[280px] md:w-[320px] xl:w-[300px]">
+                    <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <SelectValue placeholder="Select week" className="min-w-0 flex-1 truncate text-center text-sm" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {weekOptions(weekStart).map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <Button
+                variant="outline"
+                size="icon-sm"
+                className="rounded-full"
+                onClick={() => (rangeMode === "mtd" ? setMonthId(shiftMonthId(monthId, 1)) : setWeekStart(shiftWeekStart(weekStart, 7)))}
+                aria-label={rangeMode === "mtd" ? "Next month" : "Next week"}
+              >
                 <ChevronRight className="h-4 w-4" />
               </Button>
               <div className="flex items-center rounded-full border border-border/60 bg-background/80 p-1 shadow-sm">
