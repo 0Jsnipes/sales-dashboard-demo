@@ -94,12 +94,12 @@ function LoadingState() {
           </div>
         </CardHeader>
       </Card>
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-        {Array.from({ length: 8 }).map((_, index) => <Skeleton key={index} className="h-32 rounded-2xl" />)}
+      <section className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, index) => <Skeleton key={index} className="h-28 rounded-2xl sm:h-32" />)}
       </section>
       <section className="grid gap-4 xl:grid-cols-[1.35fr_.85fr]">
-        <Skeleton className="h-[520px] rounded-2xl" />
-        <Skeleton className="h-[520px] rounded-2xl" />
+        <Skeleton className="h-[320px] rounded-2xl sm:h-[420px] xl:h-[520px]" />
+        <Skeleton className="h-[320px] rounded-2xl sm:h-[420px] xl:h-[520px]" />
       </section>
     </div>
   );
@@ -133,23 +133,23 @@ function KpiCard({
 }) {
   const body = (
     <>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm text-muted-foreground">{label}</p>
-          <p className="mt-2 text-3xl font-semibold tracking-tight">{value}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-xs text-muted-foreground sm:text-sm">{label}</p>
+          <p className="mt-1.5 text-2xl font-semibold tracking-tight sm:mt-2 sm:text-3xl">{value}</p>
         </div>
-        <div className="rounded-2xl bg-muted/35 p-3">
-          <Icon className="h-5 w-5" />
+        <div className="shrink-0 rounded-2xl bg-primary/10 p-2.5 text-primary sm:p-3">
+          <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
         </div>
       </div>
-      <p className="mt-3 text-sm text-muted-foreground">{detail}</p>
-      <Badge variant={badgeVariant} className="mt-5 w-fit">
+      <p className="mt-2 line-clamp-2 text-xs text-muted-foreground sm:mt-3 sm:text-sm">{detail}</p>
+      <Badge variant={badgeVariant} className="mt-3 w-fit sm:mt-5">
         {badgeLabel}
       </Badge>
     </>
   );
   const className = cn(
-    "flex h-full w-full flex-col rounded-2xl border border-border/70 bg-card p-5 text-left shadow-sm transition",
+    "flex h-full w-full flex-col rounded-2xl border border-border/70 bg-card p-4 text-left shadow-sm transition sm:p-5",
     href ? "hover:-translate-y-0.5 hover:shadow-md" : "",
   );
 
@@ -335,27 +335,27 @@ export function DashboardPage() {
     <motion.div initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }} className="space-y-6">
       <Card className="border-border/70">
         <CardHeader className="gap-4">
-          <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:flex-wrap">
             <div>
               <div className="flex items-center gap-2">
-                <CardTitle className="text-3xl">Dashboard</CardTitle>
+                <CardTitle className="text-2xl sm:text-3xl">Dashboard</CardTitle>
                 <Badge variant={error ? "warning" : "success"}>{error ? "Stale" : "Live"}</Badge>
               </div>
               <CardDescription className="mt-2">Current sales pulse, roster health, provider mix, and follow-up priorities.</CardDescription>
               <p className="mt-2 text-sm text-muted-foreground">Overview data from salesOrders, uploadRuns, reps, and weekly goals.</p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => void exportYtdWeeklyPivot()} disabled={exportingYtdPivot}>
+            <div className="-mx-6 flex w-[calc(100%+3rem)] gap-2 overflow-x-auto px-6 pb-1 sm:mx-0 sm:w-auto sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+              <Button variant="outline" className="shrink-0" onClick={() => void exportYtdWeeklyPivot()} disabled={exportingYtdPivot}>
                 <Download className="h-4 w-4" />
                 {exportingYtdPivot ? "Exporting..." : "Export YTD Pivot"}
               </Button>
-              <Button variant="outline" asChild>
+              <Button variant="outline" className="shrink-0" asChild>
                 <Link href="/performance">
                   <ArrowRight className="h-4 w-4" />
                   Open performance
                 </Link>
               </Button>
-              <Button variant="outline" asChild>
+              <Button variant="outline" className="shrink-0" asChild>
                 <Link href="/imports">
                   <FileUp className="h-4 w-4" />
                   Upload report
@@ -394,7 +394,7 @@ export function DashboardPage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4">
         <KpiCard label="Total sales" value={formatNumber(data.totalSales)} detail={weekLabel} icon={TrendingUp} badgeLabel={formatDelta(comparisonDelta)} badgeVariant={comparisonDelta >= 0 ? "success" : "warning"} href="/sales" />
         <KpiCard label="Goal progress" value={formatPercent(goalProgress)} detail={`${formatNumber(data.totalSales)} of ${formatNumber(data.totalSalesGoal)} goal`} icon={Gauge} badgeLabel="Weekly goal" />
         <KpiCard label="Total knocks" value={formatNumber(data.totalKnocks)} detail={`${formatCompact(data.activeReps ? data.totalKnocks / data.activeReps : 0)} per active rep`} icon={Target} href="/knocks" />
@@ -408,7 +408,7 @@ export function DashboardPage() {
 
       <section className="grid gap-4 xl:grid-cols-[1.35fr_.85fr]">
         <ChartCard title="Sales trend" description="Units sold by day for the current dashboard week." badge={weekLabel}>
-          <div className="h-[420px]">
+          <div className="h-[260px] sm:h-[360px] lg:h-[420px]">
             {hasTrendData ? (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={dayChartData} margin={{ left: 0, right: 0, top: 8, bottom: 0 }}>
@@ -462,7 +462,7 @@ export function DashboardPage() {
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_.9fr]">
         <ChartCard title="Order status health" description={`Active, pending, past-due subset, canceled, churned, and preorder volume for ${statusRangeLabel}.`}>
-          <div className="h-[320px]">
+          <div className="h-[240px] sm:h-[320px]">
             {hasOrderBreakdown ? (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={orderBreakdownData} margin={{ left: 0, right: 0, top: 12, bottom: 0 }}>
@@ -487,7 +487,7 @@ export function DashboardPage() {
           <CardContent className="space-y-4">
             {providerBreakdown.length ? (
               <>
-                <div className="relative h-[260px]">
+                <div className="relative h-[220px] sm:h-[260px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie data={providerBreakdown} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={82} outerRadius={116} startAngle={90} endAngle={-270} paddingAngle={3}>

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { Bell, ChevronDown, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
+import { Bell, ChevronDown, LogOut, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { useAuth } from "@/src/components/auth-provider";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { getFirebaseAuth } from "@/src/lib/firebase/client";
-import { visibleAppNav } from "@/src/components/layout/navigation";
+import { visibleAppNav, visibleMobileNav } from "@/src/components/layout/navigation";
 import { businessUnitLabel } from "@/src/lib/access";
 
 type AppShellProps = {
@@ -51,10 +51,10 @@ function isRouteActive(pathname: string, href: string) {
   return pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
 }
 
-function ShellNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
+function ShellNav({ collapsed, onNavigate, mobile = false }: { collapsed: boolean; onNavigate?: () => void; mobile?: boolean }) {
   const pathname = usePathname();
   const { profile } = useAuth();
-  const navItems = visibleAppNav(profile);
+  const navItems = mobile ? visibleMobileNav(profile) : visibleAppNav(profile);
 
   return (
     <nav className="flex flex-1 flex-col gap-1 px-2 py-3">
@@ -91,6 +91,55 @@ function ShellNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: 
           navLink
         );
       })}
+    </nav>
+  );
+}
+
+function MobileBottomNav({ onMore }: { onMore: () => void }) {
+  const pathname = usePathname();
+  const { profile } = useAuth();
+  const navItems = visibleMobileNav(profile);
+  const primary = navItems.slice(0, 4);
+  const hasOverflow = navItems.length > primary.length;
+
+  return (
+    <nav
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-card/92 backdrop-blur-xl lg:hidden"
+      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+    >
+      <div className="mx-auto flex max-w-xl items-stretch justify-around">
+        {primary.map((item) => {
+          const active = isRouteActive(pathname, item.href);
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                "flex flex-1 flex-col items-center gap-1 px-2 py-2.5 text-[11px] font-medium transition-colors",
+                active ? "text-primary" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <span className={cn("flex h-8 w-8 items-center justify-center rounded-full transition-colors", active && "bg-primary/12")}>
+                <Icon className="h-5 w-5" />
+              </span>
+              <span className="truncate">{item.label}</span>
+            </Link>
+          );
+        })}
+        {hasOverflow ? (
+          <button
+            type="button"
+            onClick={onMore}
+            className="flex flex-1 flex-col items-center gap-1 px-2 py-2.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-full">
+              <MoreHorizontal className="h-5 w-5" />
+            </span>
+            <span>More</span>
+          </button>
+        ) : null}
+      </div>
     </nav>
   );
 }
@@ -197,7 +246,7 @@ export function AppShell({ title, subtitle, actions, children }: AppShellProps) 
               <div className="px-2 pt-2">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Navigation</p>
               </div>
-              <ShellNav collapsed={false} onNavigate={() => setMobileOpen(false)} />
+              <ShellNav collapsed={false} onNavigate={() => setMobileOpen(false)} mobile />
             </div>
           </ScrollArea>
           <div className="border-t border-border/70 p-4">
@@ -276,16 +325,7 @@ export function AppShell({ title, subtitle, actions, children }: AppShellProps) 
 
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 border-b border-border/70 bg-background/85 backdrop-blur-xl">
-            <div className="flex items-center gap-3 px-4 py-4 sm:px-6 lg:px-8">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="lg:hidden"
-                aria-label="Open navigation"
-                onClick={() => setMobileOpen(true)}
-              >
-                <Menu className="h-4 w-4" />
-              </Button>
+            <div className="flex items-center gap-3 px-4 py-3.5 sm:px-6 sm:py-4 lg:px-8">
               <TooltipProvider delayDuration={0}>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -303,13 +343,13 @@ export function AppShell({ title, subtitle, actions, children }: AppShellProps) 
                 </Tooltip>
               </TooltipProvider>
               <div className="min-w-0 flex-1 space-y-1">
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="hidden flex-wrap items-center gap-2 sm:flex">
                   <Badge variant="outline" className="rounded-full">
                     {title}
                   </Badge>
                   <span className="hidden text-xs uppercase tracking-[0.18em] text-muted-foreground md:inline">AB Marketing</span>
                 </div>
-                <h1 className="truncate text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h1>
+                <h1 className="truncate text-xl font-semibold tracking-tight sm:text-3xl">{title}</h1>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
                   {subtitleParts.map((part, index) => (
                     <span key={`${part}-${index}`}>
@@ -327,7 +367,7 @@ export function AppShell({ title, subtitle, actions, children }: AppShellProps) 
             </div>
           </header>
 
-          <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+          <main className="flex-1 px-4 py-6 pb-24 sm:px-6 lg:px-8 lg:pb-6">
             <motion.div
               initial={reducedMotion ? false : { opacity: 0, y: 10 }}
               animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
@@ -339,6 +379,8 @@ export function AppShell({ title, subtitle, actions, children }: AppShellProps) 
           </main>
         </div>
       </div>
+
+      <MobileBottomNav onMore={() => setMobileOpen(true)} />
     </div>
   );
 }
