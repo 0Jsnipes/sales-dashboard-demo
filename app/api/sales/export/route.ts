@@ -52,7 +52,7 @@ export async function GET(request: Request) {
         .map((document) => normalizeAssignmentDoc(document.data()))
         .filter((item): item is RepLocationAssignment => item !== null),
     );
-    const filters = { manager: url.searchParams.get("manager") || "all", rep: url.searchParams.get("rep") || "all", location: url.searchParams.get("location") || "all", vendorType: url.searchParams.get("vendorType") || "all", provider: url.searchParams.get("provider") || "all" };
+    const filters = { manager: url.searchParams.get("manager") || "all", team: url.searchParams.get("team") || "all", rep: url.searchParams.get("rep") || "all", location: url.searchParams.get("location") || "all", vendorType: url.searchParams.get("vendorType") || "all", provider: url.searchParams.get("provider") || "all" };
     const locationFor = (rep: Rep | undefined, orderDateId: string) => resolveRepLocation(rep, weekStartFromDateId(orderDateId), assignmentsByRep).locationName;
     const exported = [...tfiber.docs, ...att.docs].map((document) => {
       const order = document.data();
@@ -80,9 +80,10 @@ export async function GET(request: Request) {
         rawSalesId: String(order.rawSalesId || ""),
         rawManagerName: String(order.rawManagerName || ""),
         matchedRepUid: order.matchedRepUid ? String(order.matchedRepUid) : null,
+        teamId: String(order.teamId || rep?.teamId || ""),
         rawData: order.rawData && typeof order.rawData === "object" ? order.rawData as Record<string, unknown> : {},
       };
-    }).filter((row) => (filters.manager === "all" || row.manager === filters.manager) && (filters.rep === "all" || row.representative === filters.rep) && (filters.location === "all" || row.location === filters.location) && (filters.vendorType === "all" || row.vendorType === filters.vendorType) && (filters.provider === "all" || row.provider.toLowerCase() === filters.provider.toLowerCase())).sort((left, right) => left.orderDateId.localeCompare(right.orderDateId) || left.representative.localeCompare(right.representative));
+    }).filter((row) => (filters.manager === "all" || row.manager === filters.manager) && (filters.team === "all" || row.teamId === filters.team) && (filters.rep === "all" || row.representative === filters.rep) && (filters.location === "all" || row.location === filters.location) && (filters.vendorType === "all" || row.vendorType === filters.vendorType) && (filters.provider === "all" || row.provider.toLowerCase() === filters.provider.toLowerCase())).sort((left, right) => left.orderDateId.localeCompare(right.orderDateId) || left.representative.localeCompare(right.representative));
     const reportRows = (provider: "ATT" | "T-Fiber") => pruneExportColumns(buildSalesExportRows(exported.filter((row) => row.provider === provider).map((row) => ({
       orderUid: row.orderUid,
       orderDateId: row.orderDateId,

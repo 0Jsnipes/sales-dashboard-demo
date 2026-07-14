@@ -39,6 +39,7 @@ type UserRow = {
     canViewSales: boolean;
     canViewKnocks: boolean;
     canViewRoster: boolean;
+    canViewTeams: boolean;
     canViewOnboarding: boolean;
     canViewImports: boolean;
     canViewBackfill: boolean;
@@ -71,6 +72,7 @@ const pagePermissionGroups = [
   { key: "canViewSales", label: "Sales", group: "Page access" },
   { key: "canViewKnocks", label: "Knocks", group: "Page access" },
   { key: "canViewRoster", label: "Roster", group: "Page access" },
+  { key: "canViewTeams", label: "Teams", group: "Page access" },
   { key: "canViewOnboarding", label: "Onboarding", group: "Page access" },
   { key: "canViewImports", label: "Imports", group: "Page access" },
   { key: "canViewBackfill", label: "Backfill", group: "Page access" },

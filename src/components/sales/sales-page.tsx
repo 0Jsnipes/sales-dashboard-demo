@@ -28,6 +28,7 @@ import { RepEditorDialog, blankRepEditorForm, type RepEditorForm } from "@/src/c
 import { AssignLocationDialog } from "@/src/components/roster/assign-location-dialog";
 import type { ManagerOption } from "@/src/types/manager";
 import type { Rep } from "@/src/types/rep";
+import type { Team } from "@/src/types/team";
 import { normalizePermissions } from "@/src/lib/access";
 import { cn } from "@/lib/utils";
 
@@ -342,6 +343,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const [weekStart, setWeekStart] = useQueryState("weekStart", parseAsString.withDefault(toDateId(startOfWeek(new Date()))));
   const [search, setSearch] = useQueryState("q", parseAsString.withDefault(""));
   const [managerFilter, setManagerFilter] = useQueryState("manager", parseAsString.withDefault("all"));
+  const [teamFilter, setTeamFilter] = useQueryState("team", parseAsString.withDefault("all"));
   const [repFilter, setRepFilter] = useQueryState("rep", parseAsString.withDefault("all"));
   const [locationFilter, setLocationFilter] = useQueryState("location", parseAsString.withDefault("all"));
   const [lcpFilter, setLcpFilter] = useQueryState("lcp", parseAsString.withDefault("all"));
@@ -371,6 +373,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const [locationCreating, setLocationCreating] = useState(false);
   const [locationCreateTarget, setLocationCreateTarget] = useState<LocationCreateTarget | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [teamOptions, setTeamOptions] = useState<Team[]>([]);
 
   const refreshActiveRoster = useCallback(async () => {
     const response = await authedJson<{ reps: RosterOption[] }>("/api/reps?status=active");
@@ -385,6 +388,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
       includeOrders: "true",
       search: search.trim(),
       manager: managerFilter,
+      team: teamFilter,
       location: locationFilter,
       ...(isKnocks && lcpFilter !== "all" ? { lcp: lcpFilter } : {}),
       rep: repFilter,
@@ -409,7 +413,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, [isKnocks, kind, lcpFilter, locationFilter, managerFilter, monthId, providerFilter, rangeMode, repFilter, search, vendorFilter, weekStart, workspaceNameLower]);
+  }, [isKnocks, kind, lcpFilter, locationFilter, managerFilter, monthId, providerFilter, rangeMode, repFilter, search, teamFilter, vendorFilter, weekStart, workspaceNameLower]);
 
   useEffect(() => {
     let active = true;
@@ -432,6 +436,9 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     authedJson<{ managers: SalesManagerOption[] }>("/api/managers")
       .then((value) => setManagers(value.managers ?? []))
       .catch(() => undefined);
+    authedJson<{ teams: Team[] }>("/api/teams")
+      .then((value) => setTeamOptions(value.teams ?? []))
+      .catch(() => undefined);
   }, []);
 
   const isCurrentMonthSelected = monthId === toMonthId(new Date());
@@ -449,6 +456,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const exportHref = useMemo(() => {
     const params = new URLSearchParams({
       manager: managerFilter,
+      team: teamFilter,
       rep: repFilter,
       location: locationFilter,
       vendor: vendorFilter,
@@ -464,12 +472,13 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     params.set("start", rangeStart);
     params.set("end", rangeEnd);
     return `/api/sales/export?${params.toString()}`;
-  }, [isKnocks, lcpFilter, locationFilter, managerFilter, providerFilter, rangeEnd, rangeStart, repFilter, vendorFilter]);
+  }, [isKnocks, lcpFilter, locationFilter, managerFilter, providerFilter, rangeEnd, rangeStart, repFilter, teamFilter, vendorFilter]);
   const exportYtdHref = useMemo(() => {
     const params = new URLSearchParams({
       start: ytdStart,
       end: ytdEnd,
       manager: managerFilter,
+      team: teamFilter,
       rep: repFilter,
       location: locationFilter,
       provider: providerFilter,
@@ -482,7 +491,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
     params.set("ytd", "true");
     params.set("vendorType", vendorFilter);
     return `/api/sales/export?${params.toString()}`;
-  }, [isKnocks, lcpFilter, locationFilter, managerFilter, providerFilter, repFilter, vendorFilter, ytdEnd, ytdStart]);
+  }, [isKnocks, lcpFilter, locationFilter, managerFilter, providerFilter, repFilter, teamFilter, vendorFilter, ytdEnd, ytdStart]);
 
   const reportSegments = useMemo(() => buildRangeSegments(rangeMode === "mtd" ? "mtd" : "wtd", data?.week.start ?? rangeStart, rangeMode === "mtd" ? data?.week.end ?? rangeEnd : displayRangeEnd), [data?.week.end, data?.week.start, displayRangeEnd, rangeEnd, rangeMode, rangeStart]);
   const segmentIndexByDateId = useMemo(() => {
@@ -587,6 +596,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
       const matchesLcp = !isKnocks || lcpFilter === "all" || rowLcps.includes(selectedLcp);
       return matchesSearch
         && (managerFilter === "all" || row.managerName === managerFilter)
+        && (teamFilter === "all" || row.teamId === teamFilter)
         && (repFilter === "all" || row.displayName === repFilter)
         && (locationFilter === "all" || row.locationName === locationFilter)
         && matchesVendor
@@ -596,7 +606,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
         && (!highlightOnly || isHighlightedRep)
         && (zeroSalesOnly || highlightOnly || includeZeroSales || row.total > 0);
     });
-  }, [canUseOnlyZeroSalesFilter, isKnocks, lcpFilter, locationFilter, managerFilter, onlyZeroSales, providerFilter, repFilter, rows, search, showNewRepHighlights, showZeroSales, vendorFilter]);
+  }, [canUseOnlyZeroSalesFilter, isKnocks, lcpFilter, locationFilter, managerFilter, onlyZeroSales, providerFilter, repFilter, rows, search, showNewRepHighlights, showZeroSales, teamFilter, vendorFilter]);
 
   const teamChart = useMemo(() => visibleRows.map((row) => ({ name: row.displayName, sales: row.total })), [visibleRows]);
 
@@ -1005,7 +1015,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
             </TabsList>
           </Tabs>
 
-          <div className="grid gap-3 rounded-[24px] border border-border/60 bg-muted/20 p-4 shadow-sm md:grid-cols-2 xl:grid-cols-8">
+          <div className="grid gap-3 rounded-[24px] border border-border/60 bg-muted/20 p-4 shadow-sm md:grid-cols-2 xl:grid-cols-9">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -1020,6 +1030,13 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
               <SelectContent>
                 <SelectItem value="all">All managers</SelectItem>
                 {Array.from(new Set(rows.map((row) => row.managerName).filter((value) => value && value !== "—"))).map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={teamFilter} onValueChange={setTeamFilter}>
+              <SelectTrigger className="h-11 rounded-full border-border/60 bg-background/80 shadow-sm"><SelectValue placeholder="Team" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All teams</SelectItem>
+                {teamOptions.filter((team) => team.active || team.teamId === teamFilter).map((team) => <SelectItem key={team.teamId} value={team.teamId}>{team.name}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={repFilter} onValueChange={setRepFilter}>

@@ -10,6 +10,7 @@ import { ReportingPage } from "@/src/components/reporting/reporting-page";
 import { SalesPage } from "@/src/components/sales/sales-page";
 import { KnocksPage } from "@/src/components/knocks/knocks-page";
 import { RosterPage } from "@/src/components/roster/roster-page";
+import { TeamsPage } from "@/src/components/teams/teams-page";
 import { OnboardingPage } from "@/src/components/onboarding/onboarding-page";
 import { ImportsPage } from "@/src/components/imports/imports-page";
 import { ImportsUnmatchedPage } from "@/src/components/imports/imports-unmatched-page";
@@ -18,7 +19,9 @@ import { SettingsPage } from "@/src/components/settings/settings-page";
 import { Card, CardContent } from "@/components/ui/card";
 import { ShieldAlert } from "lucide-react";
 
-export function OperationsApp({ view }: { view: "dashboard" | "performance" | "reporting" | "sales" | "knocks" | "roster" | "onboarding" | "imports" | "unmatched" | "backfill" | "settings" }) {
+type OperationsView = "dashboard" | "performance" | "reporting" | "sales" | "knocks" | "roster" | "teams" | "onboarding" | "imports" | "unmatched" | "backfill" | "settings";
+
+export function OperationsApp({ view }: { view: OperationsView }) {
   return (
     <RequireAuth>
       <OperationsShell view={view} />
@@ -26,7 +29,7 @@ export function OperationsApp({ view }: { view: "dashboard" | "performance" | "r
   );
 }
 
-function OperationsShell({ view }: { view: "dashboard" | "performance" | "reporting" | "sales" | "knocks" | "roster" | "onboarding" | "imports" | "unmatched" | "backfill" | "settings" }) {
+function OperationsShell({ view }: { view: OperationsView }) {
   const { profile } = useAuth();
   const screen =
     view === "dashboard" ? <DashboardPage /> :
@@ -35,6 +38,7 @@ function OperationsShell({ view }: { view: "dashboard" | "performance" | "report
     view === "sales" ? <SalesPage /> :
     view === "knocks" ? <KnocksPage /> :
     view === "roster" ? <RosterPage /> :
+    view === "teams" ? <TeamsPage /> :
     view === "onboarding" ? <OnboardingPage /> :
     view === "imports" ? <ImportsPage /> :
     view === "unmatched" ? <ImportsUnmatchedPage /> :
@@ -48,6 +52,7 @@ function OperationsShell({ view }: { view: "dashboard" | "performance" | "report
     view === "sales" ? { title: "Sales", subtitle: "Weekly sales rows, filters, and goal management." } :
     view === "knocks" ? { title: "Knocks", subtitle: "Knock reporting workspace and intake landing zone." } :
     view === "roster" ? { title: "Roster", subtitle: "Reps, managers, locations, and identity management." } :
+    view === "teams" ? { title: "Teams", subtitle: "Editable reporting groups independent from manager hierarchy." } :
     view === "onboarding" ? { title: "Tools", subtitle: "Operational tools, resource links, and recruiting references." } :
     view === "imports" ? { title: "Imports", subtitle: "Upload, validate, and review incoming operational files." } :
     view === "unmatched" ? { title: "Unmatched review", subtitle: "Resolve ambiguous import matches safely." } :

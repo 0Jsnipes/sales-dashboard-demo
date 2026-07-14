@@ -36,6 +36,7 @@ import { AssignLocationDialog } from "@/src/components/roster/assign-location-di
 import type { Rep } from "@/src/types/rep";
 import type { Location } from "@/src/types/location";
 import type { ManagerOption } from "@/src/types/manager";
+import type { Team } from "@/src/types/team";
 import { useAuth } from "@/src/components/auth-provider";
 import { formatDate, formatDateTime } from "@/src/lib/formatters/date";
 
@@ -45,6 +46,7 @@ type RepForm = {
   phone: string;
   managerUid: string;
   managerName: string;
+  teamId: string;
   locationId: string;
   locationName: string;
   salesIds: string;
@@ -66,6 +68,7 @@ const blankForm: RepForm = {
   phone: "",
   managerUid: "",
   managerName: "",
+  teamId: "",
   locationId: "",
   locationName: "",
   salesIds: "",
@@ -223,6 +226,7 @@ export function RosterPage() {
   const [editing, setEditing] = useState<Rep | null>(null);
   const [locations, setLocations] = useState<Location[]>([]);
   const [managers, setManagers] = useState<ManagerOption[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [saving, setSaving] = useState(false);
   const [removeRep, setRemoveRep] = useState<Rep | null>(null);
   const [terminateRep, setTerminateRep] = useState<Rep | null>(null);
@@ -285,9 +289,11 @@ export function RosterPage() {
     Promise.all([
       authedJson<{ locations: Location[] }>("/api/locations"),
       authedJson<{ managers: ManagerOption[] }>("/api/managers"),
-    ]).then(([locationData, managerData]) => {
+      authedJson<{ teams: Team[] }>("/api/teams"),
+    ]).then(([locationData, managerData, teamData]) => {
       setLocations(locationData.locations ?? []);
       setManagers(managerData.managers ?? []);
+      setTeams((teamData.teams ?? []).filter((team) => team.active));
     }).catch(() => undefined);
   }, []);
 
@@ -401,6 +407,7 @@ export function RosterPage() {
       phone: rep.phone ?? "",
       managerUid: rep.managerUid ?? "",
       managerName: rep.managerName ?? "",
+      teamId: rep.teamId ?? "",
       locationId: rep.locationId ?? "",
       locationName: rep.locationName ?? "",
       salesIds: rep.salesIds.join(", "),
@@ -443,8 +450,15 @@ export function RosterPage() {
         method: editing ? "PATCH" : "POST",
         body: JSON.stringify(editing ? { action: "update", rep: payload } : payload),
       });
-      const result = await response.json();
+      const result = await response.json() as { error?: unknown; rep?: Rep };
       if (!response.ok) throw new Error(formatApiError(result.error, "Unable to save representative."));
+      const savedRepUid = editing?.repUid ?? result.rep?.repUid;
+      if (savedRepUid && form.teamId !== (editing?.teamId ?? "")) {
+        await authedJson(`/api/reps/${savedRepUid}/team`, {
+          method: "PATCH",
+          body: JSON.stringify({ teamId: form.teamId || null }),
+        });
+      }
       toast.success(editing ? "Representative saved." : "Representative created.");
       setEditorOpen(false);
       setEditing(null);
@@ -863,6 +877,17 @@ export function RosterPage() {
                   </SelectContent>
                 </Select>
               </Field>
+              <Field label="Team" helper="Reporting group only; this does not change the manager.">
+                <Select value={form.teamId || "__none__"} onValueChange={(value) => setForm({ ...form, teamId: value === "__none__" ? "" : value })}>
+                  <SelectTrigger><SelectValue placeholder="Team" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No team</SelectItem>
+                    {teams.map((team) => <SelectItem key={team.teamId} value={team.teamId}>{team.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </section>
+            <section className="grid gap-3 md:grid-cols-2">
               <Field label="Location">
                 <Select value={form.locationId} onValueChange={(value) => {
                   if (value === ADD_LOCATION_VALUE) {

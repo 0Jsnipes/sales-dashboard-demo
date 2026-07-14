@@ -9,6 +9,7 @@ export interface AppUser {
   mustChangePassword?: boolean;
   repUid: string | null;
   managerUid: string | null;
+  teamId?: string | null;
   locationIds: string[];
   permissions: {
     canViewDashboard: boolean;
@@ -22,6 +23,7 @@ export interface AppUser {
     canViewSales: boolean;
     canViewKnocks: boolean;
     canViewRoster: boolean;
+    canViewTeams: boolean;
     canViewOnboarding: boolean;
     canViewImports: boolean;
     canViewBackfill: boolean;

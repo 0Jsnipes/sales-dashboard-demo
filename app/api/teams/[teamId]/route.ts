@@ -1,18 +1,33 @@
 import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
-import { getAdminDb } from "@/src/lib/firebase/admin";
-import { canManageRoster, requireActor } from "@/src/lib/firebase/server-auth";
+import { canManageRoster, canViewTeams, requireActor } from "@/src/lib/firebase/server-auth";
+import { archiveTeam, getTeamById, getTeams, syncTeamMembers, updateTeam } from "@/src/lib/teams/team-service";
 import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
 const input = z.object({
-  name: z.string().min(2).max(120).optional(),
-  repUids: z.array(z.string().min(1)).max(500).optional(),
-}).refine((value) => value.name !== undefined || value.repUids !== undefined, { message: "Nothing to update." });
+  name: z.string().trim().min(2).max(120).optional(),
+  description: z.string().trim().max(500).optional(),
+  color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  active: z.boolean().optional(),
+  members: z.array(z.string().min(1)).max(400).optional(),
+}).refine((value) => Object.keys(value).length > 0, { message: "Nothing to update." });
 
 type Params = { params: Promise<{ teamId: string }> };
+
+export async function GET(request: Request, { params }: Params) {
+  try {
+    const actor = await requireActor(request);
+    if (!canViewTeams(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    const { teamId } = await params;
+    const team = await getTeamById(teamId);
+    if (!team) return NextResponse.json({ error: "TEAM_NOT_FOUND" }, { status: 404 });
+    return NextResponse.json({ team });
+  } catch (error) {
+    return errorResponse("teams/[teamId]", error);
+  }
+}
 
 export async function PATCH(request: Request, { params }: Params) {
   try {
@@ -21,37 +36,30 @@ export async function PATCH(request: Request, { params }: Params) {
     const value = input.safeParse(await request.json());
     if (!value.success) return NextResponse.json({ error: value.error.flatten() }, { status: 400 });
     const { teamId } = await params;
-
-    const db = getAdminDb();
-    const reference = db.collection("teams").doc(teamId);
-    const snapshot = await reference.get();
-    if (!snapshot.exists) return NextResponse.json({ error: "TEAM_NOT_FOUND" }, { status: 404 });
-
-    const updates: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp(), updatedBy: actor.token.uid };
-    if (value.data.name !== undefined) {
-      const name = value.data.name.trim();
-      const existing = await db.collection("teams").get();
-      const duplicate = existing.docs.some((document) => document.id !== teamId && String(document.data().name || "").trim().toLowerCase() === name.toLowerCase());
-      if (duplicate) return NextResponse.json({ error: "A team with this name already exists." }, { status: 409 });
-      updates.name = name;
+    if (!await getTeamById(teamId)) return NextResponse.json({ error: "TEAM_NOT_FOUND" }, { status: 404 });
+    if (value.data.name) {
+      const teams = await getTeams();
+      if (teams.some((team) => team.teamId !== teamId && team.name.toLowerCase() === value.data.name!.toLowerCase())) {
+        return NextResponse.json({ error: "A team with this name already exists." }, { status: 409 });
+      }
     }
-    if (value.data.repUids !== undefined) updates.repUids = [...new Set(value.data.repUids)];
-
-    await reference.update(updates);
-    const updated = await reference.get();
-    return NextResponse.json({ team: updated.data() });
+    const { members, ...details } = value.data;
+    if (Object.keys(details).length) await updateTeam(teamId, details, actor.token.uid);
+    if (members) await syncTeamMembers(teamId, members, actor.token.uid);
+    return NextResponse.json({ team: await getTeamById(teamId) });
   } catch (error) {
     return errorResponse("teams/[teamId]", error);
   }
 }
 
+/** Teams are archived by default so historical reports retain a stable grouping. */
 export async function DELETE(request: Request, { params }: Params) {
   try {
     const actor = await requireActor(request);
     if (!canManageRoster(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     const { teamId } = await params;
-    await getAdminDb().collection("teams").doc(teamId).delete();
-    return NextResponse.json({ deleted: teamId });
+    if (!await getTeamById(teamId)) return NextResponse.json({ error: "TEAM_NOT_FOUND" }, { status: 404 });
+    return NextResponse.json({ team: await archiveTeam(teamId, actor.token.uid) });
   } catch (error) {
     return errorResponse("teams/[teamId]", error);
   }

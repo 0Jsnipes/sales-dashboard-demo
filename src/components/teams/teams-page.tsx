@@ -1,0 +1,298 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Archive, CircleDot, Download, Pencil, Plus, Search, UsersRound } from "lucide-react";
+import { toast } from "sonner";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { authedFetch, authedJson } from "@/src/lib/api/client";
+import type { Rep } from "@/src/types/rep";
+import type { Team } from "@/src/types/team";
+
+type TeamForm = { name: string; description: string; color: string; active: boolean };
+type ExportRangeMode = "wtd" | "mtd" | "ytd" | "custom";
+const blankForm: TeamForm = { name: "", description: "", color: "#2563eb", active: true };
+
+function dateId(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function presetRange(mode: Exclude<ExportRangeMode, "custom">) {
+  const today = new Date();
+  if (mode === "ytd") return { start: dateId(new Date(today.getFullYear(), 0, 1)), end: dateId(today) };
+  if (mode === "mtd") return { start: dateId(new Date(today.getFullYear(), today.getMonth(), 1)), end: dateId(today) };
+  const day = today.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  return { start: dateId(new Date(today.getFullYear(), today.getMonth(), today.getDate() + mondayOffset)), end: dateId(today) };
+}
+
+export function TeamsPage() {
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [reps, setReps] = useState<Rep[]>([]);
+  const [canManage, setCanManage] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("active");
+  const [editor, setEditor] = useState<Team | "new" | null>(null);
+  const [form, setForm] = useState<TeamForm>(blankForm);
+  const [memberTeam, setMemberTeam] = useState<Team | null>(null);
+  const [memberQuery, setMemberQuery] = useState("");
+  const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set());
+  const [exportTeam, setExportTeam] = useState<Team | null>(null);
+  const [exportRangeMode, setExportRangeMode] = useState<ExportRangeMode>("mtd");
+  const [customStart, setCustomStart] = useState(dateId(new Date()));
+  const [customEnd, setCustomEnd] = useState(dateId(new Date()));
+  const [exporting, setExporting] = useState(false);
+
+  const load = useCallback(() => {
+    return authedJson<{ teams: Team[]; canManage: boolean }>("/api/teams")
+      .then(async (teamResult) => {
+        setTeams(teamResult.teams ?? []);
+        setCanManage(teamResult.canManage);
+        if (teamResult.canManage) {
+          const roster = await authedJson<{ reps: Rep[] }>("/api/reps?status=all");
+          setReps(roster.reps ?? []);
+        }
+        setError(null);
+      })
+      .catch((cause: unknown) => {
+        setError(cause instanceof Error ? cause.message : "Unable to load teams.");
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const teamNameById = useMemo(() => new Map(teams.map((team) => [team.teamId, team.name])), [teams]);
+  const repById = useMemo(() => new Map(reps.map((rep) => [rep.repUid, rep])), [reps]);
+  const filtered = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    return teams.filter((team) => {
+      if (status === "active" && !team.active) return false;
+      if (status === "inactive" && team.active) return false;
+      return !term || `${team.name} ${team.description}`.toLowerCase().includes(term);
+    });
+  }, [query, status, teams]);
+
+  const visibleReps = useMemo(() => {
+    const term = memberQuery.trim().toLowerCase();
+    return reps.filter((rep) => !term || `${rep.displayName} ${rep.email}`.toLowerCase().includes(term));
+  }, [memberQuery, reps]);
+
+  function membersFor(team: Team) {
+    const details = new Map(team.memberDetails?.map((member) => [member.repUid, member]) ?? []);
+    return team.members.map((repUid) => {
+      const rep = repById.get(repUid);
+      return details.get(repUid) ?? {
+        repUid,
+        displayName: rep?.displayName || "Unknown rep",
+        email: rep?.email || "",
+        status: rep?.status || "",
+      };
+    });
+  }
+
+  function openEditor(team?: Team) {
+    setEditor(team ?? "new");
+    setForm(team ? { name: team.name, description: team.description, color: team.color, active: team.active } : blankForm);
+  }
+
+  async function saveTeam() {
+    if (form.name.trim().length < 2) return toast.error("Enter a team name with at least two characters.");
+    setSaving(true);
+    try {
+      await authedJson(editor === "new" ? "/api/teams" : `/api/teams/${(editor as Team).teamId}`, {
+        method: editor === "new" ? "POST" : "PATCH",
+        body: JSON.stringify({ ...form, name: form.name.trim(), description: form.description.trim() }),
+      });
+      toast.success(editor === "new" ? "Team created." : "Team updated.");
+      setEditor(null);
+      await load();
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to save team.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function openMembers(team: Team) {
+    setMemberTeam(team);
+    setMemberQuery("");
+    setSelectedMembers(new Set(team.members));
+  }
+
+  async function saveMembers() {
+    if (!memberTeam) return;
+    setSaving(true);
+    try {
+      await authedJson(`/api/teams/${memberTeam.teamId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ members: [...selectedMembers] }),
+      });
+      toast.success("Team membership synchronized.");
+      setMemberTeam(null);
+      await load();
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to update members.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function archive(team: Team) {
+    if (!window.confirm(`Archive ${team.name}? Its historical assignments will remain intact.`)) return;
+    try {
+      await authedJson(`/api/teams/${team.teamId}`, { method: "DELETE" });
+      toast.success("Team archived.");
+      await load();
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to archive team.");
+    }
+  }
+
+  function openExport(team: Team) {
+    const range = presetRange("mtd");
+    setExportTeam(team);
+    setExportRangeMode("mtd");
+    setCustomStart(range.start);
+    setCustomEnd(range.end);
+  }
+
+  async function downloadTeamExports() {
+    if (!exportTeam) return;
+    const range = exportRangeMode === "custom" ? { start: customStart, end: customEnd } : presetRange(exportRangeMode);
+    if (!range.start || !range.end || range.start > range.end) return toast.error("Choose a valid export date range.");
+    setExporting(true);
+    try {
+      const params = new URLSearchParams(range);
+      const getFile = async (kind: "sales" | "knocks") => {
+        const response = await authedFetch(`/api/teams/${exportTeam.teamId}/export/${kind}?${params.toString()}`);
+        if (!response.ok) {
+          const result = await response.json().catch(() => ({ error: `Unable to export ${kind}.` })) as { error?: string };
+          throw new Error(result.error || `Unable to export ${kind}.`);
+        }
+        const disposition = response.headers.get("content-disposition") ?? "";
+        const fileName = disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? `${kind}-${range.start}-to-${range.end}.xlsx`;
+        return { blob: await response.blob(), fileName };
+      };
+      const files = await Promise.all([getFile("sales"), getFile("knocks")]);
+      for (const file of files) {
+        const url = URL.createObjectURL(file.blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = file.fileName;
+        document.body.append(anchor);
+        anchor.click();
+        anchor.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+      toast.success("Downloaded separate sales and knocks workbooks.");
+      setExportTeam(null);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to export team data.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  if (loading && !teams.length) {
+    return <div className="space-y-4"><Skeleton className="h-36 rounded-2xl" /><Skeleton className="h-72 rounded-2xl" /></div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      {error ? <Alert variant="destructive"><AlertTitle>Teams unavailable</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
+      <Card>
+        <CardHeader className="gap-4 p-5 sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-2xl"><UsersRound className="h-6 w-6 text-primary" />Reporting teams</CardTitle>
+              <CardDescription className="mt-2">Group reps for analytics and exports independently from manager hierarchy.</CardDescription>
+            </div>
+            {canManage ? <Button onClick={() => openEditor()}><Plus className="h-4 w-4" />Create Team</Button> : null}
+          </div>
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+            <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" placeholder="Search teams" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
+            <Select value={status} onValueChange={setStatus}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="active">Active teams</SelectItem><SelectItem value="inactive">Archived teams</SelectItem><SelectItem value="all">All teams</SelectItem></SelectContent></Select>
+          </div>
+        </CardHeader>
+      </Card>
+
+      <Card>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader><TableRow><TableHead>Team</TableHead><TableHead>Description</TableHead><TableHead>Members</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {filtered.length ? filtered.map((team) => (
+                  <TableRow key={team.teamId}>
+                    <TableCell><div className="flex items-center gap-3"><span className="h-3 w-3 rounded-full ring-4 ring-muted" style={{ backgroundColor: team.color }} /><span className="font-medium">{team.name}</span></div></TableCell>
+                    <TableCell className="max-w-md text-muted-foreground">{team.description || "No description"}</TableCell>
+                    <TableCell><TooltipProvider delayDuration={150}><Tooltip><TooltipTrigger asChild><Badge variant="secondary" tabIndex={0} className="cursor-help" aria-label={`${team.members.length} ${team.members.length === 1 ? "member" : "members"}. Hover to view names.`}>{team.members.length} {team.members.length === 1 ? "member" : "members"}</Badge></TooltipTrigger><TooltipContent side="right" align="start" className="max-h-72 w-72 overflow-y-auto p-0"><div className="border-b px-3 py-2"><p className="font-medium">{team.name} members</p><p className="text-xs text-muted-foreground">{team.members.length} total</p></div>{team.members.length ? <div className="divide-y">{membersFor(team).map((member) => <div key={member.repUid} className="px-3 py-2"><p className="font-medium">{member.displayName}</p>{member.email ? <p className="truncate text-xs text-muted-foreground">{member.email}</p> : null}</div>)}</div> : <p className="px-3 py-4 text-muted-foreground">No members assigned.</p>}</TooltipContent></Tooltip></TooltipProvider></TableCell>
+                    <TableCell><Badge variant={team.active ? "success" : "outline"}><CircleDot className="h-3 w-3" />{team.active ? "Active" : "Archived"}</Badge></TableCell>
+                    <TableCell><div className="flex justify-end gap-1"><Button variant="ghost" size="sm" onClick={() => openExport(team)}><Download className="h-4 w-4" />Export</Button>{canManage ? <><Button variant="ghost" size="sm" onClick={() => openEditor(team)}><Pencil className="h-4 w-4" />Edit</Button><Button variant="ghost" size="sm" disabled={!team.active} onClick={() => openMembers(team)}><UsersRound className="h-4 w-4" />Members</Button>{team.active ? <Button variant="ghost" size="sm" onClick={() => void archive(team)}><Archive className="h-4 w-4" />Archive</Button> : null}</> : null}</div></TableCell>
+                  </TableRow>
+                )) : <TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground">No teams match the current view.</TableCell></TableRow>}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog open={Boolean(editor)} onOpenChange={(open) => !open && setEditor(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{editor === "new" ? "Create team" : "Edit team"}</DialogTitle><DialogDescription>Teams control reporting groups only; manager assignments are unchanged.</DialogDescription></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2"><Label htmlFor="team-name">Team name</Label><Input id="team-name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></div>
+            <div className="space-y-2"><Label htmlFor="team-description">Description</Label><Input id="team-description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></div>
+            <div className="grid grid-cols-[1fr_auto] items-end gap-4"><div className="space-y-2"><Label htmlFor="team-color">Color</Label><Input id="team-color" value={form.color} onChange={(event) => setForm({ ...form, color: event.target.value })} /></div><Input type="color" aria-label="Choose team color" className="h-10 w-14 p-1" value={form.color} onChange={(event) => setForm({ ...form, color: event.target.value })} /></div>
+            <label className="flex items-center justify-between rounded-xl border p-3"><span><span className="block text-sm font-medium">Active</span><span className="text-xs text-muted-foreground">Active teams can receive new members.</span></span><Switch checked={form.active} onCheckedChange={(active) => setForm({ ...form, active })} /></label>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setEditor(null)}>Cancel</Button><Button disabled={saving} onClick={() => void saveTeam()}>{saving ? "Saving..." : "Save team"}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(exportTeam)} onOpenChange={(open) => !open && !exporting && setExportTeam(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Export {exportTeam?.name}</DialogTitle><DialogDescription>Downloads two source-style Excel files: one for sales and one for knocks, filtered to this team&apos;s current members.</DialogDescription></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2"><Label htmlFor="team-export-range">Date range</Label><Select value={exportRangeMode} onValueChange={(value) => setExportRangeMode(value as ExportRangeMode)}><SelectTrigger id="team-export-range"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="wtd">WTD</SelectItem><SelectItem value="mtd">MTD</SelectItem><SelectItem value="ytd">YTD</SelectItem><SelectItem value="custom">Custom range</SelectItem></SelectContent></Select></div>
+            {exportRangeMode === "custom" ? <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="team-export-start">Start date</Label><Input id="team-export-start" type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} /></div><div className="space-y-2"><Label htmlFor="team-export-end">End date</Label><Input id="team-export-end" type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} /></div></div> : <p className="rounded-xl bg-muted p-3 text-sm text-muted-foreground">{(() => { const range = presetRange(exportRangeMode); return `${range.start} through ${range.end}`; })()}</p>}
+            <p className="text-xs text-muted-foreground">The knocks workbook is rebuilt from the stored source uploads, so larger date histories may take a moment.</p>
+          </div>
+          <DialogFooter><Button variant="outline" disabled={exporting} onClick={() => setExportTeam(null)}>Cancel</Button><Button disabled={exporting} onClick={() => void downloadTeamExports()}><Download className="h-4 w-4" />{exporting ? "Building 2 files..." : "Download 2 files"}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(memberTeam)} onOpenChange={(open) => !open && setMemberTeam(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle>Manage {memberTeam?.name} members</DialogTitle><DialogDescription>{selectedMembers.size} selected. Adding a rep here automatically removes them from any prior team.</DialogDescription></DialogHeader>
+          <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" placeholder="Search by name or email" value={memberQuery} onChange={(event) => setMemberQuery(event.target.value)} /></div>
+          <ScrollArea className="h-[420px] rounded-xl border">
+            <div className="divide-y">
+              {visibleReps.map((rep) => {
+                const checked = selectedMembers.has(rep.repUid);
+                return <label key={rep.repUid} className="flex cursor-pointer items-center gap-3 p-3 hover:bg-muted/50"><Checkbox checked={checked} onCheckedChange={(value) => setSelectedMembers((current) => { const next = new Set(current); if (value === true) next.add(rep.repUid); else next.delete(rep.repUid); return next; })} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{rep.displayName}</p><p className="truncate text-xs text-muted-foreground">{rep.email || "No email"}</p></div><Badge variant="outline">{checked ? memberTeam?.name : rep.teamId ? teamNameById.get(rep.teamId) ?? "Other team" : "No team"}</Badge></label>;
+              })}
+            </div>
+          </ScrollArea>
+          <DialogFooter><Button variant="outline" onClick={() => setMemberTeam(null)}>Cancel</Button><Button disabled={saving} onClick={() => void saveMembers()}>{saving ? "Saving..." : `Save ${selectedMembers.size} members`}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

@@ -95,10 +95,11 @@ export async function importATTRows({ rows, uploadId, actorUid, fileName, storag
     const accountStatus = serviceDetails.map((item) => item.status).filter(Boolean).join(" | ") || "Unknown";
     const installationDateId = serviceDetails.find((item) => item.installationDateId)?.installationDateId ?? "";
     const cancellationDateId = serviceDetails.find((item) => item.cancellationDateId)?.cancellationDateId ?? "";
+    const matchedRep = result.repUid ? reps.find((rep) => rep.repUid === result.repUid) : undefined;
     canonical.set(orderUid, { orderUid, unmatched: !isMatched, data: {
       orderUid, orderId, provider: "att", serviceType: "att", packageName, sourceUploadId: uploadId,
       orderDate: rowDate(row), orderDateId, saleCount, rawRepName, rawSalesId: "", rawManagerName: "",
-      matchedRepUid: result.repUid, matchStatus: isMatched ? (result.method === "manual" ? "manual" : "matched") : "unmatched", matchMethod: result.method ?? null, lockedAssignment: Boolean(previous?.lockedAssignment),
+      matchedRepUid: result.repUid, teamId: matchedRep?.teamId ?? null, matchStatus: isMatched ? (result.method === "manual" ? "manual" : "matched") : "unmatched", matchMethod: result.method ?? null, lockedAssignment: Boolean(previous?.lockedAssignment),
       accountStatus, installationDateId, cancellationDateId, rawData: serializableRow(row),
       createdAt: previous?.createdAt ?? FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
     }});

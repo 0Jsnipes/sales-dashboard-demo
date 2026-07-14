@@ -15,6 +15,7 @@ const permissions = z.object({
   canViewSales: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewSales),
   canViewKnocks: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewKnocks),
   canViewRoster: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewRoster),
+  canViewTeams: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewTeams),
   canViewOnboarding: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewOnboarding),
   canViewImports: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewImports),
   canViewBackfill: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewBackfill),

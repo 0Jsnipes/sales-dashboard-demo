@@ -36,6 +36,7 @@ type KnockGroup = {
   weeklySalesGoal: number;
   weeklyKnocksGoal: number;
   managerName: string;
+  teamId: string | null;
   locationName: string;
   days: number[];
   total: number;
@@ -155,6 +156,7 @@ export async function GET(request: Request) {
           weeklySalesGoal: Number(rep?.weeklySalesGoal ?? data.weeklySalesGoal ?? 0),
           weeklyKnocksGoal: Number(rep?.weeklyKnocksGoal ?? data.weeklyKnocksGoal ?? 0),
           managerName: rep?.managerName ?? String(data.managerName || ""),
+          teamId: String(data.teamId || rep?.teamId || "") || null,
           locationName: rep?.locationName ?? String(data.locationName || ""),
           days: Array.from({ length: dayCount }, () => 0),
           total: 0,
@@ -198,6 +200,7 @@ export async function GET(request: Request) {
 
     const filtered = reps.filter((rep) => {
       if (filters.manager && filters.manager !== "all" && String(rep.managerName || "") !== filters.manager) return false;
+      if (filters.team && filters.team !== "all" && String(rep.teamId || "") !== filters.team) return false;
       if (filters.location && filters.location !== "all" && String(rep.locationName || "") !== filters.location) return false;
       if (filters.repId && rep.repUid !== filters.repId) return false;
       if (filters.rep && filters.rep !== "all" && String(rep.displayName || "") !== filters.rep) return false;

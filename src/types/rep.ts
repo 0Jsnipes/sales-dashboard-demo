@@ -13,6 +13,7 @@ export interface Rep {
   aliases: string[];
   managerUid: string | null;
   managerName: string;
+  teamId?: string | null;
   locationId: string;
   locationName: string;
   programIds: string[];

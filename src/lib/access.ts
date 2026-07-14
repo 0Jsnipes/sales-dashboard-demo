@@ -16,6 +16,7 @@ export const DEFAULT_ADMIN_PERMISSIONS: AppUser["permissions"] = {
   canViewSales: true,
   canViewKnocks: true,
   canViewRoster: true,
+  canViewTeams: true,
   canViewOnboarding: true,
   canViewImports: true,
   canViewBackfill: true,

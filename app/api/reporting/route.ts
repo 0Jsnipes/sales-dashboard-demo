@@ -15,6 +15,7 @@ import {
 import { sanitizeOrderId } from "@/src/lib/sales/outcomes";
 import type { SalesOrderRecord } from "@/src/lib/sales/outcomes";
 import type { Rep } from "@/src/types/rep";
+import { normalizeTeam } from "@/src/lib/teams/team-service";
 import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
@@ -92,9 +93,10 @@ function resolveLocation(rep: Rep | null | undefined, orderDateId: string, assig
 
 async function sharedContext() {
   const db = getAdminDb();
-  const [repsSnapshot, assignmentsSnapshot] = await Promise.all([
+  const [repsSnapshot, assignmentsSnapshot, teamsSnapshot] = await Promise.all([
     db.collection("reps").get(),
     db.collection("repLocationAssignments").get(),
+    db.collection("teams").get(),
   ]);
   const roster = new Map(repsSnapshot.docs.map((document) => [document.id, document.data() as Rep]));
   const assignmentsByRep = groupAssignmentsByRep(
@@ -102,11 +104,12 @@ async function sharedContext() {
       .map((document) => normalizeAssignmentDoc(document.data()))
       .filter((item): item is RepLocationAssignment => item !== null),
   );
-  return { db, roster, assignmentsByRep };
+  const teamNames = new Map(teamsSnapshot.docs.map((document) => [document.id, normalizeTeam(document.id, document.data()).name]));
+  return { db, roster, assignmentsByRep, teamNames };
 }
 
 async function salesRows(): Promise<ReportingPayload> {
-  const { db, roster, assignmentsByRep } = await sharedContext();
+  const { db, roster, assignmentsByRep, teamNames } = await sharedContext();
   const [att, tfiber, manual] = await Promise.all([
     db.collection("salesOrders").doc("att").collection("orders").get(),
     db.collection("salesOrders").doc("tfiber").collection("orders").get(),
@@ -137,6 +140,8 @@ async function salesRows(): Promise<ReportingPayload> {
     const repName = rep?.displayName || (provider === "ATT" ? formatImportedName(text(order.rawRepName)) : text(order.rawRepName)) || "Unmatched rep";
     const managerName = rep?.managerName || text(order.rawManagerName) || "No manager";
     const locationName = resolveLocation(rep, orderDateId, assignmentsByRep) || "Not assigned";
+    const teamId = text(order.teamId || rep?.teamId);
+    const teamName = teamNames.get(teamId) || (teamId ? "Archived team" : "No team");
     const outcome = normalizePerformanceOutcome(record);
     const flattened = buildSalesExportRow({
       ...record,
@@ -156,6 +161,7 @@ async function salesRows(): Promise<ReportingPayload> {
       "Sale Date": orderDateId,
       Rep: repName,
       Manager: managerName,
+      Team: teamName,
       Location: locationName,
       Provider: provider,
       Vendor: text(rep?.vendorType || "unassigned"),
@@ -186,13 +192,13 @@ async function salesRows(): Promise<ReportingPayload> {
   }).sort((a, b) => b.sortDate.localeCompare(a.sortDate) || a.title.localeCompare(b.title));
 
   return {
-    columns: orderedColumns(rows, ["Sale Date", "Rep", "Order ID", "Status", "Customer", "Address", "Manager", "Location", "Provider", "Vendor"]),
+    columns: orderedColumns(rows, ["Sale Date", "Rep", "Order ID", "Status", "Customer", "Address", "Manager", "Team", "Location", "Provider", "Vendor"]),
     rows,
   };
 }
 
 async function knockRows(): Promise<ReportingPayload> {
-  const { db, roster, assignmentsByRep } = await sharedContext();
+  const { db, roster, assignmentsByRep, teamNames } = await sharedContext();
   const dayRefs = await db.collection("knockDaily").listDocuments();
   const snapshots = await Promise.all(dayRefs.map(async (ref) => ({ dateId: ref.id, reps: await ref.collection("reps").get() })));
   const rows: ReportingRow[] = [];
@@ -207,6 +213,8 @@ async function knockRows(): Promise<ReportingPayload> {
       const repName = rep?.displayName || text(data.displayName || data.rawRepName) || "Unmatched rep";
       const managerName = rep?.managerName || text(data.managerName) || "No manager";
       const locationName = resolveLocation(rep, dateId, assignmentsByRep) || text(data.locationName) || "Not assigned";
+      const teamId = text(data.teamId || rep?.teamId);
+      const teamName = teamNames.get(teamId) || (teamId ? "Archived team" : "No team");
       const provider = attKnocks && tfiberKnocks ? "Mixed" : attKnocks ? "ATT" : tfiberKnocks ? "T-Fiber" : "Unknown";
       const vendor = text(rep?.vendorType || "unassigned");
       const raw = Object.fromEntries(Object.entries(data).map(([key, value]) => [key, value instanceof Date ? value.toISOString() : value]));
@@ -214,6 +222,7 @@ async function knockRows(): Promise<ReportingPayload> {
         Date: dateId,
         Rep: repName,
         Manager: managerName,
+        Team: teamName,
         Location: locationName,
         Provider: provider,
         Vendor: vendor,
@@ -250,7 +259,7 @@ async function knockRows(): Promise<ReportingPayload> {
 
   rows.sort((a, b) => b.sortDate.localeCompare(a.sortDate) || a.title.localeCompare(b.title));
   return {
-    columns: orderedColumns(rows, ["Date", "Rep", "Order ID", "Status", "Customer", "Address", "Manager", "Location", "Provider", "Vendor", "Total Knocks", "ATT Knocks", "T-Fiber Knocks"]),
+    columns: orderedColumns(rows, ["Date", "Rep", "Order ID", "Status", "Customer", "Address", "Manager", "Team", "Location", "Provider", "Vendor", "Total Knocks", "ATT Knocks", "T-Fiber Knocks"]),
     rows,
   };
 }

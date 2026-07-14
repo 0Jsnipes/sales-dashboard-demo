@@ -64,6 +64,7 @@ export function ReportingPage() {
   const [sortColumn, setSortColumn] = useState<string>(activeKind === "sales" ? "Sale Date" : "Date");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [managerFilter, setManagerFilter] = useState("all");
+  const [teamFilter, setTeamFilter] = useState("all");
   const [repFilter, setRepFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
   const [providerFilter, setProviderFilter] = useState("all");
@@ -108,6 +109,7 @@ export function ReportingPage() {
     const rows = data?.rows ?? [];
     return {
       managers: [...new Set(rows.map((row) => text(row.values.Manager)).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+      teams: [...new Set(rows.map((row) => text(row.values.Team)).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
       reps: [...new Set(rows.map((row) => text(row.values.Rep)).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
       locations: [...new Set(rows.map((row) => text(row.values.Location)).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
       providers: [...new Set(rows.map((row) => text(row.values.Provider)).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
@@ -124,6 +126,7 @@ export function ReportingPage() {
         if (!haystack.includes(term)) return false;
       }
       if (managerFilter !== "all" && text(row.values.Manager) !== managerFilter) return false;
+      if (teamFilter !== "all" && text(row.values.Team) !== teamFilter) return false;
       if (repFilter !== "all" && text(row.values.Rep) !== repFilter) return false;
       if (locationFilter !== "all" && text(row.values.Location) !== locationFilter) return false;
       if (providerFilter !== "all" && text(row.values.Provider) !== providerFilter) return false;
@@ -138,7 +141,7 @@ export function ReportingPage() {
       const direction = sortDirection === "asc" ? 1 : -1;
       return leftValue.localeCompare(rightValue, undefined, { numeric: true, sensitivity: "base" }) * direction;
     });
-  }, [data, locationFilter, managerFilter, providerFilter, query, repFilter, sortColumn, sortDirection, vendorFilter]);
+  }, [data, locationFilter, managerFilter, providerFilter, query, repFilter, sortColumn, sortDirection, teamFilter, vendorFilter]);
 
   const pageCount = Math.max(1, Math.ceil(rows.length / Number(pageSize)));
   const currentPage = Math.min(page, pageCount);
@@ -195,7 +198,7 @@ export function ReportingPage() {
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input className="pl-9" placeholder="Search current report" value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} />
             </div>
-            <Button variant="outline" onClick={() => { setQuery(""); setManagerFilter("all"); setRepFilter("all"); setLocationFilter("all"); setProviderFilter("all"); setVendorFilter("all"); setPage(1); }}>
+            <Button variant="outline" onClick={() => { setQuery(""); setManagerFilter("all"); setTeamFilter("all"); setRepFilter("all"); setLocationFilter("all"); setProviderFilter("all"); setVendorFilter("all"); setPage(1); }}>
               <SlidersHorizontal className="h-4 w-4" />
               Reset filters
             </Button>
@@ -205,12 +208,19 @@ export function ReportingPage() {
             </Button>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
             <Select value={managerFilter} onValueChange={(value) => { setManagerFilter(value); setPage(1); }}>
               <SelectTrigger><SelectValue placeholder="Manager" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All managers</SelectItem>
                 {filterOptions.managers.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={teamFilter} onValueChange={(value) => { setTeamFilter(value); setPage(1); }}>
+              <SelectTrigger><SelectValue placeholder="Team" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All teams</SelectItem>
+                {filterOptions.teams.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={repFilter} onValueChange={(value) => { setRepFilter(value); setPage(1); }}>

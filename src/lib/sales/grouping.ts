@@ -20,6 +20,7 @@ export type SalesRepGroup = {
   rawSalesId?: string;
   displayName: string;
   managerName: string;
+  teamId?: string | null;
   locationName: string;
   programName: string;
   vendorType: "organic" | "subVendor" | "unassigned";

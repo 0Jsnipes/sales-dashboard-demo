@@ -77,6 +77,7 @@ export async function GET(request: Request) {
     const db = getAdminDb();
     const repsSnapshot = await db.collection("reps").get();
     const roster = new Map(repsSnapshot.docs.map((document) => [document.id, document.data() as Rep]));
+    const teamNames = new Map((await db.collection("teams").get()).docs.map((document) => [document.id, String(document.data().name || "Archived team")]));
     const selectedProvider = normalizeProvider(filters.provider);
     const selectedLcp = text(filters.lcp).toLowerCase();
     const rows: Record<string, unknown>[] = [];
@@ -107,8 +108,11 @@ export async function GET(request: Request) {
         const managerName = rep?.managerName || text(data.managerName) || "";
         const locationName = rep?.locationName || text(data.locationName) || "";
         const vendorType = text(rep?.vendorType || "unassigned");
+        const teamId = text(data.teamId || rep?.teamId);
+        const teamName = teamNames.get(teamId) || (teamId ? "Archived team" : "No team");
 
         if (filters.manager && filters.manager !== "all" && managerName !== filters.manager) continue;
+        if (filters.team && filters.team !== "all" && teamId !== filters.team) continue;
         if (filters.location && filters.location !== "all" && locationName !== filters.location) continue;
         if (filters.repId && rep?.repUid !== filters.repId) continue;
         if (filters.rep && filters.rep !== "all" && repName !== filters.rep) continue;
@@ -133,6 +137,7 @@ export async function GET(request: Request) {
           Date: dateId,
           Rep: repName,
           Manager: managerName,
+          Team: teamName,
           Location: locationName,
           Provider: provider,
           "Vendor Type": vendorType,

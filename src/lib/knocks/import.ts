@@ -139,6 +139,7 @@ export async function importKnockWorkbook(buffer: Buffer, options: KnockImportOp
         source,
         sourceUploadId: uploadId,
         managerName: rep?.managerName ?? data.managerName ?? String(existing?.managerName || ""),
+        teamId: rep?.teamId ?? existing?.teamId ?? null,
         locationName: rep?.locationName ?? data.locationName ?? String(existing?.locationName || ""),
         attKnocks: nextAttKnocks,
         tfiberKnocks: nextTFiberKnocks,

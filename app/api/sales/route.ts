@@ -20,6 +20,7 @@ type SalesOrder = {
   rawSalesId: string;
   rawManagerName: string;
   matchedRepUid: string | null;
+  teamId?: string | null;
   accountStatus: string;
   installationDateId: string;
   estimatedInstallationDateId: string;
@@ -38,6 +39,7 @@ type SalesGroup = {
   weeklySalesGoal: number;
   weeklyKnocksGoal: number;
   managerName: string;
+  teamId: string | null;
   locationName: string;
   days: number[];
   total: number;
@@ -152,6 +154,7 @@ export async function GET(request: Request) {
       const provider = normalizeProvider(order.provider);
       if (filters.provider && filters.provider !== "all" && normalizeProvider(filters.provider) !== provider) return false;
       if (filters.manager && filters.manager !== "all" && String(rep?.managerName || order.rawManagerName || "") !== filters.manager) return false;
+      if (filters.team && filters.team !== "all" && String(order.teamId || rep?.teamId || "") !== filters.team) return false;
       if (filters.location && filters.location !== "all" && String(resolveLocation(rep) || "") !== filters.location) return false;
       if (filters.repId && order.matchedRepUid !== filters.repId) return false;
       if (filters.rep && filters.rep !== "all" && String(rep?.displayName || order.rawRepName || "") !== filters.rep) return false;
@@ -189,6 +192,7 @@ export async function GET(request: Request) {
         weeklySalesGoal: Number(rep?.weeklySalesGoal ?? 0),
         weeklyKnocksGoal: Number(rep?.weeklyKnocksGoal ?? 0),
         managerName: rep?.managerName ?? (isATT ? "" : String(order.rawManagerName || "")),
+        teamId: String(order.teamId || rep?.teamId || "") || null,
         locationName: resolveLocation(rep),
         days: Array.from({ length: dayCount }, () => 0),
         total: 0,

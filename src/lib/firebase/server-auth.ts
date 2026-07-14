@@ -3,7 +3,7 @@ import "server-only";
 import type { DecodedIdToken } from "firebase-admin/auth";
 import type { AppUser } from "@/src/types/user";
 import { getAdminAuth, getAdminDb } from "./admin";
-import { normalizeBusinessUnit } from "@/src/lib/access";
+import { normalizeBusinessUnit, normalizePermissions } from "@/src/lib/access";
 
 export type ServerActor = { token: DecodedIdToken; profile: AppUser };
 
@@ -43,4 +43,8 @@ export function canReassignSales(actor: ServerActor) {
 
 export function canViewReporting(actor: ServerActor) {
   return actor.profile.role === "superAdmin" || (canAccessFiber(actor) && actor.profile.role === "admin" && actor.profile.permissions.canViewReporting);
+}
+
+export function canViewTeams(actor: ServerActor) {
+  return actor.profile.role === "superAdmin" || (canAccessFiber(actor) && normalizePermissions(actor.profile.permissions).canViewTeams);
 }

@@ -1,24 +1,41 @@
 import { NextResponse } from "next/server";
-import { randomUUID } from "crypto";
-import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
+import { canManageRoster, canViewTeams, requireActor } from "@/src/lib/firebase/server-auth";
 import { getAdminDb } from "@/src/lib/firebase/admin";
-import { canManageRoster, requireActor } from "@/src/lib/firebase/server-auth";
+import { createTeam, getTeams } from "@/src/lib/teams/team-service";
 import { errorResponse } from "@/src/lib/api/error-response";
-import type { Team } from "@/src/types/team";
 
 export const runtime = "nodejs";
 
 const input = z.object({
-  name: z.string().min(2).max(120),
-  repUids: z.array(z.string().min(1)).max(500).default([]),
+  name: z.string().trim().min(2).max(120),
+  description: z.string().trim().max(500).default(""),
+  color: z.string().regex(/^#[0-9a-f]{6}$/i).default("#2563eb"),
+  active: z.boolean().default(true),
 });
 
 export async function GET(request: Request) {
   try {
-    await requireActor(request);
-    const snapshot = await getAdminDb().collection("teams").orderBy("name").get();
-    return NextResponse.json({ teams: snapshot.docs.map((document) => document.data()) });
+    const actor = await requireActor(request);
+    if (!canViewTeams(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    const [teams, repsSnapshot] = await Promise.all([getTeams(), getAdminDb().collection("reps").get()]);
+    const canManage = canManageRoster(actor);
+    const memberById = new Map<string, { repUid: string; displayName: string; email: string; status: string }>();
+    for (const document of repsSnapshot.docs) {
+      const data = document.data();
+      const summary = {
+        repUid: String(data.repUid || document.id),
+        displayName: String(data.displayName || "Unknown rep"),
+        email: String(data.email || ""),
+        status: String(data.status || ""),
+      };
+      memberById.set(document.id, summary);
+      memberById.set(summary.repUid, summary);
+    }
+    return NextResponse.json({
+      teams: teams.map((team) => ({ ...team, memberDetails: team.members.map((repUid) => memberById.get(repUid)).filter(Boolean) })),
+      canManage,
+    });
   } catch (error) {
     return errorResponse("teams", error);
   }
@@ -30,23 +47,11 @@ export async function POST(request: Request) {
     if (!canManageRoster(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     const value = input.safeParse(await request.json());
     if (!value.success) return NextResponse.json({ error: value.error.flatten() }, { status: 400 });
-
-    const name = value.data.name.trim();
-    const db = getAdminDb();
-    const existing = await db.collection("teams").get();
-    if (existing.docs.some((document) => String(document.data().name || "").trim().toLowerCase() === name.toLowerCase())) {
+    const existing = await getTeams();
+    if (existing.some((team) => team.name.toLowerCase() === value.data.name.toLowerCase())) {
       return NextResponse.json({ error: "A team with this name already exists." }, { status: 409 });
     }
-
-    const teamId = randomUUID();
-    const team: Team = {
-      teamId,
-      name,
-      repUids: [...new Set(value.data.repUids)],
-      createdAt: FieldValue.serverTimestamp(),
-      createdBy: actor.token.uid,
-    };
-    await db.collection("teams").doc(teamId).create(team);
+    const team = await createTeam(value.data, actor.token.uid);
     return NextResponse.json({ team }, { status: 201 });
   } catch (error) {
     return errorResponse("teams", error);
