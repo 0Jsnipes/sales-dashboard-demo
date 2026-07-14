@@ -27,6 +27,7 @@ import { extractSalesOrder, type RawSalesOrder, type SalesDataset, type SalesRep
 import { RepEditorDialog, blankRepEditorForm, type RepEditorForm } from "@/src/components/roster/rep-editor-dialog";
 import type { ManagerOption } from "@/src/types/manager";
 import type { Rep } from "@/src/types/rep";
+import { normalizePermissions } from "@/src/lib/access";
 import { cn } from "@/lib/utils";
 
 type SalesResponse = {
@@ -304,6 +305,8 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const reducedMotion = useReducedMotion();
   const isKnocks = kind === "knocks";
   const canAddAlias = profile?.role === "superAdmin";
+  const profilePermissions = normalizePermissions(profile?.permissions);
+  const canUseOnlyZeroSalesFilter = !isKnocks && (profile?.role === "superAdmin" || profilePermissions.canFilterZeroSalesOnly);
   const workspaceName = isKnocks ? "Knocks" : "Sales";
   const workspaceNameLower = isKnocks ? "knocks" : "sales";
   const goalField: GoalField = isKnocks ? "weeklyKnocksGoal" : "weeklySalesGoal";
@@ -321,6 +324,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const [viewMode, setViewMode] = useQueryState("view", parseAsString.withDefault("rep"));
   const [rangeMode, setRangeMode] = useQueryState("range", parseAsString.withDefault("wtd"));
   const [showZeroSales, setShowZeroSales] = useQueryState("showZeroSales", parseAsString.withDefault("1"));
+  const [onlyZeroSales, setOnlyZeroSales] = useQueryState("onlyZeroSales", parseAsString.withDefault("0"));
   const [data, setData] = useState<SalesDataset | null>(null);
   const [rosterOptions, setRosterOptions] = useState<RosterOption[]>([]);
   const [locations, setLocations] = useState<LocationOption[]>([]);
@@ -533,6 +537,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const visibleRows = useMemo(() => {
     const term = search.trim().toLowerCase();
     const includeZeroSales = showZeroSales !== "0";
+    const zeroSalesOnly = canUseOnlyZeroSalesFilter && onlyZeroSales !== "0";
     const selectedProvider = normalizeProviderFilter(providerFilter);
     const selectedLcp = lcpFilter.trim().toLowerCase();
     const highlightOnly = !isKnocks && showNewRepHighlights !== "0";
@@ -558,10 +563,11 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
         && matchesVendor
         && matchesProvider
         && matchesLcp
+        && (!zeroSalesOnly || row.total === 0)
         && (!highlightOnly || isHighlightedRep)
-        && (highlightOnly || includeZeroSales || row.total > 0);
+        && (zeroSalesOnly || highlightOnly || includeZeroSales || row.total > 0);
     });
-  }, [isKnocks, lcpFilter, locationFilter, managerFilter, providerFilter, repFilter, rows, search, showNewRepHighlights, showZeroSales, vendorFilter]);
+  }, [canUseOnlyZeroSalesFilter, isKnocks, lcpFilter, locationFilter, managerFilter, onlyZeroSales, providerFilter, repFilter, rows, search, showNewRepHighlights, showZeroSales, vendorFilter]);
 
   const teamChart = useMemo(() => visibleRows.map((row) => ({ name: row.displayName, sales: row.total })), [visibleRows]);
 
@@ -1065,6 +1071,21 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                     .map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
                 </SelectContent>
               </Select>
+            ) : null}
+            {canUseOnlyZeroSalesFilter ? (
+              <div className="flex h-11 items-center justify-between gap-3 rounded-full border border-border/60 bg-background/80 px-4 shadow-sm">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium leading-none">Exit Hold</p>
+                </div>
+                <Switch
+                  checked={onlyZeroSales !== "0"}
+                  onCheckedChange={(checked) => {
+                    void setOnlyZeroSales(checked ? "1" : "0");
+                    if (checked) void setShowZeroSales("1");
+                  }}
+                  aria-label="Exit Hold"
+                />
+              </div>
             ) : null}
             {!isKnocks ? (
               <div className="flex h-11 items-center justify-between gap-3 rounded-full border border-border/60 bg-background/80 px-4 shadow-sm">

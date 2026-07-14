@@ -27,6 +27,7 @@ export const DEFAULT_ADMIN_PERMISSIONS: AppUser["permissions"] = {
   canCreateUsers: false,
   canRunBackfill: true,
   canReassignSales: true,
+  canFilterZeroSalesOnly: false,
 };
 
 export function normalizeBusinessUnit(value: unknown): BusinessUnit {

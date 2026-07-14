@@ -50,6 +50,7 @@ type UserRow = {
     canCreateUsers: boolean;
     canRunBackfill: boolean;
     canReassignSales: boolean;
+    canFilterZeroSalesOnly: boolean;
   };
 };
 
@@ -83,6 +84,7 @@ const actionPermissionGroups = [
   { key: "canEditOnboarding", label: "Edit onboarding", group: "Actions" },
   { key: "canRunBackfill", label: "Run backfill", group: "Actions" },
   { key: "canReassignSales", label: "Reassign sales", group: "Actions" },
+  { key: "canFilterZeroSalesOnly", label: "Exit Hold", group: "Actions" },
   { key: "canCreateUsers", label: "Create users", group: "Actions" },
 ] as const;
 

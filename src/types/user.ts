@@ -28,5 +28,6 @@ export interface AppUser {
     canViewSettings: boolean;
     canRunBackfill: boolean;
     canReassignSales: boolean;
+    canFilterZeroSalesOnly: boolean;
   };
 }

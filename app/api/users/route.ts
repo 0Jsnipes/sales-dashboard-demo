@@ -26,6 +26,7 @@ const permissions = z.object({
   canCreateUsers: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canCreateUsers),
   canRunBackfill: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canRunBackfill),
   canReassignSales: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canReassignSales),
+  canFilterZeroSalesOnly: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canFilterZeroSalesOnly),
 });
 
 const update = z.object({
