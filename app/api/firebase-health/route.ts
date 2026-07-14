@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireActor } from "@/src/lib/firebase/server-auth";
+import { logServerError, resolveErrorStatus } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -22,8 +23,8 @@ export async function GET(request: Request) {
       initializedProjectId: app.options.projectId ?? null,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "UNKNOWN";
-    const status = message === "UNAUTHENTICATED" ? 401 : message === "PROFILE_NOT_FOUND" ? 403 : 500;
+    const { message, status } = resolveErrorStatus(error);
+    logServerError("firebase-health", error, status);
     return NextResponse.json({ ok: false, route: "/api/firebase-health", error: message }, { status });
   }
 }

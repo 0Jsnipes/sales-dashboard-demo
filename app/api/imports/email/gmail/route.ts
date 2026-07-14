@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { canImportSales, requireActor } from "@/src/lib/firebase/server-auth";
 import { getReportMessage, listReportMessages, markMessageProcessed } from "@/src/lib/gmail/client";
 import { importEmailAttachments } from "@/src/lib/imports/email-import";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -38,8 +39,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, processedMessages: results.length, results });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "UNKNOWN";
-    const status = message === "UNAUTHENTICATED" ? 401 : message === "PROFILE_NOT_FOUND" ? 403 : 500;
-    return NextResponse.json({ error: message }, { status });
+    return errorResponse("imports/email/gmail", error);
   }
 }

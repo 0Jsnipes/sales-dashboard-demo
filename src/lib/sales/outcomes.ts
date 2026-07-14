@@ -1,4 +1,4 @@
-import { differenceInCalendarDays, isBefore, parseISO, startOfDay } from "date-fns";
+import { addDays, differenceInCalendarDays, isBefore, parseISO, startOfDay } from "date-fns";
 
 export type SaleOutcome = "installed" | "pending" | "past_due" | "preorder" | "canceled" | "churned" | "unknown";
 
@@ -54,6 +54,20 @@ function providerKey(value: unknown) {
   if (source === "att" || source.includes("att")) return "att";
   if (source === "frontier" || source.includes("frontier")) return "frontier";
   return source || "manual";
+}
+
+// T-Fiber's exported report lags real-world installs, so "today" is not a fair
+// cutoff for flagging its orders past due. Anchor instead to the day after the
+// most recent T-Fiber order actually seen in this batch — the report's own "now".
+export function resolveTFiberPastDueAsOfDate(orders: { provider?: unknown; providerKey?: unknown; orderDateId?: unknown }[]) {
+  const latest = orders
+    .filter((order) => providerKey(order.provider ?? order.providerKey) === "tfiber")
+    .map((order) => text(order.orderDateId))
+    .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))
+    .sort()
+    .pop();
+
+  return latest ? addDays(new Date(`${latest}T12:00:00`), 1) : new Date();
 }
 
 function isTFiberOrder(order: SalesOrderRecord) {

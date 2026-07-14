@@ -4,7 +4,7 @@ import { parseDateRangeParams, toDateId } from "@/src/lib/api/report-filters";
 import { formatImportedName } from "@/src/lib/matching/display-name";
 import { buildRepSearchIndex, normalizeEmail, normalizeName, normalizeSalesId } from "@/src/lib/matching/normalize";
 import { normalizePerformanceOutcome } from "@/src/lib/performance/performance-utils";
-import { readFirstText, sanitizeOrderId } from "@/src/lib/sales/outcomes";
+import { readFirstText, resolveTFiberPastDueAsOfDate, sanitizeOrderId } from "@/src/lib/sales/outcomes";
 import type { SaleOutcome, SalesOrderRecord } from "@/src/lib/sales/outcomes";
 import type { Rep } from "@/src/types/rep";
 
@@ -376,6 +376,7 @@ export async function buildPerformanceWindow(range: { start: string; end: string
       ...(document.data() as Record<string, unknown>),
     } as OrderDoc))),
   );
+  const tfiberPastDueAsOfDate = resolveTFiberPastDueAsOfDate(salesOrders);
 
   const dailyDocs = await Promise.all(rangeDates(range.start, range.end).map(async (dateId) => {
     const snapshot = await db.collection("knockDaily").doc(dateId).collection("reps").get();
@@ -428,7 +429,7 @@ export async function buildPerformanceWindow(range: { start: string; end: string
       matchedRepUid: repUid,
       saleCount,
     };
-    const outcome = normalizePerformanceOutcome(record);
+    const outcome = normalizePerformanceOutcome(record, provider === "T-Fiber" ? { asOfDate: tfiberPastDueAsOfDate } : undefined);
 
     totalSales += saleCount;
     if (outcome === "installed") installed += saleCount;
@@ -543,7 +544,7 @@ export async function buildPerformanceWindow(range: { start: string; end: string
         matchedRepUid: repUid,
         saleCount: Number(order.saleCount || 1),
       };
-      const outcome = normalizePerformanceOutcome(record);
+      const outcome = normalizePerformanceOutcome(record, provider === "T-Fiber" ? { asOfDate: tfiberPastDueAsOfDate } : undefined);
       return {
         ...record,
         id: `${order.providerKey}:${order.id}`,

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { requireActor } from "@/src/lib/firebase/server-auth";
+import { errorResponse as sharedErrorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -11,9 +12,7 @@ const input = z.object({
 });
 
 function errorResponse(error: unknown) {
-  const message = error instanceof Error ? error.message : "UNKNOWN";
-  const status = message === "UNAUTHENTICATED" ? 401 : message === "PROFILE_NOT_FOUND" ? 403 : 500;
-  return NextResponse.json({ error: message }, { status });
+  return sharedErrorResponse("users/me", error);
 }
 
 export async function PATCH(request: Request) {

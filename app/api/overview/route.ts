@@ -3,7 +3,8 @@ import { getAdminDb } from "@/src/lib/firebase/admin";
 import { requireActor } from "@/src/lib/firebase/server-auth";
 import { parseCommonFilters, parseDateRangeParams } from "@/src/lib/api/report-filters";
 import { normalizePerformanceOutcome } from "@/src/lib/performance/performance-utils";
-import { readFirstText, type SaleOutcome, type SalesOrderRecord } from "@/src/lib/sales/outcomes";
+import { readFirstText, resolveTFiberPastDueAsOfDate, type SaleOutcome, type SalesOrderRecord } from "@/src/lib/sales/outcomes";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -134,18 +135,6 @@ function toSalesOrderRecord(order: OrderDoc): SalesOrderRecord {
   };
 }
 
-function resolveTFiberPastDueAsOfDate(orders: OrderDoc[]) {
-  const latest = orders
-    .filter((order) => providerKey(order.provider || order.providerKey) === "tfiber")
-    .map((order) => String(order.orderDateId || ""))
-    .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))
-    .sort()
-    .pop();
-
-  // The T-Fiber export is a snapshot. Use latest order date + 1 day so an old upload
-  // does not mark extra rows past due just because today's real date advanced.
-  return latest ? addDays(new Date(`${latest}T12:00:00`), 1) : new Date();
-}
 
 export async function GET(request: Request) {
   try {
@@ -252,10 +241,13 @@ export async function GET(request: Request) {
       byProvider[key] = (byProvider[key] || 0) + count;
     }
 
+    const dailyCursors: Date[] = [];
+    for (let cursor = new Date(monday); cursor <= lastDay; cursor = addDays(cursor, 1)) dailyCursors.push(cursor);
+    const dailySnapshots = await Promise.all(dailyCursors.map((cursor) => db.collection("knockDaily").doc(dateId(cursor)).collection("reps").get()));
+
     let totalKnocks = 0;
     const knocksByRep = new Map<string, number>();
-    for (let cursor = new Date(monday); cursor <= lastDay; cursor = addDays(cursor, 1)) {
-      const daily = await db.collection("knockDaily").doc(dateId(cursor)).collection("reps").get();
+    for (const daily of dailySnapshots) {
       for (const document of daily.docs) {
         const knocks = Number(document.data().knocks ?? document.data().count ?? 0);
         totalKnocks += knocks;
@@ -371,6 +363,6 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "UNKNOWN" }, { status: 500 });
+    return errorResponse("overview", error);
   }
 }

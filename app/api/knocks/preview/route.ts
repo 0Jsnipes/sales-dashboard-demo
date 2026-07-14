@@ -7,6 +7,7 @@ import { expectedKnockImportFileLabel, validateKnockImportFileName } from "@/src
 import * as XLSX from "xlsx";
 import type { Rep } from "@/src/types/rep";
 import type { KnockSource } from "@/src/lib/knocks/types";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -43,7 +44,6 @@ export async function POST(request: Request) {
       errors: [],
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "UNKNOWN";
-    return NextResponse.json({ error: message }, { status: message === "UNAUTHENTICATED" ? 401 : message === "PROFILE_NOT_FOUND" ? 403 : 500 });
+    return errorResponse("knocks/preview", error);
   }
 }

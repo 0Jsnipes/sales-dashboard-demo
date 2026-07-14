@@ -8,6 +8,7 @@ import { rematchTFiberOrdersForRep } from "@/src/lib/imports/tfiber";
 import { rematchATTOrdersForRep } from "@/src/lib/imports/att";
 import { parseCommonFilters, applyTextSearchFilter } from "@/src/lib/api/report-filters";
 import { autoMoveNoSaleRepsToInactive } from "@/src/lib/reps/lifecycle";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -15,12 +16,6 @@ const socials = z.object({ instagram: z.string().max(160).optional(), facebook: 
 const createRep = z.object({ displayName: z.string().min(2).max(120), email: z.union([z.string().email(), z.literal("")]).default(""), phone: z.string().max(40).optional(), managerUid: z.string().nullable().optional(), managerName: z.string().max(120).default(""), locationId: z.string().min(1).max(80), locationName: z.string().min(1).max(120), programIds: z.array(z.string().min(1).max(80)).default([]), vendorType: z.enum(["organic", "subVendor"]).default("organic"), weeklySalesGoal: z.number().int().min(0).max(10000).default(0), weeklyKnocksGoal: z.number().int().min(0).max(10000).default(0), salesIds: z.array(z.string().min(1).max(80)).default([]), aliases: z.array(z.string().min(1).max(120)).default([]), socials });
 
 const chunks = <T,>(values: T[], size: number) => Array.from({ length: Math.ceil(values.length / size) }, (_, index) => values.slice(index * size, (index + 1) * size));
-
-function errorResponse(error: unknown) {
-  const message = error instanceof Error ? error.message : "UNKNOWN";
-  const status = message === "UNAUTHENTICATED" ? 401 : message === "PROFILE_NOT_FOUND" ? 403 : 500;
-  return NextResponse.json({ error: message }, { status });
-}
 
 export async function GET(request: Request) {
   try {
@@ -88,7 +83,7 @@ export async function GET(request: Request) {
       };
     });
     return NextResponse.json({ reps: enriched.sort((a, b) => String((a as { displayName?: string }).displayName || "").localeCompare(String((b as { displayName?: string }).displayName || ""))), meta: { filtersApplied: Object.entries(filters).filter(([, value]) => Boolean(value)), count: enriched.length, autoInactive } });
-  } catch (error) { return errorResponse(error); }
+  } catch (error) { return errorResponse("reps", error); }
 }
 
 export async function POST(request: Request) {
@@ -105,5 +100,5 @@ export async function POST(request: Request) {
     await document.create(rep);
     const [rematchedTFiberOrders, rematchedATTOrders] = await Promise.all([rematchTFiberOrdersForRep(rep), rematchATTOrdersForRep(rep)]);
     return NextResponse.json({ rep, rematchedTFiberOrders, rematchedATTOrders }, { status: 201 });
-  } catch (error) { return errorResponse(error); }
+  } catch (error) { return errorResponse("reps", error); }
 }

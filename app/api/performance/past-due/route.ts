@@ -1,9 +1,9 @@
-import { addDays } from "date-fns";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { requireActor } from "@/src/lib/firebase/server-auth";
 import { normalizePerformanceOutcome } from "@/src/lib/performance/performance-utils";
-import { readFirstText, sanitizeOrderId, type SalesOrderRecord } from "@/src/lib/sales/outcomes";
+import { readFirstText, resolveTFiberPastDueAsOfDate, sanitizeOrderId, type SalesOrderRecord } from "@/src/lib/sales/outcomes";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -48,17 +48,6 @@ function dedupeOrders<T extends Record<string, unknown>>(orders: T[]) {
     seen.add(key);
     return true;
   });
-}
-
-function resolveTFiberPastDueAsOfDate(orders: Order[]) {
-  const latest = orders
-    .filter((order) => providerKey(order.provider || order.providerKey) === "tfiber")
-    .map((order) => String(order.orderDateId || ""))
-    .filter((dateId) => /^\d{4}-\d{2}-\d{2}$/.test(dateId))
-    .sort()
-    .pop();
-
-  return latest ? addDays(new Date(`${latest}T12:00:00`), 1) : new Date();
 }
 
 function estimatedInstallDateId(order: Order) {
@@ -148,7 +137,6 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ rows: filtered.slice(0, 1000), total: filtered.length });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "EXPORT_FAILED";
-    return NextResponse.json({ error: message }, { status: message === "UNAUTHENTICATED" ? 401 : 500 });
+    return errorResponse("performance/past-due", error, "EXPORT_FAILED");
   }
 }

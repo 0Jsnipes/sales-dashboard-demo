@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { canRunBackfill, requireActor } from "@/src/lib/firebase/server-auth";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -19,5 +20,5 @@ export async function POST(request: Request) {
     await getAdminDb().collection("salesOrders").doc("manual").collection("orders").doc(orderUid).create(data);
     await getAdminDb().collection("auditLogs").add({ type: "manualSale", actorUid: actor.token.uid, repUid: value.data.repUid, orderUid, createdAt: FieldValue.serverTimestamp() });
     return NextResponse.json({ sale: data }, { status: 201 });
-  } catch (error) { const message = error instanceof Error ? error.message : "UNKNOWN"; return NextResponse.json({ error: message }, { status: message === "UNAUTHENTICATED" ? 401 : 500 }); }
+  } catch (error) { return errorResponse("backfill", error); }
 }

@@ -5,6 +5,7 @@ import type { Rep } from "@/src/types/rep";
 import { formatImportedName } from "@/src/lib/matching/display-name";
 import { sanitizeOrderId } from "@/src/lib/sales/outcomes";
 import { buildYtdWeeklySalesPivotWorkbook, type YtdPivotInputRow } from "@/src/lib/exports/ytdWeeklyPivotExport";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -107,7 +108,6 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "EXPORT_FAILED";
-    return NextResponse.json({ error: message }, { status: message === "UNAUTHENTICATED" ? 401 : 500 });
+    return errorResponse("overview/export-ytd-pivot", error, "EXPORT_FAILED");
   }
 }

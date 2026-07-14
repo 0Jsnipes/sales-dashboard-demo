@@ -8,6 +8,7 @@ import { rematchTFiberOrdersForRep } from "@/src/lib/imports/tfiber";
 import { rematchATTOrdersForRep } from "@/src/lib/imports/att";
 import { normalizeEmail, normalizeSalesId } from "@/src/lib/matching/normalize";
 import { z } from "zod";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -92,8 +93,6 @@ export async function PATCH(request: Request, { params }: Params) {
     }
     return NextResponse.json({ status: "terminated", emailStatus: updates.terminationEmailStatus });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "UNKNOWN";
-    const status = message === "UNAUTHENTICATED" ? 401 : message === "PROFILE_NOT_FOUND" ? 403 : 500;
-    return NextResponse.json({ error: message }, { status });
+    return errorResponse("reps/[repUid]", error);
   }
 }

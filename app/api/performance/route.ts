@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireActor } from "@/src/lib/firebase/server-auth";
 import { buildPerformanceWindow, resolvePerformanceRange, type PerformanceResponse } from "@/src/lib/performance/window";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -21,7 +22,6 @@ export async function GET(request: Request) {
     };
     return NextResponse.json(response);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "UNKNOWN";
-    return NextResponse.json({ error: message }, { status: message === "UNAUTHENTICATED" ? 401 : 500 });
+    return errorResponse("performance", error);
   }
 }

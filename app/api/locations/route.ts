@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { canManageRoster, requireActor } from "@/src/lib/firebase/server-auth";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -14,7 +15,7 @@ export async function GET(request: Request) {
     await requireActor(request);
     const snapshot = await getAdminDb().collection("locations").orderBy("name").get();
     return NextResponse.json({ locations: snapshot.docs.map((document) => document.data()) });
-  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "UNKNOWN" }, { status: 401 }); }
+  } catch (error) { return errorResponse("locations", error); }
 }
 export async function POST(request: Request) {
   try {
@@ -29,5 +30,5 @@ export async function POST(request: Request) {
     const location = { locationId, name, createdAt: FieldValue.serverTimestamp(), createdBy: actor.token.uid };
     await reference.create(location);
     return NextResponse.json({ location }, { status: 201 });
-  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "UNKNOWN" }, { status: 500 }); }
+  } catch (error) { return errorResponse("locations", error); }
 }

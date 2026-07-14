@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { canImportSales, requireActor } from "@/src/lib/firebase/server-auth";
 import { deleteAllSalesUploads, listSalesUploads } from "@/src/lib/imports/upload-admin";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -11,8 +12,7 @@ export async function GET(request: Request) {
     const uploads = await listSalesUploads();
     return NextResponse.json({ uploads });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "UNKNOWN";
-    return NextResponse.json({ error: message }, { status: message === "UNAUTHENTICATED" ? 401 : message === "PROFILE_NOT_FOUND" ? 403 : 500 });
+    return errorResponse("imports", error);
   }
 }
 
@@ -25,7 +25,6 @@ export async function DELETE(request: Request) {
     const result = await deleteAllSalesUploads();
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "UNKNOWN";
-    return NextResponse.json({ error: message }, { status: message === "UNAUTHENTICATED" ? 401 : message === "PROFILE_NOT_FOUND" ? 403 : 500 });
+    return errorResponse("imports", error);
   }
 }

@@ -33,7 +33,8 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Raw imports and audit records never go directly to the browser.
+    // Teams (and raw imports / audit records) never go directly to the browser.
+    match /teams/{teamId} { allow read, write: if false; }
     match /salesOrders/{provider}/{orderUid} { allow read, write: if false; }
     match /knockDaily/{dateId}/reps/{repUid} { allow read, write: if false; }
     match /uploadRuns/{uploadId} { allow read: if isAdmin(); allow write: if false; }

@@ -5,6 +5,7 @@ import type { Rep } from "@/src/types/rep";
 import { parseCommonFilters, parseDateRangeParams, toDateId } from "@/src/lib/api/report-filters";
 import { buildRepSearchIndex, normalizeEmail, normalizeSalesId, normalizeName } from "@/src/lib/matching/normalize";
 import { importKnockWorkbook } from "@/src/lib/knocks/import";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -107,13 +108,18 @@ export async function GET(request: Request) {
     const roster = new Map(repsSnapshot.docs.map((document) => [document.id, document.data() as Rep]));
     const dayCount = Math.max(1, Math.floor((new Date(`${range.end}T12:00:00`).getTime() - new Date(`${range.start}T12:00:00`).getTime()) / 86_400_000) + 1);
 
+    const dailyCursors = Array.from({ length: dayCount }, (_, offset) => {
+      const cursor = new Date(`${range.start}T12:00:00`);
+      cursor.setDate(cursor.getDate() + offset);
+      return cursor;
+    });
+    const dailySnapshots = await Promise.all(dailyCursors.map((cursor) => db.collection("knockDaily").doc(dateId(cursor)).collection("reps").get()));
+
     const grouped = new Map<string, KnockGroup>();
     const selectedProvider = normalizeProvider(filters.provider);
     const selectedLcp = String(filters.lcp || "").trim().toLowerCase();
-    for (let offset = 0; offset < dayCount; offset += 1) {
-      const cursor = new Date(`${range.start}T12:00:00`);
-      cursor.setDate(cursor.getDate() + offset);
-      const daily = await db.collection("knockDaily").doc(dateId(cursor)).collection("reps").get();
+    for (const [dayOffset, daily] of dailySnapshots.entries()) {
+      const cursor = dailyCursors[dayOffset]!;
       for (const document of daily.docs) {
         const data = document.data() as Record<string, unknown>;
         const count = selectedProvider === "att"
@@ -198,8 +204,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ week: { start: range.start, end: range.end }, reps: filtered });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "UNKNOWN";
-    return NextResponse.json({ error: message }, { status: message === "UNAUTHENTICATED" ? 401 : 500 });
+    return errorResponse("knocks", error);
   }
 }
 
@@ -221,8 +226,6 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "UNKNOWN";
-    const status = message === "UNAUTHENTICATED" ? 401 : message === "PROFILE_NOT_FOUND" ? 403 : 500;
-    return NextResponse.json({ error: message }, { status });
+    return errorResponse("knocks", error);
   }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { canImportSales, requireActor } from "@/src/lib/firebase/server-auth";
 import { deleteSalesUpload } from "@/src/lib/imports/upload-admin";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -16,7 +17,6 @@ export async function DELETE(request: Request, { params }: Params) {
     if (!result.deletedRun) return NextResponse.json({ error: "UPLOAD_NOT_FOUND" }, { status: 404 });
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "UNKNOWN";
-    return NextResponse.json({ error: message }, { status: message === "UNAUTHENTICATED" ? 401 : message === "PROFILE_NOT_FOUND" ? 403 : 500 });
+    return errorResponse("imports/[uploadId]", error);
   }
 }

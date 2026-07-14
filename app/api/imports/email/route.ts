@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { importEmailAttachments } from "@/src/lib/imports/email-import";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -43,7 +44,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, sender, subject, imported: results.length, results });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "UNKNOWN";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return errorResponse("imports/email", error);
   }
 }

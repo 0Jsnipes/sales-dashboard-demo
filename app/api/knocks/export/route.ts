@@ -6,6 +6,7 @@ import type { Rep } from "@/src/types/rep";
 import { parseCommonFilters, toDateId } from "@/src/lib/api/report-filters";
 import { buildRepSearchIndex, normalizeEmail, normalizeName, normalizeSalesId } from "@/src/lib/matching/normalize";
 import { buildWorksheetData } from "@/src/lib/reports/sales-export";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -82,9 +83,12 @@ export async function GET(request: Request) {
 
     const start = new Date(`${range.start}T12:00:00`);
     const end = new Date(`${range.end}T12:00:00`);
-    for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
-      const dateId = toDateId(cursor);
-      const daily = await db.collection("knockDaily").doc(dateId).collection("reps").get();
+    const dailyDateIds: string[] = [];
+    for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) dailyDateIds.push(toDateId(cursor));
+    const dailySnapshots = await Promise.all(dailyDateIds.map((dailyDateId) => db.collection("knockDaily").doc(dailyDateId).collection("reps").get()));
+
+    for (const [dayIndex, daily] of dailySnapshots.entries()) {
+      const dateId = dailyDateIds[dayIndex]!;
       for (const document of daily.docs) {
         const data = document.data() as Record<string, unknown>;
         const lcps = Array.isArray(data.lcps) ? data.lcps.map((value) => String(value).trim()).filter(Boolean) : [];
@@ -156,7 +160,6 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "EXPORT_FAILED";
-    return NextResponse.json({ error: message }, { status: message === "UNAUTHENTICATED" ? 401 : 500 });
+    return errorResponse("knocks/export", error, "EXPORT_FAILED");
   }
 }

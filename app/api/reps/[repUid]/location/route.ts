@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { canManageRoster, requireActor } from "@/src/lib/firebase/server-auth";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -34,5 +35,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ rep
       }, { merge: true });
     }
     return NextResponse.json({ assignment });
-  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "UNKNOWN" }, { status: 500 }); }
+  } catch (error) { return errorResponse("reps/[repUid]/location", error); }
 }

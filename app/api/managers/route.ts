@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { canManageRoster, requireActor } from "@/src/lib/firebase/server-auth";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -10,7 +11,7 @@ const input = z.object({ name: z.string().min(2).max(120) });
 const idFor = (name: string) => name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 export async function GET(request: Request) {
   try { await requireActor(request); const snapshot = await getAdminDb().collection("managers").orderBy("name").get(); return NextResponse.json({ managers: snapshot.docs.map((document) => document.data()) }); }
-  catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "UNKNOWN" }, { status: 401 }); }
+  catch (error) { return errorResponse("managers", error); }
 }
 export async function POST(request: Request) {
   try {
@@ -21,5 +22,5 @@ export async function POST(request: Request) {
     if ((await reference.get()).exists) return NextResponse.json({ error: "A manager with this name already exists." }, { status: 409 });
     const manager = { managerUid, name, createdAt: FieldValue.serverTimestamp(), createdBy: actor.token.uid }; await reference.create(manager);
     return NextResponse.json({ manager }, { status: 201 });
-  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "UNKNOWN" }, { status: 500 }); }
+  } catch (error) { return errorResponse("managers", error); }
 }

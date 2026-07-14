@@ -4,6 +4,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "@/src/lib/firebase/admin";
 import { requireActor } from "@/src/lib/firebase/server-auth";
 import { DEFAULT_ADMIN_PERMISSIONS, normalizeBusinessUnit, normalizePermissions } from "@/src/lib/access";
+import { errorResponse as sharedErrorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -57,9 +58,7 @@ function authErrorCode(error: unknown) {
 }
 
 function errorResponse(error: unknown) {
-  const message = error instanceof Error ? error.message : "UNKNOWN";
-  const status = message === "UNAUTHENTICATED" ? 401 : message === "PROFILE_NOT_FOUND" ? 403 : 500;
-  return NextResponse.json({ error: message }, { status });
+  return sharedErrorResponse("users", error);
 }
 
 export async function GET(request: Request) {

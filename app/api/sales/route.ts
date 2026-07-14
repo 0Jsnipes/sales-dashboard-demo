@@ -6,6 +6,7 @@ import { formatImportedName } from "@/src/lib/matching/display-name";
 import { applyOutcomeFilter, applyTextSearchFilter, parseCommonFilters, parseDateRangeParams, toDateId } from "@/src/lib/api/report-filters";
 import { isoWeek } from "@/src/lib/date/week";
 import { sanitizeOrderId } from "@/src/lib/sales/outcomes";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -217,7 +218,6 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ week: { start: range.start, end: range.end }, reps, meta });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "UNKNOWN";
-    return NextResponse.json({ error: message }, { status: message === "UNAUTHENTICATED" ? 401 : 500 });
+    return errorResponse("sales", error);
   }
 }

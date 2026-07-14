@@ -6,6 +6,7 @@ import { buildWorksheetData, buildSalesExportRows } from "@/src/lib/reports/sale
 import { calculateCancellationRate, calculateInstallRate, type PerformanceOrder } from "@/src/lib/performance/performance-utils";
 import { buildPerformanceWindow, resolvePerformanceRange, type PerformanceResponse, type RepSummary, type TeamSummary } from "@/src/lib/performance/window";
 import { toDateId } from "@/src/lib/date/week";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -325,7 +326,6 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "EXPORT_FAILED";
-    return NextResponse.json({ error: message }, { status: message === "UNAUTHENTICATED" ? 401 : 500 });
+    return errorResponse("performance/export", error, "EXPORT_FAILED");
   }
 }

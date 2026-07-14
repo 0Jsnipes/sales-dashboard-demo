@@ -8,6 +8,7 @@ import { buildSalesExportRow } from "@/src/lib/reports/sales-export";
 import { sanitizeOrderId } from "@/src/lib/sales/outcomes";
 import type { SalesOrderRecord } from "@/src/lib/sales/outcomes";
 import type { Rep } from "@/src/types/rep";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -281,7 +282,6 @@ export async function GET(request: Request) {
     const payload = kind === "knocks" ? await knockRows() : await salesRows();
     return NextResponse.json({ kind, ...payload } satisfies { kind: ReportingKind; columns: string[]; rows: ReportingRow[] });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "UNKNOWN";
-    return NextResponse.json({ error: message }, { status: message === "UNAUTHENTICATED" ? 401 : message === "PROFILE_NOT_FOUND" ? 403 : 500 });
+    return errorResponse("reporting", error);
   }
 }

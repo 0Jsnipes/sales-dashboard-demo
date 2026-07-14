@@ -6,6 +6,7 @@ import { formatImportedName } from "@/src/lib/matching/display-name";
 import { buildSalesExportRows, buildWorksheetData } from "@/src/lib/reports/sales-export";
 import { sanitizeOrderId } from "@/src/lib/sales/outcomes";
 import * as XLSX from "xlsx";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -115,5 +116,5 @@ export async function GET(request: Request) {
     const file = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
     const fileName = allTime ? "sales-export-all-time.xlsx" : ytd ? `sales-export-ytd-${start}-to-${end}.xlsx` : `sales-export-${start}-to-${end}.xlsx`;
     return new NextResponse(file, { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="${fileName}"` } });
-  } catch (error) { const message = error instanceof Error ? error.message : "EXPORT_FAILED"; return NextResponse.json({ error: message }, { status: message === "UNAUTHENTICATED" ? 401 : 500 }); }
+  } catch (error) { return errorResponse("sales/export", error, "EXPORT_FAILED"); }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { canManageRoster, requireActor } from "@/src/lib/firebase/server-auth";
 import { getAdminDb } from "@/src/lib/firebase/admin";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 
@@ -11,5 +12,5 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ l
     const { locationId } = await params;
     await getAdminDb().collection("locations").doc(locationId).delete();
     return NextResponse.json({ deleted: locationId });
-  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "UNKNOWN" }, { status: 500 }); }
+  } catch (error) { return errorResponse("locations/[locationId]", error); }
 }

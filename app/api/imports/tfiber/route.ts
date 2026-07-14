@@ -5,6 +5,7 @@ import { canImportSales, requireActor } from "@/src/lib/firebase/server-auth";
 import { getAdminApp, getAdminDb } from "@/src/lib/firebase/admin";
 import { importTFiberRows, parseTFiberWorkbook } from "@/src/lib/imports/tfiber";
 import { expectedImportFileLabel, validateImportFileName } from "@/src/lib/imports/file-conventions";
+import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
 export async function POST(request: Request) {
@@ -25,8 +26,6 @@ export async function POST(request: Request) {
     const summary = await importTFiberRows({ rows: parseTFiberWorkbook(buffer), uploadId, actorUid: actor.token.uid, fileName: file.name, storagePath });
     return NextResponse.json({ uploadId, storagePath, summary }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "UPLOAD_FAILED";
-    const status = message === "UNAUTHENTICATED" ? 401 : message === "PROFILE_NOT_FOUND" ? 403 : 500;
-    return NextResponse.json({ error: message }, { status });
+    return errorResponse("imports/tfiber", error, "UPLOAD_FAILED");
   }
 }
