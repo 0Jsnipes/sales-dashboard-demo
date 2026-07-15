@@ -2,7 +2,7 @@ import { parseISO } from "date-fns";
 import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { requireActor } from "@/src/lib/firebase/server-auth";
-import { buildWorksheetData, buildSalesExportRows } from "@/src/lib/reports/sales-export";
+import { buildWorksheetData, buildSalesExportRows, EXCEL_DATE_FORMAT } from "@/src/lib/reports/sales-export";
 import { calculateCancellationRate, calculateInstallRate, type PerformanceOrder } from "@/src/lib/performance/performance-utils";
 import { buildPerformanceWindow, resolvePerformanceRange, type PerformanceResponse, type RepSummary, type TeamSummary } from "@/src/lib/performance/window";
 import { toDateId } from "@/src/lib/date/week";
@@ -122,7 +122,7 @@ function groupTeamRows(rows: Array<{ managerName: string; locationName: string; 
 
 function appendSheet(workbook: XLSX.WorkBook, name: string, rows: Record<string, unknown>[]) {
   const data = buildWorksheetData(rows);
-  const worksheet = XLSX.utils.json_to_sheet(data.rows, { header: data.headers });
+  const worksheet = XLSX.utils.json_to_sheet(data.rows, { header: data.headers, dateNF: EXCEL_DATE_FORMAT });
   XLSX.utils.book_append_sheet(workbook, worksheet, name.slice(0, 31) || "Sheet1");
 }
 

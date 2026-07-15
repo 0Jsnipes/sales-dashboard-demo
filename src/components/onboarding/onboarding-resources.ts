@@ -75,6 +75,7 @@ export const onboardingResources: OnboardingResource[] = [
 
   // Tools
   { id: "tool-recruiting-master-sheet", label: "Recruiting Master Sheet", description: "Open the recruiting master sheet for recruiting and rep pipeline tracking.", category: "Tools", href: "https://docs.google.com/spreadsheets/d/1SksjiC-i1PzKO98lVCjpg3Z6i20VZrl5PChfKP-PnbA/edit?usp=sharing", icon: "clipboard", status: "external", accent: "emerald" },
+  { id: "tool-pivot-table-formatter", label: "Pivot Table Formatter", description: "Format and organize pivot table reports with the ChatGPT Pivot Table Formatter.", category: "Tools", href: "https://chatgpt.com/g/g-6a5785547ae881918e72a2bdf3d5787f-pivot-table-formatter", icon: "sparkles", status: "external", accent: "emerald" },
   { id: "tool-background-checks", label: "Background Checks", description: "T-Fiber background check workflow.", category: "Tools", href: "https://simpliverified.instascreen.net/sso/login.taz", icon: "shield", provider: "T-Fiber", status: "external", accent: "pink" },
   { id: "tool-lead-request", label: "Lead Request", description: "Request lead routing or lead access.", category: "Tools", href: "https://form.jotform.com/261517764960061", icon: "link", status: "external", accent: "blue" },
   { id: "tool-badge-request", label: "Badge Request", description: "Submit a badge request for a rep.", category: "Tools", href: "#", icon: "badge", status: "coming_soon", accent: "emerald" },

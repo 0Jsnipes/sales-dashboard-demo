@@ -14,7 +14,7 @@ import { endOfWeek, startOfWeek, toDateId, weekRangeLabel } from "@/src/lib/date
 import { formatDate } from "@/src/lib/formatters/date";
 import { formatNumber, formatPercent } from "@/src/lib/formatters/number";
 import { calculateCancellationRate, calculateInstallRate, outcomeBadgeVariant, type PerformanceOrder } from "@/src/lib/performance/performance-utils";
-import { buildSalesExportRows, buildWorksheetData } from "@/src/lib/reports/sales-export";
+import { buildSalesExportRows, buildWorksheetData, EXCEL_DATE_FORMAT } from "@/src/lib/reports/sales-export";
 import { saleOutcomeLabel, sanitizeOrderId } from "@/src/lib/sales/outcomes";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -271,7 +271,7 @@ async function downloadWorkbook(filename: string, sheets: Array<{ name: string; 
   const workbook = XLSX.utils.book_new();
   for (const sheet of sheets) {
     const data = buildWorksheetData(sheet.rows);
-    const worksheet = XLSX.utils.json_to_sheet(data.rows, { header: data.headers });
+    const worksheet = XLSX.utils.json_to_sheet(data.rows, { header: data.headers, dateNF: EXCEL_DATE_FORMAT });
     XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name.slice(0, 31) || "Sheet1");
   }
   const output = XLSX.write(workbook, { type: "array", bookType: "xlsx" });

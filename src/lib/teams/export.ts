@@ -3,7 +3,7 @@ import "server-only";
 import * as XLSX from "xlsx";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { readKnockExportCacheRows } from "@/src/lib/knocks/export-cache";
-import { buildSourceExportRows, buildSourceWorksheetData } from "@/src/lib/reports/sales-export";
+import { buildSourceExportRows, buildSourceWorksheetData, EXCEL_DATE_FORMAT } from "@/src/lib/reports/sales-export";
 import type { Team } from "@/src/types/team";
 
 type ExportRange = { start: string; end: string };
@@ -24,7 +24,7 @@ export function teamExportSlug(team: Team) {
 function sourceWorksheet(rows: SourceRow[]) {
   const sourceRows = buildSourceExportRows(rows);
   const data = buildSourceWorksheetData(sourceRows);
-  return XLSX.utils.json_to_sheet(data.rows, { header: data.headers });
+  return XLSX.utils.json_to_sheet(data.rows, { header: data.headers, dateNF: EXCEL_DATE_FORMAT });
 }
 
 export async function buildTeamSalesExport(team: Team, range: ExportRange) {

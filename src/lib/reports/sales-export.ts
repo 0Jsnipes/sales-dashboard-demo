@@ -36,6 +36,8 @@ type ExportOrder = {
 const ORDER_KEY_PATTERN = /order.*(?:id|#|number)|(?:^|[\s_])(sti\s*)?order(?:$|[\s_#])|alt order id/i;
 const DATE_KEY_PATTERN = /date/i;
 
+export const EXCEL_DATE_FORMAT = "m/d/yyyy";
+
 function text(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -48,12 +50,23 @@ function normalizeProviderLabel(value: unknown): ExportProvider {
   return "Unknown";
 }
 
+function dateFromParts(year: number, month: number, day: number) {
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return date;
+}
+
 function exportDate(value: unknown) {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.valueOf())) return value;
+    return dateFromParts(value.getFullYear(), value.getMonth() + 1, value.getDate()) ?? value;
+  }
+
   const source = text(value);
   const iso = source.match(/^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/);
-  if (iso) return `${Number(iso[2])}-${Number(iso[3])}-${iso[1]}`;
-  const slash = source.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (slash) return `${Number(slash[1])}-${Number(slash[2])}-${slash[3]}`;
+  if (iso) return dateFromParts(Number(iso[1]), Number(iso[2]), Number(iso[3])) ?? value;
+  const usDate = source.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+  if (usDate) return dateFromParts(Number(usDate[3]), Number(usDate[1]), Number(usDate[2])) ?? value;
   return value;
 }
 
@@ -65,8 +78,8 @@ function normalizedRawRow(rawData: Record<string, unknown> | undefined) {
   const raw = rawData && typeof rawData === "object" ? rawData : {};
   return Object.fromEntries(
     Object.entries(raw).map(([key, value]) => {
-      if (ORDER_KEY_PATTERN.test(key)) return [key, sanitizeOrderId(value)];
       if (DATE_KEY_PATTERN.test(key)) return [key, exportDate(value)];
+      if (ORDER_KEY_PATTERN.test(key)) return [key, sanitizeOrderId(value)];
       return [key, value];
     }),
   );
@@ -88,26 +101,8 @@ function vendorTypeLabel(value: unknown) {
   return text(value);
 }
 
-function isIsoDate(value: string) {
-  return /^\d{4}-\d{2}-\d{2}(?:T.*)?$/.test(value);
-}
-
-function formatIsoDate(value: string) {
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/);
-  if (match) return `${Number(match[2])}/${Number(match[3])}/${match[1]}`;
-  const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) return value;
-  return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
-}
-
 function normalizeCellValue(value: unknown) {
-  if (value instanceof Date && !Number.isNaN(value.valueOf())) {
-    return `${value.getMonth() + 1}/${value.getDate()}/${value.getFullYear()}`;
-  }
-  if (typeof value === "string" && isIsoDate(value)) {
-    return formatIsoDate(value);
-  }
-  return value ?? "";
+  return exportDate(value) ?? "";
 }
 
 export function buildSourceExportRows(orders: SourceExportOrder[]) {
