@@ -21,7 +21,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { authedFetch, authedJson } from "@/src/lib/api/client";
 import { formatNumber } from "@/src/lib/formatters/number";
-import { endOfWeek, startOfWeek, toDateId, weekRangeLabel } from "@/src/lib/date/week";
+import { formatHoursAsDuration } from "@/src/lib/formatters/duration";
+import { endOfWeek, parseDateId, startOfWeek, toDateId, weekRangeLabel } from "@/src/lib/date/week";
 import { useAuth } from "@/src/components/auth-provider";
 import { extractSalesOrder, type RawSalesOrder, type SalesDataset, type SalesRepGroup } from "@/src/lib/sales/grouping";
 import { RepEditorDialog, blankRepEditorForm, type RepEditorForm } from "@/src/components/roster/rep-editor-dialog";
@@ -35,7 +36,35 @@ import { cn } from "@/lib/utils";
 type SalesResponse = {
   week: { start: string; end: string };
   reps: Array<SalesRepGroup & { orders?: RawSalesOrder[] }>;
+  canViewKnockHours?: boolean;
 };
+
+type KnockHoursPeriod = "daily" | "weekly" | "monthly" | "custom";
+type KnockHoursRow = {
+  repUid: string;
+  displayName: string;
+  managerName: string;
+  teamId: string | null;
+  locationName: string;
+  vendorType: string;
+  knocks: number;
+  sales: number;
+  hoursWorked: number;
+  daysWorked: number;
+  firstKnockAt: string;
+  lastKnockAt: string;
+};
+type KnockHoursResponse = { period: KnockHoursPeriod; range: { start: string; end: string }; rows: KnockHoursRow[] };
+
+function previousDateId(dateId: string) {
+  const date = parseDateId(dateId);
+  date.setDate(date.getDate() - 1);
+  return toDateId(date);
+}
+
+function yesterdayDateId() {
+  return previousDateId(toDateId(new Date()));
+}
 
 type RosterOption = Rep;
 type LocationOption = { locationId: string; name: string };
@@ -361,6 +390,13 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const [managers, setManagers] = useState<SalesManagerOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [canViewKnockHours, setCanViewKnockHours] = useState(false);
+  const [knockHoursPeriod, setKnockHoursPeriod] = useState<KnockHoursPeriod>("daily");
+  const [knockHoursCustomStart, setKnockHoursCustomStart] = useState(yesterdayDateId);
+  const [knockHoursCustomEnd, setKnockHoursCustomEnd] = useState(yesterdayDateId);
+  const [knockHours, setKnockHours] = useState<KnockHoursResponse | null>(null);
+  const [knockHoursLoading, setKnockHoursLoading] = useState(false);
+  const [knockHoursError, setKnockHoursError] = useState<string | null>(null);
   const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null);
   const [actionSaving, setActionSaving] = useState(false);
   const [aliasTargetRepUid, setAliasTargetRepUid] = useState("");
@@ -399,6 +435,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
       if (!options?.silent) setLoading(true);
       const response = await authedJson<SalesResponse>(`/api/${kind}?${params.toString()}`);
       setError(null);
+      setCanViewKnockHours(Boolean(isKnocks && response.canViewKnockHours));
       setData({
         week: response.week,
         reps: response.reps.map((rep) => ({
@@ -453,6 +490,39 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   const displayRangeEnd = rangeMode === "mtd"
     ? rangeEnd
     : toDateId(endOfWeek(new Date(`${weekStart}T12:00:00`)));
+
+  useEffect(() => {
+    if (!isKnocks || !canViewKnockHours || !rangeEnd) return;
+    const anchor = knockHoursPeriod === "daily"
+      ? yesterdayDateId()
+      : knockHoursPeriod === "custom"
+        ? knockHoursCustomStart
+        : rangeEnd;
+    if (!anchor || (knockHoursPeriod === "custom" && (!knockHoursCustomEnd || anchor > knockHoursCustomEnd))) return;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams({ period: knockHoursPeriod, anchor, lcp: lcpFilter });
+      if (knockHoursPeriod === "custom") params.set("end", knockHoursCustomEnd);
+      setKnockHoursLoading(true);
+      void authedJson<KnockHoursResponse>(`/api/performance/knock-hours?${params.toString()}`)
+        .then((value) => {
+          if (!active) return;
+          setKnockHours(value);
+          setKnockHoursError(null);
+        })
+        .catch((cause) => {
+          if (!active) return;
+          setKnockHoursError(cause instanceof Error ? cause.message : "Unable to load knock hours.");
+        })
+        .finally(() => {
+          if (active) setKnockHoursLoading(false);
+        });
+    }, 0);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [canViewKnockHours, isKnocks, knockHoursCustomEnd, knockHoursCustomStart, knockHoursPeriod, lcpFilter, rangeEnd]);
   const exportHref = useMemo(() => {
     const params = new URLSearchParams({
       manager: managerFilter,
@@ -609,6 +679,19 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
   }, [canUseOnlyZeroSalesFilter, isKnocks, lcpFilter, locationFilter, managerFilter, onlyZeroSales, providerFilter, repFilter, rows, search, showNewRepHighlights, showZeroSales, teamFilter, vendorFilter]);
 
   const teamChart = useMemo(() => visibleRows.map((row) => ({ name: row.displayName, sales: row.total })), [visibleRows]);
+  const knockHoursChart = useMemo(() => {
+    if (!knockHours || (providerFilter !== "all" && normalizeProviderFilter(providerFilter) !== "tfiber")) return [];
+    const term = search.trim().toLowerCase();
+    return knockHours.rows.filter((row) => {
+      if (term && ![row.displayName, row.managerName, row.locationName].join(" ").toLowerCase().includes(term)) return false;
+      if (managerFilter !== "all" && row.managerName !== managerFilter) return false;
+      if (teamFilter !== "all" && row.teamId !== teamFilter) return false;
+      if (repFilter !== "all" && row.displayName !== repFilter) return false;
+      if (locationFilter !== "all" && row.locationName !== locationFilter) return false;
+      if (vendorFilter !== "all" && row.vendorType !== vendorFilter) return false;
+      return true;
+    });
+  }, [knockHours, locationFilter, managerFilter, providerFilter, repFilter, search, teamFilter, vendorFilter]);
 
     const rowSegments = useMemo(() => visibleRows.map((row) => {
     const counts = reportSegments.map(() => 0);
@@ -641,6 +724,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
 
   const currentLabel = formatRangeLabel(rangeMode === "mtd" ? "mtd" : "wtd", data?.week.start ?? rangeStart, rangeMode === "mtd" ? data?.week.end ?? rangeEnd : displayRangeEnd, monthId);
   const isTeamView = viewMode === "team";
+  const isKnockHoursView = isKnocks && canViewKnockHours && isTeamView;
   const hasNoData = !loading && visibleRows.length === 0;
 
   function openAction(rep: SalesRepGroup, type: ActionTarget["type"]) {
@@ -1127,18 +1211,72 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
       <section className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)]">
         <Card className="overflow-hidden border-border/60 bg-card/85 shadow-[0_16px_40px_-24px_rgba(15,23,42,0.28)]">
           <CardHeader className={cn("gap-2 p-5 sm:p-6 lg:p-7", viewMode === "team" ? "pb-3" : undefined)}>
-            <CardTitle>{isTeamView ? "Team totals" : `Rep weekly grid`}</CardTitle>
+            <CardTitle>{isKnockHoursView ? "Knock hours worked" : isTeamView ? "Team totals" : `Rep weekly grid`}</CardTitle>
             <CardDescription>
-              {isTeamView
+              {isKnockHoursView
+                ? "Daily shows yesterday's completed activity. Use Custom for a specific day or range; sales are included when hovering."
+                : isTeamView
                 ? `Bar chart of total ${workspaceNameLower} by rep.`
                 : rangeMode === "mtd"
                   ? `Rep names, manager, location, weekly ${workspaceNameLower}, and weekly goal.`
                   : `Rep names, manager, location, daily ${workspaceNameLower}, and weekly goal.`}
             </CardDescription>
+            {isKnockHoursView ? (
+              <Tabs value={knockHoursPeriod} onValueChange={(value) => setKnockHoursPeriod(value as KnockHoursPeriod)}>
+                <TabsList><TabsTrigger value="daily">Daily</TabsTrigger><TabsTrigger value="weekly">Weekly</TabsTrigger><TabsTrigger value="monthly">Monthly</TabsTrigger><TabsTrigger value="custom">Custom</TabsTrigger></TabsList>
+              </Tabs>
+            ) : null}
+            {isKnockHoursView && knockHoursPeriod === "custom" ? (
+              <div className="flex flex-wrap items-end gap-3 pt-2">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="knock-hours-start">Start date</Label>
+                  <Input
+                    id="knock-hours-start"
+                    type="date"
+                    max={knockHoursCustomEnd || undefined}
+                    value={knockHoursCustomStart}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setKnockHoursCustomStart(next);
+                      if (next && (!knockHoursCustomEnd || knockHoursCustomEnd < next)) setKnockHoursCustomEnd(next);
+                    }}
+                    className="w-[170px]"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="knock-hours-end">End date</Label>
+                  <Input id="knock-hours-end" type="date" min={knockHoursCustomStart || undefined} value={knockHoursCustomEnd} onChange={(event) => setKnockHoursCustomEnd(event.target.value)} className="w-[170px]" />
+                </div>
+              </div>
+            ) : null}
           </CardHeader>
           <CardContent className={cn("p-5 pt-0 sm:p-6 sm:pt-0 lg:p-7 lg:pt-0", viewMode === "team" ? "px-0" : undefined)}>
             {isTeamView ? (
-              teamChart.length ? (
+              isKnockHoursView ? (
+                knockHoursLoading ? (
+                  <Skeleton className="h-[420px] rounded-[28px]" />
+                ) : knockHoursError ? (
+                  <EmptyState title="Hours unavailable" description={knockHoursError} />
+                ) : knockHoursChart.length ? (
+                  <div className="max-h-[680px] overflow-y-auto">
+                    <div style={{ height: Math.max(420, knockHoursChart.length * 48) }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={knockHoursChart} layout="vertical" margin={{ left: 20, right: 28, top: 24, bottom: 18 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.7} horizontal={false} />
+                          <XAxis xAxisId="hours" type="number" orientation="bottom" tickLine={false} axisLine={false} tickFormatter={(value) => formatHoursAsDuration(Number(value))} />
+                          <XAxis xAxisId="knocks" type="number" orientation="top" tickLine={false} axisLine={false} allowDecimals={false} />
+                          <YAxis type="category" dataKey="displayName" width={170} tickLine={false} axisLine={false} tick={{ fill: "var(--muted-foreground)" }} />
+                          <RechartsTooltip content={<KnockHoursChartTooltip />} />
+                          <Bar xAxisId="hours" dataKey="hoursWorked" name="Hours worked" radius={[0, 10, 10, 0]} fill="#8b5cf6" stroke="#8b5cf6" barSize={12} />
+                          <Bar xAxisId="knocks" dataKey="knocks" name="Knocks" radius={[0, 10, 10, 0]} fill="#2563eb" stroke="#2563eb" barSize={12} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                ) : (
+                  <EmptyState title="No timestamped knocks" description="No matched T-Fiber disposition timestamps were found for this period and scope." />
+                )
+              ) : teamChart.length ? (
                 <div className="h-[420px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={teamChart} margin={{ left: 0, right: 12, top: 8, bottom: 12 }}>
@@ -1447,6 +1585,23 @@ function ChartTooltip({ active, payload, metricLabel = "Sales" }: { active?: boo
       <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Representative</p>
       <p className="mt-1 text-sm font-medium text-foreground">{row.name || "Rep"}</p>
       <p className="mt-2 text-sm font-semibold text-primary">{metricLabel}: {formatNumber(row.sales || 0)}</p>
+    </div>
+  );
+}
+
+function KnockHoursChartTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload?: KnockHoursRow }> }) {
+  const row = payload?.[0]?.payload;
+  if (!active || !row) return null;
+  const time = (value: string) => new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }).format(new Date(value));
+  return (
+    <div className="rounded-2xl border border-border/70 bg-popover/95 px-4 py-3 text-popover-foreground shadow-2xl backdrop-blur">
+      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Representative</p>
+      <p className="mt-1 text-sm font-medium text-foreground">{row.displayName}</p>
+      <p className="mt-2 text-sm font-semibold text-violet-500">Hours: {formatHoursAsDuration(row.hoursWorked)}</p>
+      <p className="text-sm font-semibold text-blue-600">Knocks: {formatNumber(row.knocks)}</p>
+      <p className="text-sm font-semibold text-emerald-600">Sales: {formatNumber(row.sales)}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{row.daysWorked} {row.daysWorked === 1 ? "day" : "days"} worked</p>
+      {row.daysWorked === 1 ? <p className="text-xs text-muted-foreground">{time(row.firstKnockAt)} to {time(row.lastKnockAt)} Eastern</p> : null}
     </div>
   );
 }

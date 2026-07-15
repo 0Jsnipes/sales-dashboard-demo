@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/src/lib/firebase/admin";
-import { canImportSales, requireActor } from "@/src/lib/firebase/server-auth";
+import { canImportSales, canViewPrivateKnockHours, requireActor } from "@/src/lib/firebase/server-auth";
 import type { Rep } from "@/src/types/rep";
 import { parseCommonFilters, parseDateRangeParams, toDateId } from "@/src/lib/api/report-filters";
 import { buildRepSearchIndex, normalizeEmail, normalizeSalesId, normalizeName } from "@/src/lib/matching/normalize";
@@ -108,7 +108,7 @@ function normalizeProvider(value: unknown) {
 
 export async function GET(request: Request) {
   try {
-    await requireActor(request);
+    const actor = await requireActor(request);
     const url = new URL(request.url);
     const filters = parseCommonFilters(url.searchParams);
     const range = buildRange(url.searchParams, url.searchParams.get("range"));
@@ -216,7 +216,7 @@ export async function GET(request: Request) {
       ].join(" ").toLowerCase().includes(term);
     });
 
-    return NextResponse.json({ week: { start: range.start, end: range.end }, reps: filtered });
+    return NextResponse.json({ week: { start: range.start, end: range.end }, reps: filtered, canViewKnockHours: canViewPrivateKnockHours(actor) });
   } catch (error) {
     return errorResponse("knocks", error);
   }

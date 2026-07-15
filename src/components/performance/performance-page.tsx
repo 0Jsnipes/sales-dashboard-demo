@@ -29,7 +29,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type RangeMode = "lastWeek" | "wtd" | "mtd" | "last30" | "custom";
-
 type TeamRow = {
   name: string;
   sales: number;
@@ -608,7 +607,6 @@ export function PerformancePage() {
   const currentRange = data?.range ?? { start, end, mode };
   const currentRangeLabel = rangeLabel(mode);
   const currentRangeDates = data ? weekRangeLabel(data.range.start, data.range.end) : weekRangeLabel(start, end);
-
   const scopedOrders = useMemo(() => {
     if (!data) return [];
     return data.orders.filter((order) => {

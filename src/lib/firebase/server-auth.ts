@@ -41,6 +41,12 @@ export function canReassignSales(actor: ServerActor) {
   return actor.profile.role === "superAdmin" || (canAccessFiber(actor) && actor.profile.role === "admin" && actor.profile.permissions.canReassignSales);
 }
 
+export function canViewPrivateKnockHours(actor: ServerActor) {
+  const ownerEmail = String(process.env.PERFORMANCE_HOURS_OWNER_EMAIL ?? "").trim().toLowerCase();
+  if (ownerEmail) return actor.profile.email.trim().toLowerCase() === ownerEmail;
+  return actor.profile.role === "superAdmin";
+}
+
 export function canViewReporting(actor: ServerActor) {
   return actor.profile.role === "superAdmin" || (canAccessFiber(actor) && actor.profile.role === "admin" && actor.profile.permissions.canViewReporting);
 }

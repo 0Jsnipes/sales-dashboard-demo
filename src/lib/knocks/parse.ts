@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import type { Rep } from "@/src/types/rep";
-import { getMonthKey, getWeekStartKey, parseFlexibleDate, toDateKey } from "./date";
+import { getWeekStartKey, parseEasternDispositionTime, parseFlexibleDate, toDateKey, toEasternDateKey } from "./date";
 import { normalizeKnockStatus } from "./status";
 import { detectKnockSource } from "./source-detection";
 import { generateKnockUid } from "./uid";
@@ -16,12 +16,13 @@ function normalizeCommon(row: RawRow, source: KnockSource): NormalizedKnockRow |
   const repName = source === "att_salesrabbit" ? text(row.Name) : text(row.Rep);
   const rawStatus = source === "att_salesrabbit" ? text(row.Activity) : text(row.Status);
   const rawDate = source === "att_salesrabbit" ? row.Date : row["Disposition Time (Eastern)"];
-  const date = parseFlexibleDate(rawDate);
+  const date = source === "tfiber" ? parseEasternDispositionTime(rawDate) : parseFlexibleDate(rawDate);
   if (!repName && !rawStatus && !date) return null;
   if (!date) return null;
   // SalesRabbit/T-Fiber exports include helper count columns that reflect grouped totals,
   // not per-activity quantities. Each row in these files should count as one knock.
   const quantity = 1;
+  const activityDateKey = source === "tfiber" ? toEasternDateKey(date) : toDateKey(date);
   const rowBase: NormalizedKnockRow = {
     knockUid: "",
     source,
@@ -38,9 +39,9 @@ function normalizeCommon(row: RawRow, source: KnockSource): NormalizedKnockRow |
     rawStatus,
     normalizedStatus: normalizeKnockStatus(rawStatus),
     activityDate: date.toISOString(),
-    activityDateKey: toDateKey(date),
-    weekStart: getWeekStartKey(date),
-    monthKey: getMonthKey(date),
+    activityDateKey,
+    weekStart: getWeekStartKey(`${activityDateKey}T12:00:00`),
+    monthKey: activityDateKey.slice(0, 7),
     company: text(row.Company) || null,
     lcp: text(row.LCP) || null,
     address: source === "att_salesrabbit" ? null : { street: text(row.street_1) || null, city: text(row.City) || null, state: text(row.state) || null, zip: text(row.Zip) || null },

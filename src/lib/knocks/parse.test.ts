@@ -78,6 +78,19 @@ describe("parseTFiberKnockRows", () => {
     expect(summary).toMatchObject({ totalRowsSeen: 1, validRows: 1, matchedRows: 1 });
   });
 
+  it("parses the exported Eastern timestamp format without shifting the activity date", () => {
+    const { rows } = parseTFiberKnockRows(
+      [{ Rep: "Jane Doe", Status: "Try 1", "Disposition Time (Eastern)": "Jul 8, 2026, 11:58:50\u202fPM", "Lead ID": "L-10" }],
+      reps,
+    );
+    expect(rows[0]).toMatchObject({
+      activityDate: "2026-07-09T03:58:50.000Z",
+      activityDateKey: "2026-07-08",
+      weekStart: "2026-07-06",
+      monthKey: "2026-07",
+    });
+  });
+
   it("skips rows with an unparseable disposition time", () => {
     const { summary } = parseTFiberKnockRows(
       [{ Rep: "Jane Doe", Status: "New Sale", "Disposition Time (Eastern)": "not-a-date" }],
