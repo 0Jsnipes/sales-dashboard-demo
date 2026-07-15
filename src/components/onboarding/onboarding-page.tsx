@@ -1,20 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { CheckCircle2, Search, Sparkles } from "lucide-react";
+import { CheckCircle2, Search } from "lucide-react";
+import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { authedFetch, authedJson } from "@/src/lib/api/client";
 import { useAuth } from "@/src/components/auth-provider";
-import { onboardingCategoryOrder, onboardingIcons, onboardingResources, type OnboardingCategory } from "@/src/components/onboarding/onboarding-resources";
+import { onboardingCategoryOptions, onboardingIcons, onboardingResources, type OnboardingCategory, type OnboardingResource } from "@/src/components/onboarding/onboarding-resources";
 
 type Rep = {
   repUid: string;
@@ -28,7 +32,6 @@ const checks = ["Create account", "Complete UID", "Complete background check", "
 
 const statusMeta = {
   active: { label: "Active", variant: "success" as const },
-  coming_soon: { label: "Coming soon", variant: "outline" as const },
   admin_only: { label: "Admin only", variant: "warning" as const },
   external: { label: "External", variant: "info" as const },
 };
@@ -53,24 +56,70 @@ export function OnboardingPage() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Rep | null>(null);
   const [saving, setSaving] = useState(false);
+  const [savedResources, setSavedResources] = useState<OnboardingResource[]>([]);
+  const [addResourceOpen, setAddResourceOpen] = useState(false);
+  const [resourceCategory, setResourceCategory] = useState<OnboardingCategory>("Tools");
+  const [resourceSaving, setResourceSaving] = useState(false);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<"All" | OnboardingCategory>("All");
   const allowed = profile?.role === "superAdmin" || (profile?.role === "admin" && profile.permissions.canEditOnboarding);
 
   useEffect(() => {
-    authedJson<{ reps: Rep[] }>("/api/reps?status=active")
-      .then((value) => setReps(value.reps ?? []))
+    Promise.all([
+      authedJson<{ reps: Rep[] }>("/api/reps?status=active"),
+      authedJson<{ resources: OnboardingResource[] }>("/api/onboarding-resources"),
+    ])
+      .then(([repsValue, resourcesValue]) => {
+        setReps(repsValue.reps ?? []);
+        setSavedResources(resourcesValue.resources ?? []);
+      })
+      .catch((cause) => toast.error(cause instanceof Error ? cause.message : "Unable to load the tools page."))
       .finally(() => setLoading(false));
   }, []);
 
+  const allResources = useMemo(() => [...onboardingResources, ...savedResources], [savedResources]);
+  const activeCategoryOrder = useMemo(
+    () => onboardingCategoryOptions.filter((item) => allResources.some((resource) => resource.category === item)),
+    [allResources],
+  );
   const completeCount = useMemo(() => reps.filter((rep) => rep.onboarding?.onboarded).length, [reps]);
   const staticChecklistComplete = checks.length ? 0 : 0;
-  const filteredResources = useMemo(() => onboardingResources.filter((resource) => {
+  const filteredResources = useMemo(() => allResources.filter((resource) => {
     const matchesCategory = category === "All" || resource.category === category;
     const term = query.trim().toLowerCase();
     const matchesQuery = !term || [resource.label, resource.description, resource.provider, resource.category].join(" ").toLowerCase().includes(term);
     return matchesCategory && matchesQuery;
-  }), [category, query]);
+  }), [allResources, category, query]);
+
+  async function addResource(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    setResourceSaving(true);
+    try {
+      const value = await authedJson<{ resource: OnboardingResource }>("/api/onboarding-resources", {
+        method: "POST",
+        body: JSON.stringify({
+          category: resourceCategory,
+          label: formData.get("label"),
+          description: formData.get("description"),
+          url: formData.get("url"),
+        }),
+      });
+      if (!value.resource) throw new Error("The resource was saved but could not be displayed.");
+      setSavedResources((current) => [...current, value.resource]);
+      setCategory(value.resource.category);
+      setQuery("");
+      setAddResourceOpen(false);
+      setResourceCategory("Tools");
+      form.reset();
+      toast.success(`${value.resource.label} was added.`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to add the resource.");
+    } finally {
+      setResourceSaving(false);
+    }
+  }
 
   async function save(checkValues: Record<string, boolean>) {
     if (!selected) return;
@@ -115,7 +164,7 @@ export function OnboardingPage() {
     );
   }
 
-  const sections = onboardingCategoryOrder.map((section) => ({
+  const sections = activeCategoryOrder.map((section) => ({
     category: section,
     resources: filteredResources.filter((resource) => resource.category === section),
   }));
@@ -123,12 +172,11 @@ export function OnboardingPage() {
   return (
     <TooltipProvider>
       <motion.div initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }} className="space-y-6">
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {[
-            { label: "Programs", value: onboardingResources.filter((resource) => resource.category === "Programs").length },
-            { label: "Tools", value: onboardingResources.filter((resource) => resource.category === "Tools").length },
-            { label: "UID links", value: onboardingResources.filter((resource) => resource.category === "UID").length },
-            { label: "Training resources", value: onboardingResources.filter((resource) => resource.category === "Training").length },
+            { label: "Programs", value: allResources.filter((resource) => resource.category === "Programs").length },
+            { label: "Tools", value: allResources.filter((resource) => resource.category === "Tools").length },
+            { label: "UID links", value: allResources.filter((resource) => resource.category === "UID").length },
             { label: "Checklist items", value: checklistTemplate.total },
           ].map((item) => (
             <Card key={item.label} className="border-border/70">
@@ -146,7 +194,7 @@ export function OnboardingPage() {
               <CardTitle>Tools</CardTitle>
               <CardDescription>Program links, UID tools, background checks, recruiting references, and operational resources.</CardDescription>
             </div>
-            <Button variant="outline" disabled={!allowed} aria-label="Add resource">
+            <Button variant="outline" disabled={!allowed} aria-label="Add resource" onClick={() => setAddResourceOpen(true)}>
               Add resource
             </Button>
           </CardHeader>
@@ -162,15 +210,10 @@ export function OnboardingPage() {
               <Tabs value={category} onValueChange={(value) => setCategory(value as typeof category)} className="w-full md:w-auto">
                 <TabsList className="grid h-auto w-full grid-cols-4 gap-1 overflow-x-auto md:flex">
                   <TabsTrigger value="All">All</TabsTrigger>
-                  {onboardingCategoryOrder.map((item) => <TabsTrigger key={item} value={item}>{item}</TabsTrigger>)}
+                  {activeCategoryOrder.map((item) => <TabsTrigger key={item} value={item}>{item}</TabsTrigger>)}
                 </TabsList>
               </Tabs>
             </div>
-            <Alert>
-              <Sparkles className="h-4 w-4" />
-              <AlertTitle>Resource hub</AlertTitle>
-              <AlertDescription>Links marked Coming soon are placeholders until live URLs are connected.</AlertDescription>
-            </Alert>
           </CardContent>
         </Card>
 
@@ -191,7 +234,6 @@ export function OnboardingPage() {
               {resources.map((resource) => {
                 const Icon = onboardingIcons[resource.icon || "info"] || onboardingIcons.info;
                 const status = statusMeta[resource.status];
-                const disabled = resource.status === "coming_soon";
                 return (
                   <motion.div key={resource.id} whileHover={reducedMotion ? undefined : { y: -2 }} whileTap={reducedMotion ? undefined : { scale: 0.99 }}>
                     <Card className="h-full border-border/70 bg-gradient-to-br from-background to-muted/30 shadow-sm transition-shadow hover:shadow-md">
@@ -216,25 +258,18 @@ export function OnboardingPage() {
                               <span className="block">
                                 <Button
                                   className="w-full"
-                                  variant={disabled ? "outline" : "default"}
-                                  disabled={disabled}
-                                  asChild={!disabled}
+                                  asChild
                                 >
-                                  {disabled ? (
-                                    <span>Coming soon</span>
-                                  ) : (
-                                    <a href={resource.href} target="_blank" rel="noreferrer">
-                                      Open resource
-                                    </a>
-                                  )}
+                                  <a href={resource.href} target="_blank" rel="noreferrer">
+                                    Open resource
+                                  </a>
                                 </Button>
                               </span>
                             </TooltipTrigger>
                             <TooltipContent>
-                              {disabled ? "This resource does not have a live link yet." : "Opens in a new tab."}
+                              Opens in a new tab.
                             </TooltipContent>
                           </Tooltip>
-                          {disabled && <p className="mt-2 text-xs text-muted-foreground">TODO: connect a live URL here.</p>}
                         </div>
                       </CardContent>
                     </Card>
@@ -300,6 +335,49 @@ export function OnboardingPage() {
             </CardContent>
           </Card>
         </section>
+
+        <Dialog open={addResourceOpen} onOpenChange={(open) => { if (!resourceSaving) setAddResourceOpen(open); }}>
+          <DialogContent>
+            <form className="space-y-5" onSubmit={addResource}>
+              <DialogHeader>
+                <DialogTitle>Add resource</DialogTitle>
+                <DialogDescription>Add a live link to the Tools page for everyone with access.</DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-2">
+                <Label htmlFor="resource-category">Section</Label>
+                <Select value={resourceCategory} onValueChange={(value) => setResourceCategory(value as OnboardingCategory)}>
+                  <SelectTrigger id="resource-category">
+                    <SelectValue placeholder="Choose a section" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {onboardingCategoryOptions.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="resource-label">Tool name</Label>
+                <Input id="resource-label" name="label" required minLength={2} maxLength={120} placeholder="Example: Sales Report Builder" autoFocus />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="resource-description">Description</Label>
+                <Textarea id="resource-description" name="description" required maxLength={500} placeholder="Explain what this resource is used for." />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="resource-url">URL</Label>
+                <Input id="resource-url" name="url" type="url" required placeholder="https://example.com" />
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" disabled={resourceSaving} onClick={() => setAddResourceOpen(false)}>Cancel</Button>
+                <Button type="submit" disabled={resourceSaving}>{resourceSaving ? "Adding..." : "Add resource"}</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         <Sheet open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
           <SheetContent className="w-full sm:max-w-lg">
