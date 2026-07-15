@@ -29,6 +29,13 @@ export const DEFAULT_ADMIN_PERMISSIONS: AppUser["permissions"] = {
   canRunBackfill: true,
   canReassignSales: true,
   canFilterZeroSalesOnly: false,
+  canViewKnockHours: false,
+  canManageTeams: false,
+  canExportTeamReports: false,
+  canEmailTeamReports: false,
+  canManageRosterOptions: false,
+  canManageResources: false,
+  canImportEmailReports: false,
 };
 
 export function normalizeBusinessUnit(value: unknown): BusinessUnit {

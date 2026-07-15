@@ -17,6 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { authedFetch } from "@/src/lib/api/client";
 import { useAuth } from "@/src/components/auth-provider";
+import { normalizePermissions } from "@/src/lib/access";
 import { KnockImportPreview } from "@/src/components/knocks/KnockImportPreview";
 
 type Summary = {
@@ -81,7 +82,8 @@ function SourceCard({
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
 
-  const allowed = profile?.role === "superAdmin" || (profile?.role === "admin" && profile.permissions.canEditSales);
+  const permissions = normalizePermissions(profile?.permissions);
+  const allowed = profile?.role === "superAdmin" || (profile?.role === "admin" && permissions.canEditSales);
 
   const upload = useCallback(async (file: File) => {
     if (!user || !endpoint) return;
@@ -247,7 +249,9 @@ export function ImportsPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ kind: "single"; upload: ServerUploadRow } | { kind: "all" } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const allowed = profile?.role === "superAdmin" || (profile?.role === "admin" && profile.permissions.canEditSales);
+  const permissions = normalizePermissions(profile?.permissions);
+  const allowed = profile?.role === "superAdmin" || (profile?.role === "admin" && permissions.canEditSales);
+  const canPullGmail = profile?.role === "superAdmin" || permissions.canImportEmailReports;
 
   const steps = useMemo(() => ["Upload", "Validate", "Match", "Review", "Commit"], []);
 
@@ -359,7 +363,7 @@ export function ImportsPage() {
 
       <KnockImportPreview />
 
-      {inboundEmail ? (
+      {inboundEmail && canPullGmail ? (
         <Card className="border-border/70">
           <CardHeader>
             <CardTitle>Email reports</CardTitle>
@@ -383,7 +387,6 @@ export function ImportsPage() {
                   toast.error(cause instanceof Error ? cause.message : "Unable to pull Gmail reports.");
                 }
               }}
-              disabled={!allowed}
             >
               Pull Gmail inbox
             </Button>

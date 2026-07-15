@@ -133,6 +133,16 @@ export function LandingPage() {
           })}
         </div>
       </section>
+
+      <footer className="border-t border-border/70 bg-card/30">
+        <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-4 py-6 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+          <p>© 2026 AB Marketing. All rights reserved.</p>
+          <nav aria-label="Legal" className="flex items-center gap-5">
+            <Link className="transition-colors hover:text-foreground" href="/privacy">Privacy Policy</Link>
+            <Link className="transition-colors hover:text-foreground" href="/terms">Terms of Service</Link>
+          </nav>
+        </div>
+      </footer>
     </main>
   );
 }

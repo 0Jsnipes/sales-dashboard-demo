@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { errorResponse } from "@/src/lib/api/error-response";
 import { getAdminDb } from "@/src/lib/firebase/admin";
-import { canManageOnboarding, requireActor } from "@/src/lib/firebase/server-auth";
+import { canManageResources, requireActor } from "@/src/lib/firebase/server-auth";
 import type { OnboardingCategory, OnboardingResource } from "@/src/components/onboarding/onboarding-resources";
 
 export const runtime = "nodejs";
@@ -64,7 +64,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const actor = await requireActor(request);
-    if (!canManageOnboarding(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    if (!canManageResources(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     const value = inputSchema.safeParse(await request.json());
     if (!value.success) return NextResponse.json({ error: value.error.flatten() }, { status: 400 });
 

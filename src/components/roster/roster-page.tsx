@@ -38,6 +38,7 @@ import type { Location } from "@/src/types/location";
 import type { ManagerOption } from "@/src/types/manager";
 import type { Team } from "@/src/types/team";
 import { useAuth } from "@/src/components/auth-provider";
+import { normalizePermissions } from "@/src/lib/access";
 import { formatDate, formatDateTime } from "@/src/lib/formatters/date";
 
 type RepForm = {
@@ -245,7 +246,9 @@ export function RosterPage() {
   const [vendorFilter, setVendorFilter] = useState("all");
   const [qualityFilter, setQualityFilter] = useState<string>("all");
 
-  const canEdit = profile?.role === "superAdmin" || (profile?.role === "admin" && profile.permissions.canEditRoster);
+  const permissions = normalizePermissions(profile?.permissions);
+  const canEdit = profile?.role === "superAdmin" || (profile?.role === "admin" && permissions.canEditRoster);
+  const canManageRosterOptions = profile?.role === "superAdmin" || permissions.canManageRosterOptions;
   const canAddAlias = profile?.role === "superAdmin";
 
   const request = useCallback((path: string, init?: RequestInit) => authedFetch(path, init), []);
@@ -921,9 +924,7 @@ export function RosterPage() {
                       {managers.map((manager) => <SelectItem key={manager.managerUid} value={manager.managerUid}>{manager.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <Button type="button" variant="outline" className="shrink-0" onClick={() => { setManagerDraft(""); setManagerCreateOpen(true); }}>
-                    <Plus className="h-4 w-4" /> Add
-                  </Button>
+                  {canManageRosterOptions ? <Button type="button" variant="outline" className="shrink-0" onClick={() => { setManagerDraft(""); setManagerCreateOpen(true); }}><Plus className="h-4 w-4" /> Add</Button> : null}
                 </div>
               </Field>
               <Field label="Team" helper="Reporting group only; this does not change the manager.">
@@ -945,9 +946,7 @@ export function RosterPage() {
                       {locations.map((location) => <SelectItem key={location.locationId} value={location.locationId}>{location.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <Button type="button" variant="outline" className="shrink-0" onClick={() => { setLocationCreateTarget("editor"); setLocationDraft(""); }}>
-                    <Plus className="h-4 w-4" /> Add
-                  </Button>
+                  {canManageRosterOptions ? <Button type="button" variant="outline" className="shrink-0" onClick={() => { setLocationCreateTarget("editor"); setLocationDraft(""); }}><Plus className="h-4 w-4" /> Add</Button> : null}
                 </div>
               </Field>
             </section>

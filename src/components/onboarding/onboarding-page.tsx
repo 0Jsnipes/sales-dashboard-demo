@@ -18,6 +18,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { authedFetch, authedJson } from "@/src/lib/api/client";
 import { useAuth } from "@/src/components/auth-provider";
+import { normalizePermissions } from "@/src/lib/access";
 import { onboardingCategoryOptions, onboardingIcons, onboardingResources, type OnboardingCategory, type OnboardingResource } from "@/src/components/onboarding/onboarding-resources";
 
 type Rep = {
@@ -62,7 +63,9 @@ export function OnboardingPage() {
   const [resourceSaving, setResourceSaving] = useState(false);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<"All" | OnboardingCategory>("All");
-  const allowed = profile?.role === "superAdmin" || (profile?.role === "admin" && profile.permissions.canEditOnboarding);
+  const permissions = normalizePermissions(profile?.permissions);
+  const allowed = profile?.role === "superAdmin" || (profile?.role === "admin" && permissions.canEditOnboarding);
+  const canManageResources = profile?.role === "superAdmin" || permissions.canManageResources;
 
   useEffect(() => {
     Promise.all([
@@ -194,9 +197,7 @@ export function OnboardingPage() {
               <CardTitle>Tools</CardTitle>
               <CardDescription>Program links, UID tools, background checks, recruiting references, and operational resources.</CardDescription>
             </div>
-            <Button variant="outline" disabled={!allowed} aria-label="Add resource" onClick={() => setAddResourceOpen(true)}>
-              Add resource
-            </Button>
+            {canManageResources ? <Button variant="outline" aria-label="Add resource" onClick={() => setAddResourceOpen(true)}>Add resource</Button> : null}
           </CardHeader>
         </Card>
 

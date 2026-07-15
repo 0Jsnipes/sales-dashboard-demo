@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { canViewTeams, requireActor } from "@/src/lib/firebase/server-auth";
+import { canExportTeamReports, requireActor } from "@/src/lib/firebase/server-auth";
 import { errorResponse } from "@/src/lib/api/error-response";
 import { buildTeamSalesExport, parseTeamExportRange, teamExportSlug, type TeamExportProvider } from "@/src/lib/teams/export";
 import { getTeamById } from "@/src/lib/teams/team-service";
@@ -11,7 +11,7 @@ type Params = { params: Promise<{ teamId: string }> };
 export async function GET(request: Request, { params }: Params) {
   try {
     const actor = await requireActor(request);
-    if (!canViewTeams(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    if (!canExportTeamReports(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     const range = parseTeamExportRange(new URL(request.url).searchParams);
     if (!range) return NextResponse.json({ error: "Choose a valid export date range." }, { status: 400 });
     const provider = new URL(request.url).searchParams.get("provider") as TeamExportProvider | null;

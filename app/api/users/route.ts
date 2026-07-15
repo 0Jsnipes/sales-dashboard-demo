@@ -28,6 +28,13 @@ const permissions = z.object({
   canRunBackfill: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canRunBackfill),
   canReassignSales: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canReassignSales),
   canFilterZeroSalesOnly: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canFilterZeroSalesOnly),
+  canViewKnockHours: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canViewKnockHours),
+  canManageTeams: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canManageTeams),
+  canExportTeamReports: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canExportTeamReports),
+  canEmailTeamReports: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canEmailTeamReports),
+  canManageRosterOptions: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canManageRosterOptions),
+  canManageResources: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canManageResources),
+  canImportEmailReports: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canImportEmailReports),
 });
 
 const update = z.object({

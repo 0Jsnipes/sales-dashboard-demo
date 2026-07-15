@@ -24,6 +24,7 @@ import type { Team } from "@/src/types/team";
 
 type TeamForm = { name: string; description: string; color: string; active: boolean; managerRepUid: string };
 type ExportRangeMode = "wtd" | "mtd" | "ytd" | "custom";
+type EmailRangeMode = ExportRangeMode | "previous-day" | "all";
 type ExportFileKind = "att-sales" | "tfiber-sales" | "att-knocks" | "tfiber-knocks";
 const blankForm: TeamForm = { name: "", description: "", color: "#2563eb", active: true, managerRepUid: "" };
 const exportFileOptions: Array<{ kind: ExportFileKind; label: string; description: string }> = [
@@ -47,10 +48,24 @@ function presetRange(mode: Exclude<ExportRangeMode, "custom">) {
   return { start: dateId(new Date(today.getFullYear(), today.getMonth(), today.getDate() + mondayOffset)), end: dateId(today) };
 }
 
+function emailRange(mode: EmailRangeMode, customStart: string, customEnd: string) {
+  if (mode === "custom") return { start: customStart, end: customEnd };
+  if (mode === "all") return { start: "0001-01-01", end: "9999-12-31" };
+  if (mode === "previous-day") {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const day = dateId(yesterday);
+    return { start: day, end: day };
+  }
+  return presetRange(mode);
+}
+
 export function TeamsPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [reps, setReps] = useState<Rep[]>([]);
   const [canManage, setCanManage] = useState(false);
+  const [canExport, setCanExport] = useState(false);
+  const [canEmail, setCanEmail] = useState(false);
   const [canPrepareExports, setCanPrepareExports] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -79,14 +94,22 @@ export function TeamsPage() {
   const [emailSubject, setEmailSubject] = useState("Orders to date");
   const [emailMessage, setEmailMessage] = useState("Hello,\n\nYour team's sales and knock data for the year to date.");
   const [emailFiles, setEmailFiles] = useState<Set<ExportFileKind>>(allExportFiles);
+  const [emailSalesRangeMode, setEmailSalesRangeMode] = useState<EmailRangeMode>("all");
+  const [emailSalesCustomStart, setEmailSalesCustomStart] = useState(dateId(new Date()));
+  const [emailSalesCustomEnd, setEmailSalesCustomEnd] = useState(dateId(new Date()));
+  const [emailKnocksRangeMode, setEmailKnocksRangeMode] = useState<EmailRangeMode>("previous-day");
+  const [emailKnocksCustomStart, setEmailKnocksCustomStart] = useState(dateId(new Date()));
+  const [emailKnocksCustomEnd, setEmailKnocksCustomEnd] = useState(dateId(new Date()));
   const [sendingEmail, setSendingEmail] = useState(false);
   const [preparingExports, setPreparingExports] = useState(false);
 
   const load = useCallback(() => {
-    return authedJson<{ teams: Team[]; canManage: boolean; canPrepareExports: boolean }>("/api/teams")
+    return authedJson<{ teams: Team[]; canManage: boolean; canExport: boolean; canEmail: boolean; canPrepareExports: boolean }>("/api/teams")
       .then(async (teamResult) => {
         setTeams(teamResult.teams ?? []);
         setCanManage(teamResult.canManage);
+        setCanExport(teamResult.canExport);
+        setCanEmail(teamResult.canEmail);
         setCanPrepareExports(teamResult.canPrepareExports);
         if (teamResult.canManage) {
           const roster = await authedJson<{ reps: Rep[] }>("/api/reps?status=all");
@@ -303,18 +326,30 @@ export function TeamsPage() {
   }
 
   function openEmail(team: Team) {
+    const previousDay = emailRange("previous-day", "", "");
     setEmailTeam(team);
     setEmailRecipient(team.managerDetails?.email ?? "");
     setEmailSubject("Orders to date");
-    setEmailMessage("Hello,\n\nYour team's sales and knock data for the year to date.");
+    setEmailMessage("Hello,\n\nYour team's sales and knock reports are attached for the selected reporting periods.");
     setEmailFiles(allExportFiles());
+    setEmailSalesRangeMode("all");
+    setEmailSalesCustomStart(dateId(new Date()));
+    setEmailSalesCustomEnd(dateId(new Date()));
+    setEmailKnocksRangeMode("previous-day");
+    setEmailKnocksCustomStart(previousDay.start);
+    setEmailKnocksCustomEnd(previousDay.end);
   }
 
   async function sendTeamEmail() {
     if (!emailTeam) return;
     if (!emailRecipient.trim()) return toast.error("Enter the manager's email address.");
     if (!emailFiles.size) return toast.error("Select at least one file to email.");
-    const range = presetRange("ytd");
+    const salesRange = emailRange(emailSalesRangeMode, emailSalesCustomStart, emailSalesCustomEnd);
+    const knocksRange = emailRange(emailKnocksRangeMode, emailKnocksCustomStart, emailKnocksCustomEnd);
+    const hasSales = [...emailFiles].some((kind) => kind.endsWith("sales"));
+    const hasKnocks = [...emailFiles].some((kind) => kind.endsWith("knocks"));
+    if (hasSales && (!salesRange.start || !salesRange.end || salesRange.start > salesRange.end)) return toast.error("Choose a valid sales date range.");
+    if (hasKnocks && (!knocksRange.start || !knocksRange.end || knocksRange.start > knocksRange.end)) return toast.error("Choose a valid knocks date range.");
     setSendingEmail(true);
     try {
       const result = await authedJson<{ recipient: string; queued: boolean }>(`/api/teams/${emailTeam.teamId}/email`, {
@@ -324,10 +359,11 @@ export function TeamsPage() {
           subject: emailSubject.trim(),
           message: emailMessage.trim(),
           files: [...emailFiles],
-          ...range,
+          salesRange,
+          knocksRange,
         }),
       });
-      toast.success(`Year-to-date email queued for ${result.recipient}.`);
+      toast.success(`Team reports queued for ${result.recipient}.`);
       setEmailTeam(null);
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to email team data.");
@@ -387,7 +423,7 @@ export function TeamsPage() {
                     <TableCell className="max-w-md text-muted-foreground">{team.description || "No description"}</TableCell>
                     <TableCell><TooltipProvider delayDuration={150}><Tooltip><TooltipTrigger asChild><Badge variant="secondary" tabIndex={0} className="cursor-help" aria-label={`${team.members.length} ${team.members.length === 1 ? "member" : "members"}. Hover to view names.`}>{team.members.length} {team.members.length === 1 ? "member" : "members"}</Badge></TooltipTrigger><TooltipContent side="right" align="start" className="max-h-72 w-72 overflow-y-auto p-0"><div className="border-b px-3 py-2"><p className="font-medium">{team.name} members</p><p className="text-xs text-muted-foreground">{team.members.length} total</p></div>{team.members.length ? <div className="divide-y">{membersFor(team).map((member) => <div key={member.repUid} className="px-3 py-2"><p className="font-medium">{member.displayName}</p>{member.email ? <p className="truncate text-xs text-muted-foreground">{member.email}</p> : null}</div>)}</div> : <p className="px-3 py-4 text-muted-foreground">No members assigned.</p>}</TooltipContent></Tooltip></TooltipProvider></TableCell>
                     <TableCell><Badge variant={team.active ? "success" : "outline"}><CircleDot className="h-3 w-3" />{team.active ? "Active" : "Archived"}</Badge></TableCell>
-                    <TableCell><div className="flex justify-end gap-1"><Button variant="ghost" size="sm" onClick={() => openExport(team)}><Download className="h-4 w-4" />Export</Button>{canManage ? <><Button variant="ghost" size="sm" onClick={() => openEmail(team)}><Mail className="h-4 w-4" />Email</Button><Button variant="ghost" size="sm" onClick={() => openEditor(team)}><Pencil className="h-4 w-4" />Edit</Button><Button variant="ghost" size="sm" disabled={!team.active} onClick={() => openMembers(team)}><UsersRound className="h-4 w-4" />Members</Button>{team.active ? <Button variant="ghost" size="sm" onClick={() => void archive(team)}><Archive className="h-4 w-4" />Archive</Button> : null}</> : null}</div></TableCell>
+                    <TableCell><div className="flex justify-end gap-1">{canExport ? <Button variant="ghost" size="sm" onClick={() => openExport(team)}><Download className="h-4 w-4" />Export</Button> : null}{canEmail ? <Button variant="ghost" size="sm" onClick={() => openEmail(team)}><Mail className="h-4 w-4" />Email</Button> : null}{canManage ? <><Button variant="ghost" size="sm" onClick={() => openEditor(team)}><Pencil className="h-4 w-4" />Edit</Button><Button variant="ghost" size="sm" disabled={!team.active} onClick={() => openMembers(team)}><UsersRound className="h-4 w-4" />Members</Button>{team.active ? <Button variant="ghost" size="sm" onClick={() => void archive(team)}><Archive className="h-4 w-4" />Archive</Button> : null}</> : null}</div></TableCell>
                   </TableRow>
                 )) : <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">No teams match the current view.</TableCell></TableRow>}
               </TableBody>
@@ -470,9 +506,9 @@ export function TeamsPage() {
       </Dialog>
 
       <Dialog open={Boolean(emailTeam)} onOpenChange={(open) => { if (!open && !sendingEmail) setEmailTeam(null); }}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Email {emailTeam?.name} year-to-date data</DialogTitle>
+            <DialogTitle>Email {emailTeam?.name} data</DialogTitle>
             <DialogDescription>
               {emailTeam?.managerDetails
                 ? `Assigned team manager: ${emailTeam.managerDetails.displayName}. Their saved email is used automatically when available.`
@@ -485,12 +521,16 @@ export function TeamsPage() {
               <div className="space-y-2"><Label htmlFor="team-email-subject">Subject</Label><Input id="team-email-subject" value={emailSubject} onChange={(event) => setEmailSubject(event.target.value)} /></div>
             </div>
             <div className="space-y-2"><Label htmlFor="team-email-message">Message</Label><Textarea id="team-email-message" rows={5} value={emailMessage} onChange={(event) => setEmailMessage(event.target.value)} /></div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <EmailRangePicker id="team-email-sales" label="Sales date range" mode={emailSalesRangeMode} customStart={emailSalesCustomStart} customEnd={emailSalesCustomEnd} onModeChange={setEmailSalesRangeMode} onStartChange={setEmailSalesCustomStart} onEndChange={setEmailSalesCustomEnd} />
+              <EmailRangePicker id="team-email-knocks" label="Knocks date range" mode={emailKnocksRangeMode} customStart={emailKnocksCustomStart} customEnd={emailKnocksCustomEnd} onModeChange={setEmailKnocksRangeMode} onStartChange={setEmailKnocksCustomStart} onEndChange={setEmailKnocksCustomEnd} />
+            </div>
             <div className="space-y-2">
-              <Label>Year-to-date attachments</Label>
+              <Label>Attachments</Label>
               <div className="grid gap-3 sm:grid-cols-2">
                 {exportFileOptions.map((option) => <FileOption key={option.kind} option={option} checked={emailFiles.has(option.kind)} onCheckedChange={(checked) => setEmailFiles((current) => { const next = new Set(current); if (checked) next.add(option.kind); else next.delete(option.kind); return next; })} />)}
               </div>
-              <p className="text-xs text-muted-foreground">{(() => { const range = presetRange("ytd"); return `${range.start} through ${range.end}`; })()}</p>
+              <p className="text-xs text-muted-foreground">Sales files use the sales range; knock files use the knocks range.</p>
             </div>
           </div>
           <DialogFooter>
@@ -529,5 +569,42 @@ function FileOption({ option, checked, onCheckedChange }: {
       <Checkbox checked={checked} onCheckedChange={(value) => onCheckedChange(value === true)} />
       <span><span className="block text-sm font-medium">{option.label}</span><span className="text-xs text-muted-foreground">{option.description}</span></span>
     </label>
+  );
+}
+
+function EmailRangePicker({ id, label, mode, customStart, customEnd, onModeChange, onStartChange, onEndChange }: {
+  id: string;
+  label: string;
+  mode: EmailRangeMode;
+  customStart: string;
+  customEnd: string;
+  onModeChange: (mode: EmailRangeMode) => void;
+  onStartChange: (date: string) => void;
+  onEndChange: (date: string) => void;
+}) {
+  const range = emailRange(mode, customStart, customEnd);
+  return (
+    <div className="space-y-3 rounded-xl border p-3">
+      <div className="space-y-2">
+        <Label htmlFor={`${id}-range`}>{label}</Label>
+        <Select value={mode} onValueChange={(value) => onModeChange(value as EmailRangeMode)}>
+          <SelectTrigger id={`${id}-range`}><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All time</SelectItem>
+            <SelectItem value="previous-day">Previous day</SelectItem>
+            <SelectItem value="wtd">WTD</SelectItem>
+            <SelectItem value="mtd">MTD</SelectItem>
+            <SelectItem value="ytd">YTD</SelectItem>
+            <SelectItem value="custom">Custom range</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {mode === "custom" ? (
+        <div className="grid gap-3">
+          <div className="space-y-2"><Label htmlFor={`${id}-start`}>Start date</Label><Input id={`${id}-start`} type="date" value={customStart} onChange={(event) => onStartChange(event.target.value)} /></div>
+          <div className="space-y-2"><Label htmlFor={`${id}-end`}>End date</Label><Input id={`${id}-end`} type="date" value={customEnd} onChange={(event) => onEndChange(event.target.value)} /></div>
+        </div>
+      ) : <p className="rounded-lg bg-muted p-2 text-xs text-muted-foreground">{mode === "all" ? "All available records" : `${range.start} through ${range.end}`}</p>}
+    </div>
   );
 }

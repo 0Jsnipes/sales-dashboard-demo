@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { canImportSales, canManageRoster, canViewTeams, requireActor } from "@/src/lib/firebase/server-auth";
+import { canExportTeamReports, canManageTeams, canEmailTeamReports, canViewTeams, requireActor } from "@/src/lib/firebase/server-auth";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { createTeam, getTeamById, getTeams, syncTeamMembers } from "@/src/lib/teams/team-service";
 import { errorResponse } from "@/src/lib/api/error-response";
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     const actor = await requireActor(request);
     if (!canViewTeams(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     const [teams, repsSnapshot] = await Promise.all([getTeams(), getAdminDb().collection("reps").get()]);
-    const canManage = canManageRoster(actor);
+    const canManage = canManageTeams(actor);
     const memberById = new Map<string, { repUid: string; displayName: string; email: string; status: string }>();
     for (const document of repsSnapshot.docs) {
       const data = document.data();
@@ -41,7 +41,9 @@ export async function GET(request: Request) {
         managerDetails: team.managerRepUid ? memberById.get(team.managerRepUid) ?? null : null,
       })),
       canManage,
-      canPrepareExports: canImportSales(actor),
+      canExport: canExportTeamReports(actor),
+      canEmail: canEmailTeamReports(actor),
+      canPrepareExports: canExportTeamReports(actor),
     });
   } catch (error) {
     return errorResponse("teams", error);
@@ -51,7 +53,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const actor = await requireActor(request);
-    if (!canManageRoster(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    if (!canManageTeams(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     const value = input.safeParse(await request.json());
     if (!value.success) return NextResponse.json({ error: value.error.flatten() }, { status: 400 });
     const existing = await getTeams();

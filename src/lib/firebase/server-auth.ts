@@ -4,6 +4,7 @@ import type { DecodedIdToken } from "firebase-admin/auth";
 import type { AppUser } from "@/src/types/user";
 import { getAdminAuth, getAdminDb } from "./admin";
 import { normalizeBusinessUnit, normalizePermissions } from "@/src/lib/access";
+import type { PermissionKey } from "@/src/lib/access";
 
 export type ServerActor = { token: DecodedIdToken; profile: AppUser };
 
@@ -19,6 +20,10 @@ export async function requireActor(request: Request): Promise<ServerActor> {
 function canAccessFiber(actor: ServerActor) {
   const unit = normalizeBusinessUnit(actor.profile.businessUnit);
   return actor.profile.role === "superAdmin" || unit === "all" || unit === "fiber";
+}
+
+function hasFeaturePermission(actor: ServerActor, permission: PermissionKey) {
+  return actor.profile.role === "superAdmin" || (canAccessFiber(actor) && normalizePermissions(actor.profile.permissions)[permission]);
 }
 
 export function canManageRoster(actor: ServerActor) {
@@ -41,10 +46,32 @@ export function canReassignSales(actor: ServerActor) {
   return actor.profile.role === "superAdmin" || (canAccessFiber(actor) && actor.profile.role === "admin" && actor.profile.permissions.canReassignSales);
 }
 
-export function canViewPrivateKnockHours(actor: ServerActor) {
-  const ownerEmail = String(process.env.PERFORMANCE_HOURS_OWNER_EMAIL ?? "").trim().toLowerCase();
-  if (ownerEmail) return actor.profile.email.trim().toLowerCase() === ownerEmail;
-  return actor.profile.role === "superAdmin";
+export function canViewKnockHours(actor: ServerActor) {
+  return hasFeaturePermission(actor, "canViewKnockHours");
+}
+
+export function canManageTeams(actor: ServerActor) {
+  return hasFeaturePermission(actor, "canManageTeams");
+}
+
+export function canExportTeamReports(actor: ServerActor) {
+  return hasFeaturePermission(actor, "canExportTeamReports");
+}
+
+export function canEmailTeamReports(actor: ServerActor) {
+  return hasFeaturePermission(actor, "canEmailTeamReports");
+}
+
+export function canManageRosterOptions(actor: ServerActor) {
+  return hasFeaturePermission(actor, "canManageRosterOptions");
+}
+
+export function canManageResources(actor: ServerActor) {
+  return hasFeaturePermission(actor, "canManageResources");
+}
+
+export function canImportEmailReports(actor: ServerActor) {
+  return hasFeaturePermission(actor, "canImportEmailReports");
 }
 
 export function canViewReporting(actor: ServerActor) {

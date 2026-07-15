@@ -55,6 +55,13 @@ FIREBASE_DATABASE_ID=default
 FIREBASE_STORAGE_BUCKET
 NEXT_PUBLIC_REPORTS_INBOUND_EMAIL
 REPORTS_INBOUND_SECRET
+GMAIL_CLIENT_ID
+GMAIL_CLIENT_SECRET
+GMAIL_REFRESH_TOKEN
+GMAIL_REPORTS_QUERY="in:inbox has:attachment is:unread label:reports"
+GMAIL_PROCESSED_LABEL_ID
+GMAIL_REPORTS_MAX_MESSAGES=10
+CRON_SECRET
 ```
 
 For `FIREBASE_PRIVATE_KEY`, paste the service-account private key either with real line breaks or with escaped `\n` characters. Do not expose the non-`NEXT_PUBLIC_` values in client-side code.
@@ -74,8 +81,18 @@ If you are using Gmail API instead of an inbound-webhook provider, use:
 - `GMAIL_CLIENT_ID`
 - `GMAIL_CLIENT_SECRET`
 - `GMAIL_REFRESH_TOKEN`
-- Optional `GMAIL_REPORTS_QUERY`
+- `GMAIL_REPORTS_QUERY` (keep this narrow; the default example scans unread messages with the `reports` label)
 - Optional `GMAIL_PROCESSED_LABEL_ID`
+- Optional `GMAIL_REPORTS_MAX_MESSAGES` (defaults to 10 and is capped at 25 per run)
+
+The deployed app automatically checks Gmail every day at 12:00 UTC through
+`GET /api/cron/gmail-reports`. Set a strong `CRON_SECRET`; Vercel includes it as
+the route's bearer token. Create a Gmail filter that applies the `reports` label
+to messages from the report sender, or replace `GMAIL_REPORTS_QUERY` with a narrow
+sender/subject query. Successful messages are marked read and optionally receive
+the label ID in `GMAIL_PROCESSED_LABEL_ID`. Failed messages remain unread so the
+next run can retry them. The Imports page's **Scan Gmail** action remains available
+for an immediate manual run.
 
 Attachment conventions:
 

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { errorResponse } from "@/src/lib/api/error-response";
-import { canManageRoster, requireActor } from "@/src/lib/firebase/server-auth";
+import { canEmailTeamReports, requireActor } from "@/src/lib/firebase/server-auth";
 import { getAdminDb, getAdminStorage } from "@/src/lib/firebase/admin";
 import { buildTeamKnocksExport, buildTeamSalesExport, teamExportSlug, type TeamExportProvider } from "@/src/lib/teams/export";
 import { getTeamById } from "@/src/lib/teams/team-service";
@@ -11,15 +11,19 @@ export const runtime = "nodejs";
 
 const fileKinds = ["att-sales", "tfiber-sales", "att-knocks", "tfiber-knocks"] as const;
 type FileKind = typeof fileKinds[number];
+const dateRange = z.object({
+  start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+}).refine((value) => value.start <= value.end, { message: "Choose a valid date range." });
 
 const input = z.object({
   recipient: z.string().trim().email().optional(),
   subject: z.string().trim().min(1).max(200).default("Orders to date"),
   message: z.string().trim().min(1).max(4000),
   files: z.array(z.enum(fileKinds)).min(1).max(4),
-  start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-}).refine((value) => value.start <= value.end, { message: "Choose a valid date range." });
+  salesRange: dateRange,
+  knocksRange: dateRange,
+});
 
 type Params = { params: Promise<{ teamId: string }> };
 const contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -32,10 +36,14 @@ function fileParts(kind: FileKind): { provider: TeamExportProvider; dataKind: "s
   };
 }
 
+function rangeFilePart(range: { start: string; end: string }) {
+  return range.start === "0001-01-01" && range.end === "9999-12-31" ? "all-time" : `${range.start}-to-${range.end}`;
+}
+
 export async function POST(request: Request, { params }: Params) {
   try {
     const actor = await requireActor(request);
-    if (!canManageRoster(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    if (!canEmailTeamReports(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     const value = input.safeParse(await request.json());
     if (!value.success) return NextResponse.json({ error: value.error.flatten() }, { status: 400 });
     const team = await getTeamById((await params).teamId);
@@ -49,7 +57,7 @@ export async function POST(request: Request, { params }: Params) {
     const recipient = value.data.recipient || managerEmail;
     if (!recipient) return NextResponse.json({ error: "The team manager has no email. Enter a recipient email." }, { status: 400 });
 
-    const range = { start: value.data.start, end: value.data.end };
+    const ranges = { sales: value.data.salesRange, knocks: value.data.knocksRange };
     const slug = teamExportSlug(team);
     const db = getAdminDb();
     const mailCollection = process.env.FIREBASE_TRIGGER_EMAIL_COLLECTION?.trim() || "mail";
@@ -58,11 +66,12 @@ export async function POST(request: Request, { params }: Params) {
     const expires = Date.now() + signedUrlLifetimeMs;
     const attachments = await Promise.all(value.data.files.map(async (kind) => {
       const { provider, dataKind } = fileParts(kind);
+      const range = ranges[dataKind];
       const providerLabel = provider === "att" ? "att" : "tfiber";
       const file = dataKind === "sales"
         ? await buildTeamSalesExport(team, range, provider)
         : await buildTeamKnocksExport(team, range, provider);
-      const fileName = `${slug}-${providerLabel}-${dataKind}-${range.start}-to-${range.end}.xlsx`;
+      const fileName = `${slug}-${providerLabel}-${dataKind}-${rangeFilePart(range)}.xlsx`;
       const storageFile = bucket.file(`team-email-attachments/${mailReference.id}/${fileName}`);
       await storageFile.save(Buffer.from(file), {
         resumable: false,
@@ -93,7 +102,7 @@ export async function POST(request: Request, { params }: Params) {
       recipient,
       subject: value.data.subject,
       files: value.data.files,
-      range,
+      ranges,
       mailCollection,
       mailDocumentId: mailReference.id,
       status: "queued",

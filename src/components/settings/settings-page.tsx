@@ -52,6 +52,13 @@ type UserRow = {
     canRunBackfill: boolean;
     canReassignSales: boolean;
     canFilterZeroSalesOnly: boolean;
+    canViewKnockHours: boolean;
+    canManageTeams: boolean;
+    canExportTeamReports: boolean;
+    canEmailTeamReports: boolean;
+    canManageRosterOptions: boolean;
+    canManageResources: boolean;
+    canImportEmailReports: boolean;
   };
 };
 
@@ -88,6 +95,13 @@ const actionPermissionGroups = [
   { key: "canReassignSales", label: "Reassign sales", group: "Actions" },
   { key: "canFilterZeroSalesOnly", label: "Exit Hold", group: "Actions" },
   { key: "canCreateUsers", label: "Create users", group: "Actions" },
+  { key: "canViewKnockHours", label: "View knock-hours chart", group: "Feature access" },
+  { key: "canManageTeams", label: "Create and edit teams", group: "Feature access" },
+  { key: "canExportTeamReports", label: "Export team reports", group: "Feature access" },
+  { key: "canEmailTeamReports", label: "Email team reports", group: "Feature access" },
+  { key: "canManageRosterOptions", label: "Add managers and locations", group: "Feature access" },
+  { key: "canManageResources", label: "Add Tools resources", group: "Feature access" },
+  { key: "canImportEmailReports", label: "Pull Gmail reports", group: "Feature access" },
 ] as const;
 
 const permissionSections = [

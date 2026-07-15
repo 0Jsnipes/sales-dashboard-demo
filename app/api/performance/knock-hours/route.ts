@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { errorResponse } from "@/src/lib/api/error-response";
-import { canViewPrivateKnockHours, requireActor } from "@/src/lib/firebase/server-auth";
+import { canViewKnockHours, requireActor } from "@/src/lib/firebase/server-auth";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { parseEasternDispositionTime } from "@/src/lib/knocks/date";
 import { aggregateKnockHours, resolveKnockHoursRange, type KnockHoursActivity, type KnockHoursPeriod } from "@/src/lib/performance/knock-hours";
@@ -15,7 +15,7 @@ type CachedRow = { repUid?: string | null; rawData?: Record<string, unknown> };
 export async function GET(request: Request) {
   try {
     const actor = await requireActor(request);
-    if (!canViewPrivateKnockHours(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    if (!canViewKnockHours(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     const url = new URL(request.url);
     const periodValue = url.searchParams.get("period") as KnockHoursPeriod | null;
     const period = periodValue && PERIODS.has(periodValue) ? periodValue : "weekly";

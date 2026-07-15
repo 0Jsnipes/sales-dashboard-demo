@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { canManageRoster, canViewTeams, requireActor } from "@/src/lib/firebase/server-auth";
+import { canManageTeams, canViewTeams, requireActor } from "@/src/lib/firebase/server-auth";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { archiveTeam, getTeamById, getTeams, syncTeamMembers, updateTeam } from "@/src/lib/teams/team-service";
 import { errorResponse } from "@/src/lib/api/error-response";
@@ -34,7 +34,7 @@ export async function GET(request: Request, { params }: Params) {
 export async function PATCH(request: Request, { params }: Params) {
   try {
     const actor = await requireActor(request);
-    if (!canManageRoster(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    if (!canManageTeams(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     const value = input.safeParse(await request.json());
     if (!value.success) return NextResponse.json({ error: value.error.flatten() }, { status: 400 });
     const { teamId } = await params;
@@ -61,7 +61,7 @@ export async function PATCH(request: Request, { params }: Params) {
 export async function DELETE(request: Request, { params }: Params) {
   try {
     const actor = await requireActor(request);
-    if (!canManageRoster(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    if (!canManageTeams(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     const { teamId } = await params;
     if (!await getTeamById(teamId)) return NextResponse.json({ error: "TEAM_NOT_FOUND" }, { status: 404 });
     return NextResponse.json({ team: await archiveTeam(teamId, actor.token.uid) });

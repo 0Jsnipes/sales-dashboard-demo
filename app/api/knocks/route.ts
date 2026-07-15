@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/src/lib/firebase/admin";
-import { canImportSales, canViewPrivateKnockHours, requireActor } from "@/src/lib/firebase/server-auth";
+import { canImportSales, canViewKnockHours, requireActor } from "@/src/lib/firebase/server-auth";
 import type { Rep } from "@/src/types/rep";
 import { parseCommonFilters, parseDateRangeParams, toDateId } from "@/src/lib/api/report-filters";
 import { buildRepSearchIndex, normalizeEmail, normalizeSalesId, normalizeName } from "@/src/lib/matching/normalize";
@@ -216,7 +216,7 @@ export async function GET(request: Request) {
       ].join(" ").toLowerCase().includes(term);
     });
 
-    return NextResponse.json({ week: { start: range.start, end: range.end }, reps: filtered, canViewKnockHours: canViewPrivateKnockHours(actor) });
+    return NextResponse.json({ week: { start: range.start, end: range.end }, reps: filtered, canViewKnockHours: canViewKnockHours(actor) });
   } catch (error) {
     return errorResponse("knocks", error);
   }

@@ -31,5 +31,12 @@ export interface AppUser {
     canRunBackfill: boolean;
     canReassignSales: boolean;
     canFilterZeroSalesOnly: boolean;
+    canViewKnockHours: boolean;
+    canManageTeams: boolean;
+    canExportTeamReports: boolean;
+    canEmailTeamReports: boolean;
+    canManageRosterOptions: boolean;
+    canManageResources: boolean;
+    canImportEmailReports: boolean;
   };
 }
