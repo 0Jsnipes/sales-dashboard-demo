@@ -7,8 +7,11 @@ import { cn } from "@/lib/utils";
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
-  title: "AB Marketing Sales Operations",
-  description: "Sales command center for roster, imports, reporting, and team operations.",
+  title: "AB Marketing",
+  description: "AB Marketing's internal sales operations application for roster management, authorized report imports, sales and knock reporting, teams, and onboarding.",
+  verification: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION?.trim()
+    ? { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION.trim() }
+    : undefined,
 };
 
 export default function RootLayout({
