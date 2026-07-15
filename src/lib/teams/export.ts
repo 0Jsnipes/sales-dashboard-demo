@@ -8,6 +8,7 @@ import type { Team } from "@/src/types/team";
 
 type ExportRange = { start: string; end: string };
 type SourceRow = { provider: "ATT" | "T-Fiber"; rawData: Record<string, unknown> };
+export type TeamExportProvider = "att" | "tfiber";
 
 const DATE_ID = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -27,37 +28,35 @@ function sourceWorksheet(rows: SourceRow[]) {
   return XLSX.utils.json_to_sheet(data.rows, { header: data.headers, dateNF: EXCEL_DATE_FORMAT });
 }
 
-export async function buildTeamSalesExport(team: Team, range: ExportRange) {
+export async function buildTeamSalesExport(team: Team, range: ExportRange, provider: TeamExportProvider) {
   const db = getAdminDb();
   const members = new Set(team.members);
-  const orders = (provider: "att" | "tfiber") => db.collection("salesOrders").doc(provider).collection("orders")
+  const snapshot = await db.collection("salesOrders").doc(provider).collection("orders")
     .where("orderDateId", ">=", range.start)
     .where("orderDateId", "<=", range.end)
     .get();
-  const [attSnapshot, tfiberSnapshot] = await Promise.all([orders("att"), orders("tfiber")]);
-
-  const rows = (provider: "ATT" | "T-Fiber", documents: typeof attSnapshot.docs): SourceRow[] => documents
+  const providerLabel = provider === "att" ? "ATT" : "T-Fiber";
+  const rows: SourceRow[] = snapshot.docs
     .map((document) => document.data())
     .filter((order) => members.has(String(order.matchedRepUid || "")))
     .map((order) => ({
-      provider,
+      provider: providerLabel,
       rawData: order.rawData && typeof order.rawData === "object" ? order.rawData as Record<string, unknown> : {},
     }));
 
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, sourceWorksheet(rows("ATT", attSnapshot.docs)), "ATT");
-  XLSX.utils.book_append_sheet(workbook, sourceWorksheet(rows("T-Fiber", tfiberSnapshot.docs)), "T-Fiber");
+  XLSX.utils.book_append_sheet(workbook, sourceWorksheet(rows), providerLabel);
   return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
 }
 
-export async function buildTeamKnocksExport(team: Team, range: ExportRange) {
+export async function buildTeamKnocksExport(team: Team, range: ExportRange, provider: TeamExportProvider) {
   const members = new Set(team.members);
   const cachedRows = await readKnockExportCacheRows(range.start, range.end, team.members);
+  const providerLabel = provider === "att" ? "ATT" : "T-Fiber";
   const matching = cachedRows
-    .filter((row) => Boolean(row.repUid && members.has(row.repUid)))
+    .filter((row) => Boolean(row.repUid && members.has(row.repUid) && row.provider === providerLabel))
     .sort((left, right) => left.activityDateKey.localeCompare(right.activityDateKey) || left.rowIndex - right.rowIndex);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, sourceWorksheet(matching.filter((row) => row.provider === "ATT").map((row) => ({ provider: row.provider, rawData: row.rawData }))), "ATT");
-  XLSX.utils.book_append_sheet(workbook, sourceWorksheet(matching.filter((row) => row.provider === "T-Fiber").map((row) => ({ provider: row.provider, rawData: row.rawData }))), "T-Fiber");
+  XLSX.utils.book_append_sheet(workbook, sourceWorksheet(matching.map((row) => ({ provider: row.provider, rawData: row.rawData }))), providerLabel);
   return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
 }

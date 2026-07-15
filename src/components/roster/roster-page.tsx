@@ -79,8 +79,6 @@ const blankForm: RepForm = {
   weeklyKnocksGoal: "0",
 };
 
-const ADD_LOCATION_VALUE = "__add_location__";
-
 function split(value: string) {
   return Array.from(new Set(value.split(",").map((item) => item.trim()).filter(Boolean)));
 }
@@ -235,6 +233,9 @@ export function RosterPage() {
   const [aliasDraft, setAliasDraft] = useState("");
   const [addAliasTarget, setAddAliasTarget] = useState<Rep | null>(null);
   const [locationDialogRep, setLocationDialogRep] = useState<Rep | null>(null);
+  const [managerDraft, setManagerDraft] = useState("");
+  const [managerCreating, setManagerCreating] = useState(false);
+  const [managerCreateOpen, setManagerCreateOpen] = useState(false);
   const [locationDraft, setLocationDraft] = useState("");
   const [locationCreating, setLocationCreating] = useState(false);
   const [locationCreateTarget, setLocationCreateTarget] = useState<LocationCreateTarget | null>(null);
@@ -494,6 +495,31 @@ export function RosterPage() {
       toast.error(cause instanceof Error ? cause.message : "Unable to create location.");
     } finally {
       setLocationCreating(false);
+    }
+  }
+
+  async function createManager() {
+    const name = managerDraft.trim();
+    if (!name) return;
+    setManagerCreating(true);
+    try {
+      const response = await request("/api/managers", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
+      const result = await response.json() as { error?: unknown; manager?: ManagerOption };
+      if (!response.ok) throw new Error(formatApiError(result.error, "Unable to create manager."));
+      if (!result.manager) throw new Error("The manager was created without a valid response.");
+      const created = result.manager;
+      setManagers((current) => [...current.filter((item) => item.managerUid !== created.managerUid), created].sort((a, b) => a.name.localeCompare(b.name)));
+      setForm((current) => ({ ...current, managerUid: created.managerUid, managerName: created.name }));
+      setManagerCreateOpen(false);
+      setManagerDraft("");
+      toast.success(`Manager ${created.name} added.`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to create manager.");
+    } finally {
+      setManagerCreating(false);
     }
   }
 
@@ -869,13 +895,18 @@ export function RosterPage() {
             </section>
             <section className="grid gap-3 md:grid-cols-2">
               <Field label="Manager">
-                <Select value={form.managerUid || "__none__"} onValueChange={(value) => setForm({ ...form, managerUid: value === "__none__" ? "" : value, managerName: value === "__none__" ? "" : managers.find((item) => item.managerUid === value)?.name ?? "" })}>
-                  <SelectTrigger><SelectValue placeholder="Manager" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">No manager</SelectItem>
-                    {managers.map((manager) => <SelectItem key={manager.managerUid} value={manager.managerUid}>{manager.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <div className="flex gap-2">
+                  <Select value={form.managerUid || "__none__"} onValueChange={(value) => setForm({ ...form, managerUid: value === "__none__" ? "" : value, managerName: value === "__none__" ? "" : managers.find((item) => item.managerUid === value)?.name ?? "" })}>
+                    <SelectTrigger className="min-w-0 flex-1"><SelectValue placeholder="Manager" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">No manager</SelectItem>
+                      {managers.map((manager) => <SelectItem key={manager.managerUid} value={manager.managerUid}>{manager.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Button type="button" variant="outline" className="shrink-0" onClick={() => { setManagerDraft(""); setManagerCreateOpen(true); }}>
+                    <Plus className="h-4 w-4" /> Add
+                  </Button>
+                </div>
               </Field>
               <Field label="Team" helper="Reporting group only; this does not change the manager.">
                 <Select value={form.teamId || "__none__"} onValueChange={(value) => setForm({ ...form, teamId: value === "__none__" ? "" : value })}>
@@ -889,20 +920,17 @@ export function RosterPage() {
             </section>
             <section className="grid gap-3 md:grid-cols-2">
               <Field label="Location">
-                <Select value={form.locationId} onValueChange={(value) => {
-                  if (value === ADD_LOCATION_VALUE) {
-                    setLocationCreateTarget("editor");
-                    setLocationDraft("");
-                    return;
-                  }
-                  setForm({ ...form, locationId: value, locationName: locations.find((item) => item.locationId === value)?.name ?? "" });
-                }}>
-                  <SelectTrigger><SelectValue placeholder="Location" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={ADD_LOCATION_VALUE}>Add location</SelectItem>
-                    {locations.map((location) => <SelectItem key={location.locationId} value={location.locationId}>{location.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <div className="flex gap-2">
+                  <Select value={form.locationId} onValueChange={(value) => setForm({ ...form, locationId: value, locationName: locations.find((item) => item.locationId === value)?.name ?? "" })}>
+                    <SelectTrigger className="min-w-0 flex-1"><SelectValue placeholder="Location" /></SelectTrigger>
+                    <SelectContent>
+                      {locations.map((location) => <SelectItem key={location.locationId} value={location.locationId}>{location.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Button type="button" variant="outline" className="shrink-0" onClick={() => { setLocationCreateTarget("editor"); setLocationDraft(""); }}>
+                    <Plus className="h-4 w-4" /> Add
+                  </Button>
+                </div>
               </Field>
             </section>
             <section className="grid gap-3 md:grid-cols-2">
@@ -923,6 +951,29 @@ export function RosterPage() {
               <Button type="submit" disabled={saving}>{saving ? "Saving..." : editing ? "Save changes" : "Create representative"}</Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={managerCreateOpen} onOpenChange={(open) => {
+        if (managerCreating) return;
+        setManagerCreateOpen(open);
+        if (!open) setManagerDraft("");
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add manager</DialogTitle>
+            <DialogDescription>Create a manager and assign them to this representative.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="roster-manager-name">Manager name</Label>
+            <Input id="roster-manager-name" value={managerDraft} onChange={(event) => setManagerDraft(event.target.value)} placeholder="New manager name" autoFocus />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" disabled={managerCreating} onClick={() => setManagerCreateOpen(false)}>Cancel</Button>
+            <Button onClick={() => void createManager()} disabled={managerCreating || managerDraft.trim().length < 2}>
+              {managerCreating ? "Adding..." : "Add manager"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

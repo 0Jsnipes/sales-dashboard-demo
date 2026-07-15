@@ -13,6 +13,7 @@ const input = z.object({
   color: z.string().regex(/^#[0-9a-f]{6}$/i).default("#2563eb"),
   active: z.boolean().default(true),
   members: z.array(z.string().trim().min(1)).max(400).default([]),
+  managerRepUid: z.string().trim().min(1).nullable().default(null),
 });
 
 export async function GET(request: Request) {
@@ -34,7 +35,11 @@ export async function GET(request: Request) {
       memberById.set(summary.repUid, summary);
     }
     return NextResponse.json({
-      teams: teams.map((team) => ({ ...team, memberDetails: team.members.map((repUid) => memberById.get(repUid)).filter(Boolean) })),
+      teams: teams.map((team) => ({
+        ...team,
+        memberDetails: team.members.map((repUid) => memberById.get(repUid)).filter(Boolean),
+        managerDetails: team.managerRepUid ? memberById.get(team.managerRepUid) ?? null : null,
+      })),
       canManage,
       canPrepareExports: canImportSales(actor),
     });
@@ -52,6 +57,9 @@ export async function POST(request: Request) {
     const existing = await getTeams();
     if (existing.some((team) => team.name.toLowerCase() === value.data.name.toLowerCase())) {
       return NextResponse.json({ error: "A team with this name already exists." }, { status: 409 });
+    }
+    if (value.data.managerRepUid && !(await getAdminDb().collection("reps").doc(value.data.managerRepUid).get()).exists) {
+      return NextResponse.json({ error: "Choose a valid team manager." }, { status: 400 });
     }
     const { members, ...details } = value.data;
     const team = await createTeam(details, actor.token.uid);

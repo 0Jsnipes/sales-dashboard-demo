@@ -5,6 +5,13 @@ export interface Team {
   color: string;
   active: boolean;
   members: string[];
+  managerRepUid: string | null;
+  managerDetails?: {
+    repUid: string;
+    displayName: string;
+    email: string;
+    status: string;
+  } | null;
   memberDetails?: Array<{
     repUid: string;
     displayName: string;

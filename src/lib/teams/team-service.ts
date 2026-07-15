@@ -9,7 +9,7 @@ const TEAMS = "teams";
 const REPS = "reps";
 const USERS = "users";
 
-type TeamInput = Pick<Team, "name" | "description" | "color" | "active">;
+type TeamInput = Pick<Team, "name" | "description" | "color" | "active" | "managerRepUid">;
 
 function uniqueIds(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -25,6 +25,7 @@ export function normalizeTeam(teamId: string, data: Record<string, unknown>): Te
     color: String(data.color ?? "#2563eb"),
     active: data.active !== false,
     members: members.length ? members : uniqueIds(data.repUids),
+    managerRepUid: typeof data.managerRepUid === "string" && data.managerRepUid.trim() ? data.managerRepUid.trim() : null,
     createdAt: data.createdAt,
     createdBy: typeof data.createdBy === "string" ? data.createdBy : undefined,
     updatedAt: data.updatedAt,
@@ -56,6 +57,7 @@ export async function createTeam(data: TeamInput, actorUid: string, db: Firestor
     description: data.description.trim(),
     color: data.color,
     active: data.active,
+    managerRepUid: data.managerRepUid,
     members: [],
     createdAt: FieldValue.serverTimestamp(),
     createdBy: actorUid,

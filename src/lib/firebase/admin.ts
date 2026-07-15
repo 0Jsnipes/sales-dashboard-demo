@@ -3,6 +3,7 @@ import "server-only";
 import { type App, cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 
 function normalizePrivateKey(value: string | undefined) {
   const trimmed = value?.trim();
@@ -31,3 +32,4 @@ export function getAdminApp(): App {
 const databaseId = resolveDatabaseId(process.env.FIREBASE_DATABASE_ID);
 export const getAdminDb = () => getFirestore(getAdminApp(), databaseId);
 export const getAdminAuth = () => getAuth(getAdminApp());
+export const getAdminStorage = () => getStorage(getAdminApp());

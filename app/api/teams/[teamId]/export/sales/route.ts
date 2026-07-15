@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { canViewTeams, requireActor } from "@/src/lib/firebase/server-auth";
 import { errorResponse } from "@/src/lib/api/error-response";
-import { buildTeamSalesExport, parseTeamExportRange, teamExportSlug } from "@/src/lib/teams/export";
+import { buildTeamSalesExport, parseTeamExportRange, teamExportSlug, type TeamExportProvider } from "@/src/lib/teams/export";
 import { getTeamById } from "@/src/lib/teams/team-service";
 
 export const runtime = "nodejs";
@@ -14,12 +14,14 @@ export async function GET(request: Request, { params }: Params) {
     if (!canViewTeams(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     const range = parseTeamExportRange(new URL(request.url).searchParams);
     if (!range) return NextResponse.json({ error: "Choose a valid export date range." }, { status: 400 });
+    const provider = new URL(request.url).searchParams.get("provider") as TeamExportProvider | null;
+    if (provider !== "att" && provider !== "tfiber") return NextResponse.json({ error: "Choose ATT or T-Fiber." }, { status: 400 });
     const team = await getTeamById((await params).teamId);
     if (!team) return NextResponse.json({ error: "TEAM_NOT_FOUND" }, { status: 404 });
-    const file = await buildTeamSalesExport(team, range);
+    const file = await buildTeamSalesExport(team, range, provider);
     return new NextResponse(file, { headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="${teamExportSlug(team)}-sales-${range.start}-to-${range.end}.xlsx"`,
+      "Content-Disposition": `attachment; filename="${teamExportSlug(team)}-${provider}-sales-${range.start}-to-${range.end}.xlsx"`,
     } });
   } catch (error) {
     return errorResponse("teams/[teamId]/export/sales", error, "EXPORT_FAILED");
