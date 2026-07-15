@@ -9,11 +9,12 @@ import { rematchATTOrdersForRep } from "@/src/lib/imports/att";
 import { parseCommonFilters, applyTextSearchFilter } from "@/src/lib/api/report-filters";
 import { autoMoveNoSaleRepsToInactive } from "@/src/lib/reps/lifecycle";
 import { errorResponse } from "@/src/lib/api/error-response";
+import { findTeamForManager, getTeamById } from "@/src/lib/teams/team-service";
 
 export const runtime = "nodejs";
 
 const socials = z.object({ instagram: z.string().max(160).optional(), facebook: z.string().max(160).optional(), tiktok: z.string().max(160).optional(), linkedin: z.string().max(160).optional() }).default({});
-const createRep = z.object({ displayName: z.string().min(2).max(120), email: z.union([z.string().email(), z.literal("")]).default(""), phone: z.string().max(40).optional(), managerUid: z.string().nullable().optional(), managerName: z.string().max(120).default(""), locationId: z.string().min(1).max(80), locationName: z.string().min(1).max(120), programIds: z.array(z.string().min(1).max(80)).default([]), vendorType: z.enum(["organic", "subVendor"]).default("organic"), weeklySalesGoal: z.number().int().min(0).max(10000).default(0), weeklyKnocksGoal: z.number().int().min(0).max(10000).default(0), salesIds: z.array(z.string().min(1).max(80)).default([]), aliases: z.array(z.string().min(1).max(120)).default([]), socials });
+const createRep = z.object({ displayName: z.string().min(2).max(120), email: z.union([z.string().email(), z.literal("")]).default(""), phone: z.string().max(40).optional(), managerUid: z.string().nullable().optional(), managerName: z.string().max(120).default(""), teamId: z.string().trim().min(1).nullable().optional(), locationId: z.string().min(1).max(80), locationName: z.string().min(1).max(120), programIds: z.array(z.string().min(1).max(80)).default([]), vendorType: z.enum(["organic", "subVendor"]).default("organic"), weeklySalesGoal: z.number().int().min(0).max(10000).default(0), weeklyKnocksGoal: z.number().int().min(0).max(10000).default(0), salesIds: z.array(z.string().min(1).max(80)).default([]), aliases: z.array(z.string().min(1).max(120)).default([]), socials });
 
 const chunks = <T,>(values: T[], size: number) => Array.from({ length: Math.ceil(values.length / size) }, (_, index) => values.slice(index * size, (index + 1) * size));
 
@@ -93,11 +94,27 @@ export async function POST(request: Request) {
     const input = createRep.safeParse(await request.json());
     if (!input.success) return NextResponse.json({ error: input.error.flatten() }, { status: 400 });
     const [firstName = "", ...rest] = input.data.displayName.trim().split(/\s+/);
-    const document = getAdminDb().collection("reps").doc();
+    const db = getAdminDb();
+    const requestedTeam = input.data.teamId ? await getTeamById(input.data.teamId, db) : null;
+    if (input.data.teamId && (!requestedTeam || !requestedTeam.active)) return NextResponse.json({ error: "Choose an active team." }, { status: 400 });
+    const correspondingTeam = requestedTeam ?? await findTeamForManager(input.data.managerUid, input.data.managerName, db);
+    const document = db.collection("reps").doc();
     const rep = {
-      repUid: document.id, displayName: input.data.displayName.trim(), firstName, lastName: rest.join(" "), email: input.data.email.trim(), emailNormalized: normalizeEmail(input.data.email), phone: input.data.phone?.trim() || "", salesIds: input.data.salesIds.map(normalizeSalesId), aliases: input.data.aliases.map((alias) => alias.trim()), managerUid: input.data.managerUid ?? null, managerName: input.data.managerName.trim(), teamId: null, locationId: input.data.locationId.trim(), locationName: input.data.locationName.trim(), programIds: input.data.programIds.map((program) => program.trim()), vendorType: input.data.vendorType, weeklySalesGoal: input.data.weeklySalesGoal, weeklyKnocksGoal: input.data.weeklyKnocksGoal, socials: input.data.socials, status: "active" as const, authUid: null, accountStatus: "none" as const, onboarding: { onboarded: false, checks: {} }, search: { displayName: normalizeName(input.data.displayName), aliases: input.data.aliases.map(normalizeName), salesIds: input.data.salesIds.map(normalizeSalesId) }, createdAt: FieldValue.serverTimestamp(), createdBy: actor.token.uid, updatedAt: FieldValue.serverTimestamp(), updatedBy: actor.token.uid,
+      repUid: document.id, displayName: input.data.displayName.trim(), firstName, lastName: rest.join(" "), email: input.data.email.trim(), emailNormalized: normalizeEmail(input.data.email), phone: input.data.phone?.trim() || "", salesIds: input.data.salesIds.map(normalizeSalesId), aliases: input.data.aliases.map((alias) => alias.trim()), managerUid: input.data.managerUid ?? null, managerName: input.data.managerName.trim(), teamId: correspondingTeam?.teamId ?? null, locationId: input.data.locationId.trim(), locationName: input.data.locationName.trim(), programIds: input.data.programIds.map((program) => program.trim()), vendorType: input.data.vendorType, weeklySalesGoal: input.data.weeklySalesGoal, weeklyKnocksGoal: input.data.weeklyKnocksGoal, socials: input.data.socials, status: "active" as const, authUid: null, accountStatus: "none" as const, onboarding: { onboarded: false, checks: {} }, search: { displayName: normalizeName(input.data.displayName), aliases: input.data.aliases.map(normalizeName), salesIds: input.data.salesIds.map(normalizeSalesId) }, createdAt: FieldValue.serverTimestamp(), createdBy: actor.token.uid, updatedAt: FieldValue.serverTimestamp(), updatedBy: actor.token.uid,
     };
-    await document.create(rep);
+    if (correspondingTeam) {
+      const batch = db.batch();
+      batch.create(document, rep);
+      batch.update(db.collection("teams").doc(correspondingTeam.teamId), {
+        members: FieldValue.arrayUnion(document.id),
+        repUids: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: actor.token.uid,
+      });
+      await batch.commit();
+    } else {
+      await document.create(rep);
+    }
     const [rematchedTFiberOrders, rematchedATTOrders] = await Promise.all([rematchTFiberOrdersForRep(rep), rematchATTOrdersForRep(rep)]);
     return NextResponse.json({ rep, rematchedTFiberOrders, rematchedATTOrders }, { status: 201 });
   } catch (error) { return errorResponse("reps", error); }

@@ -44,6 +44,36 @@ export async function getActiveTeams(db: Firestore = getAdminDb()) {
   return (await getTeams(db)).filter((team) => team.active);
 }
 
+function normalizedManagerName(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** Finds one unambiguous active reporting team for a roster manager. */
+export async function findTeamForManager(managerUid: string | null | undefined, managerName: string, db: Firestore = getAdminDb()) {
+  const teams = await getActiveTeams(db);
+  const matches = new Map<string, Team>();
+  if (managerUid) {
+    for (const team of teams) if (team.managerRepUid === managerUid) matches.set(team.teamId, team);
+  }
+  const normalizedName = normalizedManagerName(managerName);
+  if (normalizedName) {
+    const managedTeams = teams.filter((team) => team.managerRepUid);
+    const managerRepUids = [...new Set(managedTeams.map((team) => team.managerRepUid!))];
+    const managerSnapshots = managerRepUids.length
+      ? await db.getAll(...managerRepUids.map((repUid) => db.collection(REPS).doc(repUid)))
+      : [];
+    const managerNameByRepUid = new Map(managerSnapshots.filter((snapshot) => snapshot.exists).map((snapshot) => [snapshot.id, normalizedManagerName(String(snapshot.data()?.displayName ?? ""))]));
+    for (const team of managedTeams) {
+      if (managerNameByRepUid.get(team.managerRepUid!) === normalizedName) matches.set(team.teamId, team);
+    }
+    for (const team of teams) {
+      const teamName = normalizedManagerName(team.name);
+      if (teamName === normalizedName || teamName === `${normalizedName} team`) matches.set(team.teamId, team);
+    }
+  }
+  return matches.size === 1 ? [...matches.values()][0]! : null;
+}
+
 export async function getTeamById(teamId: string, db: Firestore = getAdminDb()) {
   const snapshot = await db.collection(TEAMS).doc(teamId).get();
   return snapshot.exists ? normalizeTeam(snapshot.id, snapshot.data() ?? {}) : null;

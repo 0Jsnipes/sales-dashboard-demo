@@ -420,6 +420,19 @@ export function RosterPage() {
     };
   }
 
+  function correspondingTeam(managerUid: string, managerName: string) {
+    const normalizedName = managerName.trim().toLowerCase().replace(/\s+/g, " ");
+    const matches = teams.filter((team) => {
+      if (!team.active) return false;
+      const teamName = team.name.trim().toLowerCase().replace(/\s+/g, " ");
+      const assignedManagerName = team.managerDetails?.displayName.trim().toLowerCase().replace(/\s+/g, " ") ?? "";
+      return team.managerRepUid === managerUid
+        || (normalizedName && assignedManagerName === normalizedName)
+        || (normalizedName && (teamName === normalizedName || teamName === `${normalizedName} team`));
+    });
+    return matches.length === 1 ? matches[0] : null;
+  }
+
   async function saveRep(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!form.displayName.trim()) {
@@ -438,6 +451,7 @@ export function RosterPage() {
         phone: form.phone.trim(),
         managerUid: form.managerUid || null,
         managerName: form.managerName.trim(),
+        teamId: form.teamId || null,
         locationId: form.locationId.trim(),
         locationName: form.locationName.trim(),
         programIds: split(form.programIds),
@@ -454,7 +468,7 @@ export function RosterPage() {
       const result = await response.json() as { error?: unknown; rep?: Rep };
       if (!response.ok) throw new Error(formatApiError(result.error, "Unable to save representative."));
       const savedRepUid = editing?.repUid ?? result.rep?.repUid;
-      if (savedRepUid && form.teamId !== (editing?.teamId ?? "")) {
+      if (editing && savedRepUid && form.teamId !== (editing.teamId ?? "")) {
         await authedJson(`/api/reps/${savedRepUid}/team`, {
           method: "PATCH",
           body: JSON.stringify({ teamId: form.teamId || null }),
@@ -896,7 +910,11 @@ export function RosterPage() {
             <section className="grid gap-3 md:grid-cols-2">
               <Field label="Manager">
                 <div className="flex gap-2">
-                  <Select value={form.managerUid || "__none__"} onValueChange={(value) => setForm({ ...form, managerUid: value === "__none__" ? "" : value, managerName: value === "__none__" ? "" : managers.find((item) => item.managerUid === value)?.name ?? "" })}>
+                  <Select value={form.managerUid || "__none__"} onValueChange={(value) => {
+                    const manager = value === "__none__" ? null : managers.find((item) => item.managerUid === value) ?? null;
+                    const team = manager ? correspondingTeam(manager.managerUid, manager.name) : null;
+                    setForm({ ...form, managerUid: manager?.managerUid ?? "", managerName: manager?.name ?? "", teamId: team?.teamId ?? "" });
+                  }}>
                     <SelectTrigger className="min-w-0 flex-1"><SelectValue placeholder="Manager" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__none__">No manager</SelectItem>
