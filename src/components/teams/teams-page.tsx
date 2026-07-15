@@ -57,6 +57,8 @@ export function TeamsPage() {
   const [exportRangeMode, setExportRangeMode] = useState<ExportRangeMode>("mtd");
   const [customStart, setCustomStart] = useState(dateId(new Date()));
   const [customEnd, setCustomEnd] = useState(dateId(new Date()));
+  const [exportSales, setExportSales] = useState(true);
+  const [exportKnocks, setExportKnocks] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [preparingExports, setPreparingExports] = useState(false);
 
@@ -173,10 +175,16 @@ export function TeamsPage() {
     setExportRangeMode("mtd");
     setCustomStart(range.start);
     setCustomEnd(range.end);
+    setExportSales(true);
+    setExportKnocks(true);
   }
 
   async function downloadTeamExports() {
     if (!exportTeam) return;
+    const kinds: Array<"sales" | "knocks"> = [];
+    if (exportSales) kinds.push("sales");
+    if (exportKnocks) kinds.push("knocks");
+    if (!kinds.length) return toast.error("Select Sales, Knocks, or both.");
     const range = exportRangeMode === "custom" ? { start: customStart, end: customEnd } : presetRange(exportRangeMode);
     if (!range.start || !range.end || range.start > range.end) return toast.error("Choose a valid export date range.");
     setExporting(true);
@@ -192,7 +200,7 @@ export function TeamsPage() {
         const fileName = disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? `${kind}-${range.start}-to-${range.end}.xlsx`;
         return { blob: await response.blob(), fileName };
       };
-      const files = await Promise.all([getFile("sales"), getFile("knocks")]);
+      const files = await Promise.all(kinds.map(getFile));
       for (const file of files) {
         const url = URL.createObjectURL(file.blob);
         const anchor = document.createElement("a");
@@ -203,7 +211,7 @@ export function TeamsPage() {
         anchor.remove();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
-      toast.success("Downloaded separate sales and knocks workbooks.");
+      toast.success(kinds.length === 2 ? "Downloaded sales and knocks workbooks." : `Downloaded the ${kinds[0]} workbook.`);
       setExportTeam(null);
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to export team data.");
@@ -286,13 +294,26 @@ export function TeamsPage() {
 
       <Dialog open={Boolean(exportTeam)} onOpenChange={(open) => !open && !exporting && setExportTeam(null)}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Export {exportTeam?.name}</DialogTitle><DialogDescription>Downloads two source-style Excel files: one for sales and one for knocks, filtered to this team&apos;s current members.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Export {exportTeam?.name}</DialogTitle><DialogDescription>Select which source-style Excel files to download. Each file is filtered to this team&apos;s current members.</DialogDescription></DialogHeader>
           <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Files to download</Label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border p-3">
+                  <Checkbox checked={exportSales} onCheckedChange={(value) => setExportSales(value === true)} />
+                  <span><span className="block text-sm font-medium">Sales</span><span className="text-xs text-muted-foreground">Download the team sales workbook.</span></span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border p-3">
+                  <Checkbox checked={exportKnocks} onCheckedChange={(value) => setExportKnocks(value === true)} />
+                  <span><span className="block text-sm font-medium">Knocks</span><span className="text-xs text-muted-foreground">Download the team knocks workbook.</span></span>
+                </label>
+              </div>
+            </div>
             <div className="space-y-2"><Label htmlFor="team-export-range">Date range</Label><Select value={exportRangeMode} onValueChange={(value) => setExportRangeMode(value as ExportRangeMode)}><SelectTrigger id="team-export-range"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="wtd">WTD</SelectItem><SelectItem value="mtd">MTD</SelectItem><SelectItem value="ytd">YTD</SelectItem><SelectItem value="custom">Custom range</SelectItem></SelectContent></Select></div>
             {exportRangeMode === "custom" ? <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="team-export-start">Start date</Label><Input id="team-export-start" type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} /></div><div className="space-y-2"><Label htmlFor="team-export-end">End date</Label><Input id="team-export-end" type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} /></div></div> : <p className="rounded-xl bg-muted p-3 text-sm text-muted-foreground">{(() => { const range = presetRange(exportRangeMode); return `${range.start} through ${range.end}`; })()}</p>}
-            <p className="text-xs text-muted-foreground">The knocks workbook is rebuilt from the stored source uploads, so larger date histories may take a moment.</p>
+            {exportKnocks ? <p className="text-xs text-muted-foreground">The knocks workbook is rebuilt from the stored source uploads, so larger date histories may take a moment.</p> : null}
           </div>
-          <DialogFooter><Button variant="outline" disabled={exporting} onClick={() => setExportTeam(null)}>Cancel</Button><Button disabled={exporting} onClick={() => void downloadTeamExports()}><Download className="h-4 w-4" />{exporting ? "Building 2 files..." : "Download 2 files"}</Button></DialogFooter>
+          <DialogFooter><Button variant="outline" disabled={exporting} onClick={() => setExportTeam(null)}>Cancel</Button><Button disabled={exporting || (!exportSales && !exportKnocks)} onClick={() => void downloadTeamExports()}><Download className="h-4 w-4" />{exporting ? `Building ${exportSales && exportKnocks ? "2 files" : exportSales ? "sales" : "knocks"}...` : exportSales && exportKnocks ? "Download 2 files" : exportSales ? "Download sales" : exportKnocks ? "Download knocks" : "Select a file"}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
