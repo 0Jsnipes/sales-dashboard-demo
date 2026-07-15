@@ -52,6 +52,7 @@ export function TeamsPage() {
   const [form, setForm] = useState<TeamForm>(blankForm);
   const [memberTeam, setMemberTeam] = useState<Team | null>(null);
   const [memberQuery, setMemberQuery] = useState("");
+  const [quickManager, setQuickManager] = useState("");
   const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set());
   const [exportTeam, setExportTeam] = useState<Team | null>(null);
   const [exportRangeMode, setExportRangeMode] = useState<ExportRangeMode>("mtd");
@@ -98,6 +99,19 @@ export function TeamsPage() {
     return reps.filter((rep) => !term || `${rep.displayName} ${rep.email}`.toLowerCase().includes(term));
   }, [memberQuery, reps]);
 
+  const managerGroups = useMemo(() => {
+    const groups = new Map<string, { key: string; name: string; repUids: string[] }>();
+    for (const rep of reps) {
+      const name = rep.managerName.trim();
+      if (rep.status !== "active" || !name) continue;
+      const key = name.toLowerCase();
+      const group = groups.get(key) ?? { key, name, repUids: [] };
+      group.repUids.push(rep.repUid);
+      groups.set(key, group);
+    }
+    return [...groups.values()].sort((left, right) => left.name.localeCompare(right.name));
+  }, [reps]);
+
   function membersFor(team: Team) {
     const details = new Map(team.memberDetails?.map((member) => [member.repUid, member]) ?? []);
     return team.members.map((repUid) => {
@@ -137,7 +151,17 @@ export function TeamsPage() {
   function openMembers(team: Team) {
     setMemberTeam(team);
     setMemberQuery("");
+    setQuickManager("");
     setSelectedMembers(new Set(team.members));
+  }
+
+  function addManagerReps() {
+    const group = managerGroups.find((item) => item.key === quickManager);
+    if (!group) return;
+    const additions = group.repUids.filter((repUid) => !selectedMembers.has(repUid));
+    setSelectedMembers((current) => new Set([...current, ...group.repUids]));
+    toast.success(additions.length ? `Added ${additions.length} ${additions.length === 1 ? "rep" : "reps"} from ${group.name}.` : `${group.name}'s reps are already selected.`);
+    setQuickManager("");
   }
 
   async function saveMembers() {
@@ -320,6 +344,19 @@ export function TeamsPage() {
       <Dialog open={Boolean(memberTeam)} onOpenChange={(open) => !open && setMemberTeam(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle>Manage {memberTeam?.name} members</DialogTitle><DialogDescription>{selectedMembers.size} selected. Adding a rep here automatically removes them from any prior team.</DialogDescription></DialogHeader>
+          <div className="space-y-2 rounded-xl border p-3">
+            <Label htmlFor="team-quick-manager">Quick add by manager</Label>
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+              <Select value={quickManager} onValueChange={setQuickManager}>
+                <SelectTrigger id="team-quick-manager"><SelectValue placeholder="Choose a manager" /></SelectTrigger>
+                <SelectContent>
+                  {managerGroups.map((manager) => <SelectItem key={manager.key} value={manager.key}>{manager.name} ({manager.repUids.length})</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Button type="button" variant="outline" disabled={!quickManager} onClick={addManagerReps}><Plus className="h-4 w-4" />Add manager&apos;s reps</Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Selects all active reps currently assigned to that manager. You can adjust individual selections below before saving.</p>
+          </div>
           <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" placeholder="Search by name or email" value={memberQuery} onChange={(event) => setMemberQuery(event.target.value)} /></div>
           <ScrollArea className="h-[420px] rounded-xl border">
             <div className="divide-y">
