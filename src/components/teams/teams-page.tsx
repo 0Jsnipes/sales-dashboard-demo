@@ -50,9 +50,12 @@ export function TeamsPage() {
   const [status, setStatus] = useState("active");
   const [editor, setEditor] = useState<Team | "new" | null>(null);
   const [form, setForm] = useState<TeamForm>(blankForm);
+  const [managerTeamOpen, setManagerTeamOpen] = useState(false);
+  const [managerTeamKey, setManagerTeamKey] = useState("");
+  const [managerTeamName, setManagerTeamName] = useState("");
+  const [creatingManagerTeam, setCreatingManagerTeam] = useState(false);
   const [memberTeam, setMemberTeam] = useState<Team | null>(null);
   const [memberQuery, setMemberQuery] = useState("");
-  const [quickManager, setQuickManager] = useState("");
   const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set());
   const [exportTeam, setExportTeam] = useState<Team | null>(null);
   const [exportRangeMode, setExportRangeMode] = useState<ExportRangeMode>("mtd");
@@ -130,6 +133,44 @@ export function TeamsPage() {
     setForm(team ? { name: team.name, description: team.description, color: team.color, active: team.active } : blankForm);
   }
 
+  function openManagerTeam() {
+    setManagerTeamKey("");
+    setManagerTeamName("");
+    setManagerTeamOpen(true);
+  }
+
+  function selectManagerTeam(key: string) {
+    const manager = managerGroups.find((item) => item.key === key);
+    setManagerTeamKey(key);
+    setManagerTeamName(manager ? `${manager.name} Team` : "");
+  }
+
+  async function createManagerTeam() {
+    const manager = managerGroups.find((item) => item.key === managerTeamKey);
+    if (!manager) return toast.error("Choose a manager.");
+    if (managerTeamName.trim().length < 2) return toast.error("Enter a team name with at least two characters.");
+    setCreatingManagerTeam(true);
+    try {
+      await authedJson("/api/teams", {
+        method: "POST",
+        body: JSON.stringify({
+          name: managerTeamName.trim(),
+          description: `Team for ${manager.name} and their reps.`,
+          color: "#2563eb",
+          active: true,
+          members: manager.repUids,
+        }),
+      });
+      toast.success(`${managerTeamName.trim()} created with ${manager.repUids.length} ${manager.repUids.length === 1 ? "rep" : "reps"}.`);
+      setManagerTeamOpen(false);
+      await load();
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to create the manager team.");
+    } finally {
+      setCreatingManagerTeam(false);
+    }
+  }
+
   async function saveTeam() {
     if (form.name.trim().length < 2) return toast.error("Enter a team name with at least two characters.");
     setSaving(true);
@@ -151,17 +192,7 @@ export function TeamsPage() {
   function openMembers(team: Team) {
     setMemberTeam(team);
     setMemberQuery("");
-    setQuickManager("");
     setSelectedMembers(new Set(team.members));
-  }
-
-  function addManagerReps() {
-    const group = managerGroups.find((item) => item.key === quickManager);
-    if (!group) return;
-    const additions = group.repUids.filter((repUid) => !selectedMembers.has(repUid));
-    setSelectedMembers((current) => new Set([...current, ...group.repUids]));
-    toast.success(additions.length ? `Added ${additions.length} ${additions.length === 1 ? "rep" : "reps"} from ${group.name}.` : `${group.name}'s reps are already selected.`);
-    setQuickManager("");
   }
 
   async function saveMembers() {
@@ -273,7 +304,7 @@ export function TeamsPage() {
               <CardTitle className="flex items-center gap-2 text-2xl"><UsersRound className="h-6 w-6 text-primary" />Reporting teams</CardTitle>
               <CardDescription className="mt-2">Group reps for analytics and exports independently from manager hierarchy.</CardDescription>
             </div>
-            <div className="flex flex-wrap gap-2">{canPrepareExports ? <Button variant="outline" disabled={preparingExports} onClick={() => void prepareExportData()}><DatabaseZap className="h-4 w-4" />{preparingExports ? "Preparing exports..." : "Prepare export data"}</Button> : null}{canManage ? <Button onClick={() => openEditor()}><Plus className="h-4 w-4" />Create Team</Button> : null}</div>
+            <div className="flex flex-wrap gap-2">{canPrepareExports ? <Button variant="outline" disabled={preparingExports} onClick={() => void prepareExportData()}><DatabaseZap className="h-4 w-4" />{preparingExports ? "Preparing exports..." : "Prepare export data"}</Button> : null}{canManage ? <><Button variant="outline" onClick={openManagerTeam}><UsersRound className="h-4 w-4" />Create manager team</Button><Button onClick={() => openEditor()}><Plus className="h-4 w-4" />Create Team</Button></> : null}</div>
           </div>
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
             <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" placeholder="Search teams" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
@@ -316,6 +347,27 @@ export function TeamsPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={managerTeamOpen} onOpenChange={(open) => { if (!creatingManagerTeam) setManagerTeamOpen(open); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Create manager team</DialogTitle><DialogDescription>Select a manager to create a team containing all of their active reps. Reps already assigned elsewhere will move to the new team.</DialogDescription></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-manager-team-manager">Manager</Label>
+              <Select value={managerTeamKey} onValueChange={selectManagerTeam}>
+                <SelectTrigger id="new-manager-team-manager"><SelectValue placeholder="Choose a manager" /></SelectTrigger>
+                <SelectContent>{managerGroups.map((manager) => <SelectItem key={manager.key} value={manager.key}>{manager.name} ({manager.repUids.length} {manager.repUids.length === 1 ? "rep" : "reps"})</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-manager-team-name">Team name</Label>
+              <Input id="new-manager-team-name" value={managerTeamName} onChange={(event) => setManagerTeamName(event.target.value)} placeholder="Manager name Team" maxLength={120} />
+            </div>
+            {managerTeamKey ? <p className="rounded-xl bg-muted p-3 text-sm text-muted-foreground">This will add {managerGroups.find((item) => item.key === managerTeamKey)?.repUids.length ?? 0} active reps to the new team.</p> : null}
+          </div>
+          <DialogFooter><Button variant="outline" disabled={creatingManagerTeam} onClick={() => setManagerTeamOpen(false)}>Cancel</Button><Button disabled={creatingManagerTeam || !managerTeamKey || managerTeamName.trim().length < 2} onClick={() => void createManagerTeam()}>{creatingManagerTeam ? "Creating team..." : "Create manager team"}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={Boolean(exportTeam)} onOpenChange={(open) => !open && !exporting && setExportTeam(null)}>
         <DialogContent>
           <DialogHeader><DialogTitle>Export {exportTeam?.name}</DialogTitle><DialogDescription>Select which source-style Excel files to download. Each file is filtered to this team&apos;s current members.</DialogDescription></DialogHeader>
@@ -344,19 +396,6 @@ export function TeamsPage() {
       <Dialog open={Boolean(memberTeam)} onOpenChange={(open) => !open && setMemberTeam(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle>Manage {memberTeam?.name} members</DialogTitle><DialogDescription>{selectedMembers.size} selected. Adding a rep here automatically removes them from any prior team.</DialogDescription></DialogHeader>
-          <div className="space-y-2 rounded-xl border p-3">
-            <Label htmlFor="team-quick-manager">Quick add by manager</Label>
-            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-              <Select value={quickManager} onValueChange={setQuickManager}>
-                <SelectTrigger id="team-quick-manager"><SelectValue placeholder="Choose a manager" /></SelectTrigger>
-                <SelectContent>
-                  {managerGroups.map((manager) => <SelectItem key={manager.key} value={manager.key}>{manager.name} ({manager.repUids.length})</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Button type="button" variant="outline" disabled={!quickManager} onClick={addManagerReps}><Plus className="h-4 w-4" />Add manager&apos;s reps</Button>
-            </div>
-            <p className="text-xs text-muted-foreground">Selects all active reps currently assigned to that manager. You can adjust individual selections below before saving.</p>
-          </div>
           <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" placeholder="Search by name or email" value={memberQuery} onChange={(event) => setMemberQuery(event.target.value)} /></div>
           <ScrollArea className="h-[420px] rounded-xl border">
             <div className="divide-y">

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { canImportSales, canManageRoster, canViewTeams, requireActor } from "@/src/lib/firebase/server-auth";
 import { getAdminDb } from "@/src/lib/firebase/admin";
-import { createTeam, getTeams } from "@/src/lib/teams/team-service";
+import { createTeam, getTeamById, getTeams, syncTeamMembers } from "@/src/lib/teams/team-service";
 import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
@@ -12,6 +12,7 @@ const input = z.object({
   description: z.string().trim().max(500).default(""),
   color: z.string().regex(/^#[0-9a-f]{6}$/i).default("#2563eb"),
   active: z.boolean().default(true),
+  members: z.array(z.string().trim().min(1)).max(400).default([]),
 });
 
 export async function GET(request: Request) {
@@ -52,8 +53,10 @@ export async function POST(request: Request) {
     if (existing.some((team) => team.name.toLowerCase() === value.data.name.toLowerCase())) {
       return NextResponse.json({ error: "A team with this name already exists." }, { status: 409 });
     }
-    const team = await createTeam(value.data, actor.token.uid);
-    return NextResponse.json({ team }, { status: 201 });
+    const { members, ...details } = value.data;
+    const team = await createTeam(details, actor.token.uid);
+    if (members.length) await syncTeamMembers(team.teamId, members, actor.token.uid);
+    return NextResponse.json({ team: await getTeamById(team.teamId) }, { status: 201 });
   } catch (error) {
     return errorResponse("teams", error);
   }
