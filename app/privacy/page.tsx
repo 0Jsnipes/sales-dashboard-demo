@@ -12,7 +12,7 @@ export default function PrivacyPage() {
     <LegalPage
       eyebrow="Legal"
       title="Privacy Policy"
-      introduction="AB Marketing respects your privacy. This policy explains what information the AB Marketing Sales Operations application collects, why we use it, and the choices available to you. We do not sell your personal information or Google user data."
+      introduction="AB Marketing respects your privacy. This policy explains what information the AB Marketing Sales Operations application collects, why we use it, and the choices available to you. We do not sell your personal information."
       sections={[
         {
           title: "Information we collect",
@@ -20,16 +20,6 @@ export default function PrivacyPage() {
             <>
               <p>We may collect account details such as your name, work email address, role, team, manager, location, and other information supplied by you or your organization.</p>
               <p>The application processes operational data that may include sales orders, customer identifiers contained in reports, representative activity, knocks, dispositions, timestamps, goals, uploaded files, and import history.</p>
-            </>
-          ),
-        },
-        {
-          title: "Google and Gmail data",
-          content: (
-            <>
-              <p>When an authorized administrator connects Gmail, the application accesses only messages matching the configured report search criteria. It reads supported report attachments so that sales and knock data can be imported, then marks successfully processed messages as read and may apply a configured label.</p>
-              <p>Google user data is used only to provide and maintain this report-import feature. We do not use Gmail data for advertising, profiling, or unrelated purposes, and we do not sell it.</p>
-              <p>Our use and transfer of information received from Google APIs adheres to the Google API Services User Data Policy, including its Limited Use requirements.</p>
             </>
           ),
         },
@@ -50,7 +40,7 @@ export default function PrivacyPage() {
           content: (
             <>
               <p>We do not sell or rent personal information. We do not share personal information with third parties for their advertising or marketing.</p>
-              <p>Information may be shared with authorized AB Marketing personnel, your organization, and service providers that help host, secure, or operate the application, such as Google, Firebase, and deployment providers. These providers receive information only as needed to perform services for us and are expected to protect it.</p>
+              <p>Information may be shared with authorized AB Marketing personnel, your organization, and service providers that help host, secure, or operate the application, such as Firebase, Mailgun, and deployment providers. These providers receive information only as needed to perform services for us and are expected to protect it.</p>
               <p>We may disclose information when required by law, to protect rights or safety, or as part of a business transaction where appropriate safeguards apply.</p>
             </>
           ),
@@ -69,7 +59,7 @@ export default function PrivacyPage() {
           content: (
             <>
               <p>You may request access, correction, or deletion of your personal information, subject to applicable requirements and your organization&apos;s recordkeeping obligations.</p>
-              <p>You can revoke the application&apos;s Google access through your Google Account security settings. Revoking access stops future Gmail imports but does not automatically delete report data already imported into the application. Contact us or your administrator to request deletion.</p>
+              <p>Contact us or your administrator to request deletion, stop future email report imports, or ask questions about how operational data is handled.</p>
             </>
           ),
         },

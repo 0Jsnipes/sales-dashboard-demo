@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { getStorage } from "firebase-admin/storage";
 import { importATTRows, parseATTReport } from "@/src/lib/imports/att";
 import { importTFiberRows, parseTFiberWorkbook } from "@/src/lib/imports/tfiber";
-import { expectedImportFileLabel, validateImportFileName } from "@/src/lib/imports/file-conventions";
+import { expectedImportFileLabel, recognizedEmailImportKind, validateImportFileName } from "@/src/lib/imports/file-conventions";
 import { importKnockWorkbook } from "@/src/lib/knocks/import";
 import { getAdminApp, getAdminDb } from "@/src/lib/firebase/admin";
 
@@ -32,8 +32,15 @@ export async function importEmailAttachment(file: EmailAttachment, options: Impo
   const actorUid = options.actorUid;
   const sender = String(options.sender ?? "").trim();
   const subject = String(options.subject ?? "").trim();
+  const origin = String(options.origin ?? "email").trim() || "email";
   const uploadId = randomUUID();
   const storagePath = `imports/email/${uploadId}/${file.fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+  const emailAudit = {
+    ingestMethod: "email",
+    origin,
+    emailSender: sender,
+    emailSubject: subject,
+  };
 
   await getStorage(getAdminApp()).bucket().file(storagePath).save(file.buffer, {
     contentType: file.contentType || "application/octet-stream",
@@ -43,7 +50,7 @@ export async function importEmailAttachment(file: EmailAttachment, options: Impo
         uploadedBy: actorUid,
         sender,
         subject,
-        origin: options.origin ?? "email",
+        origin,
       },
     },
   });
@@ -60,6 +67,7 @@ export async function importEmailAttachment(file: EmailAttachment, options: Impo
       uploadedBy: actorUid,
       uploadedAt: new Date(),
       status: "pending",
+      ...emailAudit,
     });
     const summary = await importATTRows({
       rows: parseATTReport(file.buffer),
@@ -80,6 +88,7 @@ export async function importEmailAttachment(file: EmailAttachment, options: Impo
       uploadedBy: actorUid,
       uploadedAt: new Date(),
       status: "pending",
+      ...emailAudit,
     });
     const summary = await importTFiberRows({
       rows: parseTFiberWorkbook(file.buffer),
@@ -99,7 +108,7 @@ export async function importEmailAttachment(file: EmailAttachment, options: Impo
       metadata: {
         sender,
         subject,
-        origin: options.origin ?? "email",
+        origin,
       },
     });
     return { fileName: file.fileName, type: "knockImport", summary: result.summary, uploadId: result.uploadId };
@@ -110,8 +119,13 @@ export async function importEmailAttachment(file: EmailAttachment, options: Impo
 
 export async function importEmailAttachments(files: EmailAttachment[], options: ImportAttachmentOptions) {
   const results: Array<Record<string, unknown>> = [];
-  for (const file of files) {
+  const recognized = files.filter((file) => recognizedEmailImportKind(file.fileName));
+  const ignored = files.filter((file) => !recognizedEmailImportKind(file.fileName)).map((file) => file.fileName);
+  if (!recognized.length) {
+    throw new Error("The email did not contain a recognized sales or knock report attachment.");
+  }
+  for (const file of recognized) {
     results.push(await importEmailAttachment(file, options));
   }
-  return results;
+  return { results, ignored };
 }

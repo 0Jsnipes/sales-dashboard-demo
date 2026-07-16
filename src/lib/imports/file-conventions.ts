@@ -1,6 +1,6 @@
 import type { KnockSource } from "@/src/lib/knocks/types";
 
-type ImportKind = "attSales" | "tfiberSales" | "attKnocks" | "tfiberKnocks";
+export type ImportKind = "attSales" | "tfiberSales" | "attKnocks" | "tfiberKnocks";
 
 const patterns: Record<ImportKind, RegExp> = {
   attSales: /sales[_ -]?order/i,
@@ -22,6 +22,16 @@ export function expectedImportFileLabel(kind: ImportKind) {
 
 export function validateImportFileName(kind: ImportKind, fileName: string) {
   return patterns[kind].test(fileName.trim());
+}
+
+export function recognizedEmailImportKind(fileName: string): ImportKind | null {
+  const normalized = fileName.trim();
+  if (/\.csv$/i.test(normalized) && validateImportFileName("attSales", normalized)) return "attSales";
+  if (!/\.(xlsx|xls)$/i.test(normalized)) return null;
+  if (validateImportFileName("tfiberSales", normalized)) return "tfiberSales";
+  if (validateImportFileName("tfiberKnocks", normalized)) return "tfiberKnocks";
+  if (validateImportFileName("attKnocks", normalized)) return "attKnocks";
+  return null;
 }
 
 export function validateKnockImportFileName(source: KnockSource, fileName: string) {

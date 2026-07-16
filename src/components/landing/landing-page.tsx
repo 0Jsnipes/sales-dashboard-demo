@@ -138,40 +138,6 @@ export function LandingPage() {
         </div>
       </section>
 
-      <section className="mx-auto w-full max-w-[1440px] px-4 pb-20 sm:px-6 lg:px-8">
-        <Card className="overflow-hidden border-primary/20 bg-card/85 shadow-lg">
-          <CardHeader>
-            <div className="flex items-start gap-3">
-              <div className="rounded-2xl bg-primary/10 p-3 text-primary"><ShieldCheck className="h-5 w-5" /></div>
-              <div>
-                <CardTitle>How AB Marketing uses Google data</CardTitle>
-                <CardDescription className="mt-2 max-w-4xl text-sm leading-6">
-                  An authorized administrator may connect a Gmail account so AB Marketing can find report emails that match a narrowly configured search, read supported CSV or Excel attachments, and import authorized sales and knock data into the reporting workspace. After a successful import, the application marks the message as processed by removing its unread status and may apply a configured label.
-                </CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-2xl border border-border/70 p-4">
-              <p className="font-medium">Limited purpose</p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">Gmail data is accessed only to import authorized operational reports and maintain that import workflow.</p>
-            </div>
-            <div className="rounded-2xl border border-border/70 p-4">
-              <p className="font-medium">No data sales or advertising</p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">AB Marketing does not sell Google user data or use Gmail data for advertising, marketing profiles, or unrelated purposes.</p>
-            </div>
-            <div className="rounded-2xl border border-border/70 p-4">
-              <p className="font-medium">User control</p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">Google access can be revoked through the connected Google Account. Data practices and deletion requests are explained in the Privacy Policy.</p>
-            </div>
-            <div className="flex flex-wrap gap-3 md:col-span-3">
-              <Button asChild variant="outline"><Link href="/privacy">Read Privacy Policy</Link></Button>
-              <Button asChild variant="ghost"><Link href="/terms">Read Terms of Service</Link></Button>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-
       <footer className="border-t border-border/70 bg-card/30">
         <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-4 py-6 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
           <p>© 2026 AB Marketing. All rights reserved.</p>

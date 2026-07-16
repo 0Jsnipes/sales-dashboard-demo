@@ -19,6 +19,10 @@ export type SalesUploadRun = {
   rowsMatched?: number;
   rowsUnmatched?: number;
   summary?: { saleCount?: number };
+  ingestMethod?: string;
+  origin?: string;
+  emailSender?: string;
+  emailSubject?: string;
 };
 
 export type SalesUploadListItem = {
@@ -34,6 +38,10 @@ export type SalesUploadListItem = {
   rowsSkipped: number;
   rowsMatched: number;
   rowsUnmatched: number;
+  ingestMethod: string;
+  origin: string;
+  emailSender: string;
+  emailSubject: string;
 };
 
 export type KnockUploadRun = SalesUploadRun & {
@@ -64,6 +72,10 @@ export async function listSalesUploads(limit = 100) {
       rowsSkipped: Number(item.rowsSkipped ?? 0),
       rowsMatched: Number(item.rowsMatched ?? 0),
       rowsUnmatched: Number(item.rowsUnmatched ?? 0),
+      ingestMethod: item.ingestMethod ?? (item.uploadedBy === "system:email-import" ? "email" : "manual"),
+      origin: item.origin ?? "",
+      emailSender: item.emailSender ?? "",
+      emailSubject: item.emailSubject ?? "",
     }));
 }
 

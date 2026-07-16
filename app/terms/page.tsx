@@ -37,7 +37,7 @@ export default function TermsPage() {
           content: (
             <>
               <p>You represent that you have the right and authorization to upload, import, process, and share any information you provide to the application.</p>
-              <p>If you connect Gmail or another service, you authorize the application to access the information necessary to provide the requested feature. Gmail access is limited to configured report messages and attachments as described in our <Link className="font-medium text-primary underline-offset-4 hover:underline" href="/privacy">Privacy Policy</Link>.</p>
+              <p>If you send reports through a connected email-delivery service, you authorize the application to process the messages and attachments necessary to provide the import feature, as described in our <Link className="font-medium text-primary underline-offset-4 hover:underline" href="/privacy">Privacy Policy</Link>.</p>
             </>
           ),
         },

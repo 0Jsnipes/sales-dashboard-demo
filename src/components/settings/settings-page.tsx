@@ -101,7 +101,7 @@ const actionPermissionGroups = [
   { key: "canEmailTeamReports", label: "Email team reports", group: "Feature access" },
   { key: "canManageRosterOptions", label: "Add managers and locations", group: "Feature access" },
   { key: "canManageResources", label: "Add Tools resources", group: "Feature access" },
-  { key: "canImportEmailReports", label: "Pull Gmail reports", group: "Feature access" },
+  { key: "canImportEmailReports", label: "View email report imports", group: "Feature access" },
 ] as const;
 
 const permissionSections = [

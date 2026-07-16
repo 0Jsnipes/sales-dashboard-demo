@@ -53,6 +53,10 @@ type ServerUploadRow = {
   rowsSkipped: number;
   rowsMatched: number;
   rowsUnmatched: number;
+  ingestMethod: string;
+  origin: string;
+  emailSender: string;
+  emailSubject: string;
 };
 
 function SourceCard({
@@ -251,7 +255,7 @@ export function ImportsPage() {
 
   const permissions = normalizePermissions(profile?.permissions);
   const allowed = profile?.role === "superAdmin" || (profile?.role === "admin" && permissions.canEditSales);
-  const canPullGmail = profile?.role === "superAdmin" || permissions.canImportEmailReports;
+  const canViewEmailImports = profile?.role === "superAdmin" || permissions.canImportEmailReports;
 
   const steps = useMemo(() => ["Upload", "Validate", "Match", "Review", "Commit"], []);
 
@@ -363,33 +367,18 @@ export function ImportsPage() {
 
       <KnockImportPreview />
 
-      {inboundEmail && canPullGmail ? (
+      {inboundEmail && canViewEmailImports ? (
         <Card className="border-border/70">
           <CardHeader>
             <CardTitle>Email reports</CardTitle>
-            <CardDescription>Send source files to the site inbox or pull unread Gmail attachments into the same import pipeline.</CardDescription>
+            <CardDescription>Send report attachments to this address. Mailgun delivers them directly into the import pipeline.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
               <p className="font-medium">{inboundEmail}</p>
               <p className="mt-1 text-muted-foreground">ATT sales: `Sales_order`, T-Fiber sales: `AB Marketing Orders`, T-Fiber knocks: `Book1`, ATT knocks: `report` / `reports`.</p>
             </div>
-            <Button
-              variant="outline"
-              onClick={async () => {
-                try {
-                  const response = await authedFetch("/api/imports/email/gmail", { method: "POST" });
-                  const result = await response.json() as { error?: string; processedMessages?: number };
-                  if (!response.ok) throw new Error(result.error || "Unable to pull Gmail reports.");
-                  toast.success(`Processed ${result.processedMessages ?? 0} Gmail message(s).`);
-                  void loadUploads();
-                } catch (cause) {
-                  toast.error(cause instanceof Error ? cause.message : "Unable to pull Gmail reports.");
-                }
-              }}
-            >
-              Pull Gmail inbox
-            </Button>
+            <p className="text-muted-foreground">Delivery is automatic; no scheduled inbox scan is required.</p>
           </CardContent>
         </Card>
       ) : null}
@@ -484,6 +473,7 @@ export function ImportsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Type</TableHead>
+                    <TableHead>Source</TableHead>
                     <TableHead>File</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Rows</TableHead>
@@ -495,7 +485,7 @@ export function ImportsPage() {
                   {loadingUploads ? (
                     Array.from({ length: 3 }).map((_, index) => (
                       <TableRow key={index}>
-                        <TableCell colSpan={6}>
+                        <TableCell colSpan={7}>
                           <div className="h-10 animate-pulse rounded-2xl bg-muted/40" />
                         </TableCell>
                       </TableRow>
@@ -506,8 +496,15 @@ export function ImportsPage() {
                         <Badge variant="outline">{row.type === "attSales" ? "ATT" : "T-Fiber"}</Badge>
                       </TableCell>
                       <TableCell>
+                        <Badge variant={row.ingestMethod === "email" ? "info" : "outline"}>
+                          {row.ingestMethod === "email" ? "Email" : "Manual"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
                         <div className="space-y-1">
                           <p className="font-medium">{row.fileName}</p>
+                          {row.emailSender ? <p className="text-xs text-muted-foreground">From: {row.emailSender}</p> : null}
+                          {row.emailSubject ? <p className="text-xs text-muted-foreground">Subject: {row.emailSubject}</p> : null}
                           <p className="text-xs text-muted-foreground">{row.uploadId}</p>
                         </div>
                       </TableCell>
@@ -530,7 +527,7 @@ export function ImportsPage() {
                     </TableRow>
                   )) : (
                     <TableRow>
-                      <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                      <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
                         No sales uploads found.
                       </TableCell>
                     </TableRow>
