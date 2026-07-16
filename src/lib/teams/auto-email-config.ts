@@ -5,6 +5,35 @@ export const teamAutoEmailRangePresets = ["all", "previous-day", "wtd", "mtd", "
 export type TeamAutoEmailRangePreset = typeof teamAutoEmailRangePresets[number];
 export type TeamAutoEmailUploadType = typeof teamReportFileKinds[number];
 
+export const teamAutoEmailRuleSchema = z.object({
+  ruleId: z.string().trim().min(1).max(100),
+  teamId: z.string().trim().min(1).max(100),
+  name: z.string().trim().min(1).max(120),
+  enabled: z.boolean(),
+  triggerUploadType: z.enum(teamReportFileKinds),
+  reportFiles: z.array(z.enum(teamReportFileKinds)).min(1).max(teamReportFileKinds.length),
+  salesRange: z.enum(teamAutoEmailRangePresets),
+  knocksRange: z.enum(teamAutoEmailRangePresets),
+  frequency: z.literal("daily"),
+  cc: z.array(z.string().trim().email()).max(20),
+  subject: z.string().trim().min(1).max(200),
+  message: z.string().trim().min(1).max(4000),
+});
+
+export const teamAutoEmailRulesSchema = z.array(teamAutoEmailRuleSchema).max(20);
+export type TeamAutoEmailRule = z.infer<typeof teamAutoEmailRuleSchema>;
+
+export const teamAutoEmailTemplateInputSchema = teamAutoEmailRuleSchema.omit({
+  ruleId: true,
+  teamId: true,
+  enabled: true,
+});
+export const teamAutoEmailTemplateSchema = teamAutoEmailTemplateInputSchema.extend({
+  templateId: z.string().trim().min(1).max(100),
+});
+export type TeamAutoEmailTemplateInput = z.infer<typeof teamAutoEmailTemplateInputSchema>;
+export type TeamAutoEmailTemplate = z.infer<typeof teamAutoEmailTemplateSchema>;
+
 export const teamAutoEmailSettingsSchema = z.object({
   enabled: z.boolean(),
   triggerUploadTypes: z.array(z.enum(teamReportFileKinds)).max(teamReportFileKinds.length),
@@ -32,13 +61,21 @@ export const defaultTeamAutoEmailSettings: TeamAutoEmailSettings = {
   frequency: "daily",
   cc: [],
   subject: "Orders to date",
-  message: "Hello,\n\nYour team's sales and knock reports are attached for the selected reporting periods.",
+  message: "Hello,\n\nAttached are your daily reports.",
 };
+
+const legacyDefaultMessages = new Set([
+  "Hello,\n\nYour team's sales and knock reports are attached for the selected reporting periods.",
+  "Hello,\n\nYour team's sales and knock data for the year to date.",
+]);
 
 export function normalizeTeamAutoEmailSettings(value: unknown): TeamAutoEmailSettings {
   if (!value || typeof value !== "object") return { ...defaultTeamAutoEmailSettings };
   const parsed = teamAutoEmailSettingsSchema.safeParse({ ...defaultTeamAutoEmailSettings, ...value });
-  return parsed.success ? parsed.data : { ...defaultTeamAutoEmailSettings };
+  if (!parsed.success) return { ...defaultTeamAutoEmailSettings };
+  return legacyDefaultMessages.has(parsed.data.message)
+    ? { ...parsed.data, message: defaultTeamAutoEmailSettings.message }
+    : parsed.data;
 }
 
 function easternDate(now: Date) {
@@ -58,6 +95,10 @@ function dateId(date: Date) {
 
 export function easternDateId(now = new Date()) {
   return dateId(easternDate(now));
+}
+
+export function teamAutoEmailDeliveryId(day: string, teamId: string, ruleId: string) {
+  return `${day}_${teamId}_${ruleId}`;
 }
 
 export function teamAutoEmailRange(preset: TeamAutoEmailRangePreset, now = new Date()): TeamReportRange {

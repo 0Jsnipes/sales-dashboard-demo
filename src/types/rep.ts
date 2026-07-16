@@ -1,3 +1,5 @@
+import type { RepAccessRole } from "@/src/lib/reps/access-role";
+
 export type RepStatus = "active" | "inactive" | "terminated";
 export type VendorType = "organic" | "subVendor";
 
@@ -18,6 +20,7 @@ export interface Rep {
   locationName: string;
   programIds: string[];
   vendorType: VendorType;
+  accessRole?: RepAccessRole;
   weeklySalesGoal: number;
   weeklyKnocksGoal: number;
   status: RepStatus;

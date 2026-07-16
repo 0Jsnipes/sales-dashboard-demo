@@ -5,6 +5,8 @@ import { getAdminAuth, getAdminDb } from "@/src/lib/firebase/admin";
 import { requireActor } from "@/src/lib/firebase/server-auth";
 import { DEFAULT_ADMIN_PERMISSIONS, normalizeBusinessUnit, normalizePermissions } from "@/src/lib/access";
 import { errorResponse as sharedErrorResponse } from "@/src/lib/api/error-response";
+import { rosterViewProfile } from "@/src/lib/auth/roster-view-profile";
+import type { Rep } from "@/src/types/rep";
 
 export const runtime = "nodejs";
 
@@ -34,6 +36,7 @@ const permissions = z.object({
   canEmailTeamReports: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canEmailTeamReports),
   canManageTeamAutoEmails: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canManageTeamAutoEmails),
   canManageRosterOptions: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canManageRosterOptions),
+  canManageRepRoles: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canManageRepRoles),
   canManageResources: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canManageResources),
   canImportEmailReports: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canImportEmailReports),
 });
@@ -75,16 +78,18 @@ export async function GET(request: Request) {
   try {
     const actor = await requireActor(request);
     if (actor.profile.role !== "superAdmin") return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
-    const snapshot = await getAdminDb().collection("users").get();
+    const db = getAdminDb();
+    const [snapshot, rosterSnapshot] = await Promise.all([db.collection("users").get(), db.collection("reps").get()]);
     const users = snapshot.docs
       .map((document): Record<string, unknown> => {
         const data = document.data() as Record<string, unknown>;
-        return { ...data, businessUnit: normalizeBusinessUnit(data.businessUnit), permissions: normalizePermissions(data.permissions) };
+        return { ...data, authUid: String(data.authUid || document.id), businessUnit: normalizeBusinessUnit(data.businessUnit), permissions: normalizePermissions(data.permissions) };
       })
       .sort((a, b) => String(a["email"]).localeCompare(String(b["email"])));
-    return NextResponse.json({
-      users,
-    });
+    const rosterTargets = rosterSnapshot.docs
+      .map((document) => rosterViewProfile({ ...document.data(), repUid: String(document.data().repUid || document.id) } as Rep))
+      .sort((a, b) => a.email.localeCompare(b.email));
+    return NextResponse.json({ users, rosterTargets });
   } catch (error) {
     return errorResponse(error);
   }

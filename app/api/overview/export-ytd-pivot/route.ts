@@ -22,7 +22,8 @@ function providerKey(value: unknown) {
 
 export async function GET(request: Request) {
   try {
-    await requireActor(request);
+    const actor = await requireActor(request);
+    if (actor.profile.role !== "superAdmin" && actor.profile.role !== "admin") return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     const url = new URL(request.url);
     const selectedYear = Number(url.searchParams.get("year") || new Date().getFullYear());
     if (!Number.isInteger(selectedYear) || selectedYear < 2000 || selectedYear > 2100) {

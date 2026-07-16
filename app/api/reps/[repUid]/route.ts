@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
-import { canManageRoster, requireActor } from "@/src/lib/firebase/server-auth";
+import { canManageRepRoles, canManageRoster, requireActor } from "@/src/lib/firebase/server-auth";
 import { getAdminAuth, getAdminDb } from "@/src/lib/firebase/admin";
 import type { Rep } from "@/src/types/rep";
 import { normalizeName } from "@/src/lib/matching/normalize";
@@ -9,12 +9,13 @@ import { rematchATTOrdersForRep } from "@/src/lib/imports/att";
 import { normalizeEmail, normalizeSalesId } from "@/src/lib/matching/normalize";
 import { z } from "zod";
 import { errorResponse } from "@/src/lib/api/error-response";
+import { normalizeRepAccessRole, repAccessRoleValues, repRolePermissions } from "@/src/lib/reps/access-role";
 
 export const runtime = "nodejs";
 
 type Params = { params: Promise<{ repUid: string }> };
 const socials = z.object({ instagram: z.string().max(160).optional(), facebook: z.string().max(160).optional(), tiktok: z.string().max(160).optional(), linkedin: z.string().max(160).optional() }).default({});
-const updateRep = z.object({ displayName: z.string().min(2).max(120), email: z.union([z.string().email(), z.literal("")]).default(""), phone: z.string().max(40).optional(), managerUid: z.string().nullable().optional(), managerName: z.string().max(120).default(""), locationId: z.string().min(1).max(80), locationName: z.string().min(1).max(120), programIds: z.array(z.string().min(1).max(80)).default([]), vendorType: z.enum(["organic", "subVendor"]).default("organic"), weeklySalesGoal: z.number().int().min(0).max(10000).default(0), weeklyKnocksGoal: z.number().int().min(0).max(10000).default(0), salesIds: z.array(z.string().min(1).max(80)).default([]), aliases: z.array(z.string().min(1).max(120)).default([]), socials });
+const updateRep = z.object({ displayName: z.string().min(2).max(120), email: z.union([z.string().email(), z.literal("")]).default(""), phone: z.string().max(40).optional(), managerUid: z.string().nullable().optional(), managerName: z.string().max(120).default(""), locationId: z.string().min(1).max(80), locationName: z.string().min(1).max(120), programIds: z.array(z.string().min(1).max(80)).default([]), vendorType: z.enum(["organic", "subVendor"]).default("organic"), accessRole: z.enum(repAccessRoleValues).default("rep"), weeklySalesGoal: z.number().int().min(0).max(10000).default(0), weeklyKnocksGoal: z.number().int().min(0).max(10000).default(0), salesIds: z.array(z.string().min(1).max(80)).default([]), aliases: z.array(z.string().min(1).max(120)).default([]), socials });
 
 export async function PATCH(request: Request, { params }: Params) {
   try {
@@ -38,9 +39,14 @@ export async function PATCH(request: Request, { params }: Params) {
     if (body.action === "update") {
       const input = updateRep.safeParse(body.rep);
       if (!input.success) return NextResponse.json({ error: input.error.flatten() }, { status: 400 });
+      if (input.data.accessRole !== normalizeRepAccessRole(rep.accessRole) && !canManageRepRoles(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
       const [firstName = "", ...rest] = input.data.displayName.trim().split(/\s+/);
-      const updated = { ...rep, displayName: input.data.displayName.trim(), firstName, lastName: rest.join(" "), email: input.data.email.trim(), emailNormalized: normalizeEmail(input.data.email), phone: input.data.phone?.trim() || "", salesIds: input.data.salesIds.map(normalizeSalesId), aliases: input.data.aliases.map((alias) => alias.trim()), managerUid: input.data.managerUid ?? null, managerName: input.data.managerName.trim(), locationId: input.data.locationId.trim(), locationName: input.data.locationName.trim(), programIds: input.data.programIds.map((program) => program.trim()), vendorType: input.data.vendorType, weeklySalesGoal: input.data.weeklySalesGoal, weeklyKnocksGoal: input.data.weeklyKnocksGoal, socials: input.data.socials };
-      await reference.update({ ...updated, search: { displayName: normalizeName(updated.displayName), aliases: updated.aliases.map(normalizeName), salesIds: updated.salesIds.map(normalizeSalesId) }, updatedAt: FieldValue.serverTimestamp(), updatedBy: actor.token.uid });
+      const updated = { ...rep, displayName: input.data.displayName.trim(), firstName, lastName: rest.join(" "), email: input.data.email.trim(), emailNormalized: normalizeEmail(input.data.email), phone: input.data.phone?.trim() || "", salesIds: input.data.salesIds.map(normalizeSalesId), aliases: input.data.aliases.map((alias) => alias.trim()), managerUid: input.data.managerUid ?? null, managerName: input.data.managerName.trim(), locationId: input.data.locationId.trim(), locationName: input.data.locationName.trim(), programIds: input.data.programIds.map((program) => program.trim()), vendorType: input.data.vendorType, accessRole: input.data.accessRole, weeklySalesGoal: input.data.weeklySalesGoal, weeklyKnocksGoal: input.data.weeklyKnocksGoal, socials: input.data.socials };
+      const db = getAdminDb();
+      const batch = db.batch();
+      batch.update(reference, { ...updated, search: { displayName: normalizeName(updated.displayName), aliases: updated.aliases.map(normalizeName), salesIds: updated.salesIds.map(normalizeSalesId) }, updatedAt: FieldValue.serverTimestamp(), updatedBy: actor.token.uid });
+      if (rep.authUid) batch.set(db.collection("users").doc(rep.authUid), { repAccessRole: updated.accessRole, dashboardScope: repRolePermissions(updated.accessRole).dashboardScope, updatedAt: FieldValue.serverTimestamp(), updatedBy: actor.token.uid }, { merge: true });
+      await batch.commit();
       const [rematchedTFiberOrders, rematchedATTOrders] = await Promise.all([rematchTFiberOrdersForRep(updated), rematchATTOrdersForRep(updated)]);
       return NextResponse.json({ rep: updated, rematchedTFiberOrders, rematchedATTOrders });
     }

@@ -30,6 +30,7 @@ describe("team page permission", () => {
     expect(permissions.canEmailTeamReports).toBe(false);
     expect(permissions.canManageTeamAutoEmails).toBe(false);
     expect(permissions.canManageRosterOptions).toBe(false);
+    expect(permissions.canManageRepRoles).toBe(false);
     expect(permissions.canManageResources).toBe(false);
     expect(permissions.canImportEmailReports).toBe(false);
   });

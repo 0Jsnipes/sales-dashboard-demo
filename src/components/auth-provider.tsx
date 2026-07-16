@@ -6,9 +6,18 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { getFirebaseAuth, getFirebaseDb } from "@/src/lib/firebase/client";
 import type { AppUser } from "@/src/types/user";
 import { normalizeBusinessUnit, normalizePermissions } from "@/src/lib/access";
+import { setViewAsAuthUid } from "@/src/lib/auth/view-as-client";
 
-type AuthState = { user: User | null; profile: AppUser | null; loading: boolean; error: string | null; refreshProfile: () => Promise<void> };
-const AuthContext = createContext<AuthState>({ user: null, profile: null, loading: true, error: null, refreshProfile: async () => undefined });
+type BaseAuthState = { user: User | null; profile: AppUser | null; loading: boolean; error: string | null };
+type AuthState = BaseAuthState & {
+  actualProfile: AppUser | null;
+  viewAsProfile: AppUser | null;
+  isViewingAs: boolean;
+  refreshProfile: () => Promise<void>;
+  startViewingAs: (profile: AppUser) => void;
+  stopViewingAs: () => void;
+};
+const AuthContext = createContext<AuthState>({ user: null, profile: null, actualProfile: null, viewAsProfile: null, isViewingAs: false, loading: true, error: null, refreshProfile: async () => undefined, startViewingAs: () => undefined, stopViewingAs: () => undefined });
 
 function normalizeProfile(data: AppUser): AppUser {
   return {
@@ -27,7 +36,18 @@ async function loadProfile(user: User) {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<Omit<AuthState, "refreshProfile">>({ user: null, profile: null, loading: true, error: null });
+  const [state, setState] = useState<BaseAuthState>({ user: null, profile: null, loading: true, error: null });
+  const [viewAsProfile, setViewAsProfile] = useState<AppUser | null>(null);
+  const stopViewingAs = useCallback(() => {
+    setViewAsAuthUid(null);
+    setViewAsProfile(null);
+  }, []);
+  const startViewingAs = useCallback((profile: AppUser) => {
+    if (state.profile?.role !== "superAdmin") return;
+    const normalized = normalizeProfile(profile);
+    setViewAsAuthUid(normalized.authUid);
+    setViewAsProfile(normalized);
+  }, [state.profile?.role]);
   const refreshProfile = useCallback(async () => {
     const user = getFirebaseAuth().currentUser;
     if (!user) {
@@ -36,11 +56,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     const profile = await loadProfile(user);
     setState({ user, profile, loading: false, error: null });
-  }, []);
+    if (profile.role !== "superAdmin") stopViewingAs();
+  }, [stopViewingAs]);
 
   useEffect(() => {
     let active = true;
     const unsubscribe = onIdTokenChanged(getFirebaseAuth(), async (user) => {
+      stopViewingAs();
       if (!user) { if (active) setState({ user: null, profile: null, loading: false, error: null }); return; }
       try {
         const profile = await loadProfile(user);
@@ -50,8 +72,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
     return () => { active = false; unsubscribe(); };
-  }, []);
-  const value = useMemo(() => ({ ...state, refreshProfile }), [refreshProfile, state]);
+  }, [stopViewingAs]);
+  const value = useMemo(() => ({ ...state, actualProfile: state.profile, profile: viewAsProfile ?? state.profile, viewAsProfile, isViewingAs: Boolean(viewAsProfile), refreshProfile, startViewingAs, stopViewingAs }), [refreshProfile, startViewingAs, state, stopViewingAs, viewAsProfile]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 export const useAuth = () => useContext(AuthContext);

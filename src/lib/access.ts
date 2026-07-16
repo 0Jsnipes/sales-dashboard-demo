@@ -35,6 +35,7 @@ export const DEFAULT_ADMIN_PERMISSIONS: AppUser["permissions"] = {
   canEmailTeamReports: false,
   canManageTeamAutoEmails: false,
   canManageRosterOptions: false,
+  canManageRepRoles: false,
   canManageResources: false,
   canImportEmailReports: false,
 };

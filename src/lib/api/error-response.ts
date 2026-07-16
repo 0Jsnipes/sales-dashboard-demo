@@ -4,6 +4,9 @@ const KNOWN_ERROR_STATUS: Record<string, number> = {
   UNAUTHENTICATED: 401,
   PROFILE_NOT_FOUND: 403,
   FORBIDDEN: 403,
+  VIEW_AS_READ_ONLY: 403,
+  VIEW_AS_TARGET_NOT_FOUND: 404,
+  DASHBOARD_SCOPE_FORBIDDEN: 403,
 };
 
 export function resolveErrorStatus(error: unknown, fallbackMessage = "UNKNOWN") {

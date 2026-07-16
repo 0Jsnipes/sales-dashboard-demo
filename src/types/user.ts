@@ -1,3 +1,5 @@
+import type { RepAccessRole, RepDashboardScope } from "@/src/lib/reps/access-role";
+
 export type UserRole = "superAdmin" | "admin" | "manager" | "user";
 export type BusinessUnit = "fiber" | "energy" | "all";
 
@@ -10,6 +12,8 @@ export interface AppUser {
   repUid: string | null;
   managerUid: string | null;
   teamId?: string | null;
+  repAccessRole?: RepAccessRole | null;
+  dashboardScope?: RepDashboardScope | null;
   locationIds: string[];
   permissions: {
     canViewDashboard: boolean;
@@ -37,6 +41,7 @@ export interface AppUser {
     canEmailTeamReports: boolean;
     canManageTeamAutoEmails: boolean;
     canManageRosterOptions: boolean;
+    canManageRepRoles: boolean;
     canManageResources: boolean;
     canImportEmailReports: boolean;
   };

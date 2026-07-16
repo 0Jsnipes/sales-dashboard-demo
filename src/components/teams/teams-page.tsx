@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Archive, CircleDot, DatabaseZap, Download, Mail, MailCheck, Pencil, Plus, Search, UsersRound } from "lucide-react";
+import { Archive, BookmarkPlus, CircleDot, DatabaseZap, Download, Mail, MailCheck, Pencil, Plus, Search, Trash2, UsersRound } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -27,9 +27,12 @@ type ExportRangeMode = "wtd" | "mtd" | "ytd" | "custom";
 type EmailRangeMode = ExportRangeMode | "previous-day" | "all";
 type ExportFileKind = "att-sales" | "tfiber-sales" | "att-knocks" | "tfiber-knocks";
 type AutoEmailRangePreset = "all" | "previous-day" | "wtd" | "mtd" | "ytd";
-type AutoEmailSettings = {
+type AutoEmailRule = {
+  ruleId: string;
+  teamId: string;
+  name: string;
   enabled: boolean;
-  triggerUploadTypes: ExportFileKind[];
+  triggerUploadType: ExportFileKind;
   reportFiles: ExportFileKind[];
   salesRange: AutoEmailRangePreset;
   knocksRange: AutoEmailRangePreset;
@@ -38,18 +41,8 @@ type AutoEmailSettings = {
   subject: string;
   message: string;
 };
+type AutoEmailTemplate = Omit<AutoEmailRule, "ruleId" | "teamId" | "enabled"> & { templateId: string };
 const blankForm: TeamForm = { name: "", description: "", color: "#2563eb", active: true, managerRepUid: "" };
-const defaultAutoEmailSettings: AutoEmailSettings = {
-  enabled: false,
-  triggerUploadTypes: ["att-sales", "tfiber-sales"],
-  reportFiles: ["att-sales", "tfiber-sales"],
-  salesRange: "all",
-  knocksRange: "previous-day",
-  frequency: "daily",
-  cc: [],
-  subject: "Orders to date",
-  message: "Hello,\n\nYour team's sales and knock reports are attached for the selected reporting periods.",
-};
 const exportFileOptions: Array<{ kind: ExportFileKind; label: string; description: string }> = [
   { kind: "att-sales", label: "ATT sales", description: "ATT orders for the selected period." },
   { kind: "tfiber-sales", label: "T-Fiber sales", description: "T-Fiber orders for the selected period." },
@@ -63,6 +56,23 @@ const autoEmailTriggerOptions: Array<{ kind: ExportFileKind; label: string; desc
   { kind: "tfiber-knocks", label: "T-Fiber knocks upload", description: "Run after a Book1 workbook is imported." },
 ];
 const allExportFiles = () => new Set<ExportFileKind>(exportFileOptions.map((option) => option.kind));
+
+function newAutoEmailRule(teamId: string, index: number): AutoEmailRule {
+  return {
+    ruleId: crypto.randomUUID(),
+    teamId,
+    name: `Automatic report ${index}`,
+    enabled: false,
+    triggerUploadType: "att-sales",
+    reportFiles: ["att-sales"],
+    salesRange: "all",
+    knocksRange: "previous-day",
+    frequency: "daily",
+    cc: [],
+    subject: "Orders to date",
+    message: "Hello,\n\nAttached are your daily reports.",
+  };
+}
 
 function emailAddresses(value: string) {
   return [...new Set(value.split(/[;,\n]/).map((email) => email.trim()).filter(Boolean))];
@@ -127,7 +137,7 @@ export function TeamsPage() {
   const [emailRecipient, setEmailRecipient] = useState("");
   const [emailCc, setEmailCc] = useState("");
   const [emailSubject, setEmailSubject] = useState("Orders to date");
-  const [emailMessage, setEmailMessage] = useState("Hello,\n\nYour team's sales and knock data for the year to date.");
+  const [emailMessage, setEmailMessage] = useState("Hello,\n\nAttached are your daily reports.");
   const [emailFiles, setEmailFiles] = useState<Set<ExportFileKind>>(allExportFiles);
   const [emailSalesRangeMode, setEmailSalesRangeMode] = useState<EmailRangeMode>("all");
   const [emailSalesCustomStart, setEmailSalesCustomStart] = useState(dateId(new Date()));
@@ -137,10 +147,14 @@ export function TeamsPage() {
   const [emailKnocksCustomEnd, setEmailKnocksCustomEnd] = useState(dateId(new Date()));
   const [sendingEmail, setSendingEmail] = useState(false);
   const [preparingExports, setPreparingExports] = useState(false);
-  const [autoEmailOpen, setAutoEmailOpen] = useState(false);
-  const [autoEmailSettings, setAutoEmailSettings] = useState<AutoEmailSettings>(defaultAutoEmailSettings);
-  const [autoEmailCc, setAutoEmailCc] = useState("");
+  const [autoEmailTeam, setAutoEmailTeam] = useState<Team | null>(null);
+  const [autoEmailRules, setAutoEmailRules] = useState<AutoEmailRule[]>([]);
+  const [autoEmailTemplates, setAutoEmailTemplates] = useState<AutoEmailTemplate[]>([]);
+  const [selectedAutoEmailTemplate, setSelectedAutoEmailTemplate] = useState("");
+  const [autoEmailCcByRule, setAutoEmailCcByRule] = useState<Record<string, string>>({});
+  const [loadingAutoEmails, setLoadingAutoEmails] = useState(false);
   const [savingAutoEmails, setSavingAutoEmails] = useState(false);
+  const [savingAutoEmailTemplate, setSavingAutoEmailTemplate] = useState<string | null>(null);
 
   const load = useCallback(() => {
     return authedJson<{ teams: Team[]; canManage: boolean; canExport: boolean; canEmail: boolean; canManageAutoEmails: boolean; canPrepareExports: boolean }>("/api/teams")
@@ -151,11 +165,6 @@ export function TeamsPage() {
         setCanEmail(teamResult.canEmail);
         setCanManageAutoEmails(teamResult.canManageAutoEmails);
         setCanPrepareExports(teamResult.canPrepareExports);
-        if (teamResult.canManageAutoEmails) {
-          const autoEmailResult = await authedJson<{ settings: AutoEmailSettings }>("/api/teams/auto-email-settings");
-          setAutoEmailSettings(autoEmailResult.settings ?? defaultAutoEmailSettings);
-          setAutoEmailCc((autoEmailResult.settings?.cc ?? []).join(", "));
-        }
         if (teamResult.canManage) {
           const roster = await authedJson<{ reps: Rep[] }>("/api/reps?status=all");
           setReps(roster.reps ?? []);
@@ -378,11 +387,14 @@ export function TeamsPage() {
 
   function openEmail(team: Team) {
     const previousDay = emailRange("previous-day", "", "");
+    const managerEmail = team.managerDetails?.email?.trim()
+      || (team.managerRepUid ? repById.get(team.managerRepUid)?.email?.trim() : "")
+      || "";
     setEmailTeam(team);
-    setEmailRecipient(team.managerDetails?.email ?? "");
+    setEmailRecipient(managerEmail);
     setEmailCc("");
     setEmailSubject("Orders to date");
-    setEmailMessage("Hello,\n\nYour team's sales and knock reports are attached for the selected reporting periods.");
+    setEmailMessage("Hello,\n\nAttached are your daily reports.");
     setEmailFiles(allExportFiles());
     setEmailSalesRangeMode("all");
     setEmailSalesCustomStart(dateId(new Date()));
@@ -440,22 +452,92 @@ export function TeamsPage() {
     }
   }
 
+  async function openAutoEmails(team: Team) {
+    setAutoEmailTeam(team);
+    setAutoEmailRules([]);
+    setAutoEmailCcByRule({});
+    setLoadingAutoEmails(true);
+    try {
+      const [result, templateResult] = await Promise.all([
+        authedJson<{ rules: AutoEmailRule[] }>(`/api/teams/${team.teamId}/auto-email-rules`),
+        authedJson<{ templates: AutoEmailTemplate[] }>("/api/teams/auto-email-templates"),
+      ]);
+      setAutoEmailRules(result.rules ?? []);
+      setAutoEmailTemplates(templateResult.templates ?? []);
+      setSelectedAutoEmailTemplate("");
+      setAutoEmailCcByRule(Object.fromEntries((result.rules ?? []).map((rule) => [rule.ruleId, rule.cc.join(", ")])));
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to load team automations.");
+      setAutoEmailTeam(null);
+    } finally {
+      setLoadingAutoEmails(false);
+    }
+  }
+
+  function updateAutoEmailRule(ruleId: string, updates: Partial<AutoEmailRule>) {
+    setAutoEmailRules((current) => current.map((rule) => rule.ruleId === ruleId ? { ...rule, ...updates } : rule));
+  }
+
+  async function saveAutoEmailTemplate(rule: AutoEmailRule) {
+    setSavingAutoEmailTemplate(rule.ruleId);
+    try {
+      const { ruleId: _ruleId, teamId: _teamId, enabled: _enabled, ...templateInput } = rule;
+      void _ruleId;
+      void _teamId;
+      void _enabled;
+      const result = await authedJson<{ template: AutoEmailTemplate }>("/api/teams/auto-email-templates", {
+        method: "POST",
+        body: JSON.stringify({ ...templateInput, cc: emailAddresses(autoEmailCcByRule[rule.ruleId] ?? rule.cc.join(", ")) }),
+      });
+      setAutoEmailTemplates((current) => [...current, result.template].sort((left, right) => left.name.localeCompare(right.name)));
+      setSelectedAutoEmailTemplate(result.template.templateId);
+      toast.success(`${result.template.name} saved as a template.`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to save automation template.");
+    } finally {
+      setSavingAutoEmailTemplate(null);
+    }
+  }
+
+  function applyAutoEmailTemplate() {
+    if (!autoEmailTeam) return;
+    const template = autoEmailTemplates.find((item) => item.templateId === selectedAutoEmailTemplate);
+    if (!template) return toast.error("Choose an automation template.");
+    const { templateId: _templateId, ...settings } = template;
+    void _templateId;
+    const rule: AutoEmailRule = { ...settings, ruleId: crypto.randomUUID(), teamId: autoEmailTeam.teamId, enabled: false };
+    setAutoEmailRules((current) => [...current, rule]);
+    setAutoEmailCcByRule((current) => ({ ...current, [rule.ruleId]: rule.cc.join(", ") }));
+    toast.success(`${template.name} added. Turn it on to approve sending.`);
+  }
+
+  async function deleteAutoEmailTemplate() {
+    const template = autoEmailTemplates.find((item) => item.templateId === selectedAutoEmailTemplate);
+    if (!template || !window.confirm(`Delete the ${template.name} template?`)) return;
+    try {
+      await authedJson("/api/teams/auto-email-templates", { method: "DELETE", body: JSON.stringify({ templateId: template.templateId }) });
+      setAutoEmailTemplates((current) => current.filter((item) => item.templateId !== template.templateId));
+      setSelectedAutoEmailTemplate("");
+      toast.success("Automation template deleted.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to delete automation template.");
+    }
+  }
+
   async function saveAutoEmailSettings() {
-    if (autoEmailSettings.enabled && !autoEmailSettings.triggerUploadTypes.length) return toast.error("Select at least one upload trigger.");
-    if (autoEmailSettings.enabled && !autoEmailSettings.reportFiles.length) return toast.error("Select at least one report attachment.");
-    if (!autoEmailSettings.subject.trim() || !autoEmailSettings.message.trim()) return toast.error("Enter an email subject and message.");
+    if (!autoEmailTeam) return;
+    if (autoEmailRules.some((rule) => !rule.name.trim() || !rule.subject.trim() || !rule.message.trim() || !rule.reportFiles.length)) return toast.error("Every automation needs a name, attachment, subject, and message.");
     setSavingAutoEmails(true);
     try {
-      const result = await authedJson<{ settings: AutoEmailSettings }>("/api/teams/auto-email-settings", {
+      const result = await authedJson<{ rules: AutoEmailRule[] }>(`/api/teams/${autoEmailTeam.teamId}/auto-email-rules`, {
         method: "PUT",
-        body: JSON.stringify({ ...autoEmailSettings, cc: emailAddresses(autoEmailCc) }),
+        body: JSON.stringify(autoEmailRules.map((rule) => ({ ...rule, cc: emailAddresses(autoEmailCcByRule[rule.ruleId] ?? rule.cc.join(", ")) }))),
       });
-      setAutoEmailSettings(result.settings);
-      setAutoEmailCc(result.settings.cc.join(", "));
-      setAutoEmailOpen(false);
-      toast.success(result.settings.enabled ? "Automatic team emails are on." : "Automatic team emails are off.");
+      setAutoEmailRules(result.rules);
+      setAutoEmailTeam(null);
+      toast.success("Team email automations saved.");
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : "Unable to save automatic email settings.");
+      toast.error(cause instanceof Error ? cause.message : "Unable to save team automations.");
     } finally {
       setSavingAutoEmails(false);
     }
@@ -475,7 +557,7 @@ export function TeamsPage() {
               <CardTitle className="flex items-center gap-2 text-2xl"><UsersRound className="h-6 w-6 text-primary" />Reporting teams</CardTitle>
               <CardDescription className="mt-2">Group reps for analytics and exports independently from manager hierarchy.</CardDescription>
             </div>
-            <div className="flex flex-wrap gap-2">{canManageAutoEmails ? <Button variant="outline" onClick={() => setAutoEmailOpen(true)}><MailCheck className="h-4 w-4" />Auto emails: {autoEmailSettings.enabled ? "On" : "Off"}</Button> : null}{canPrepareExports ? <Button variant="outline" disabled={preparingExports} onClick={() => void prepareExportData()}><DatabaseZap className="h-4 w-4" />{preparingExports ? "Preparing exports..." : "Prepare export data"}</Button> : null}{canManage ? <><Button variant="outline" onClick={openManagerTeam}><UsersRound className="h-4 w-4" />Create manager team</Button><Button onClick={() => openEditor()}><Plus className="h-4 w-4" />Create Team</Button></> : null}</div>
+            <div className="flex flex-wrap gap-2">{canPrepareExports ? <Button variant="outline" disabled={preparingExports} onClick={() => void prepareExportData()}><DatabaseZap className="h-4 w-4" />{preparingExports ? "Preparing exports..." : "Prepare export data"}</Button> : null}{canManage ? <><Button variant="outline" onClick={openManagerTeam}><UsersRound className="h-4 w-4" />Create manager team</Button><Button onClick={() => openEditor()}><Plus className="h-4 w-4" />Create Team</Button></> : null}</div>
           </div>
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
             <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" placeholder="Search teams" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
@@ -497,7 +579,7 @@ export function TeamsPage() {
                     <TableCell className="max-w-md text-muted-foreground">{team.description || "No description"}</TableCell>
                     <TableCell><TooltipProvider delayDuration={150}><Tooltip><TooltipTrigger asChild><Badge variant="secondary" tabIndex={0} className="cursor-help" aria-label={`${team.members.length} ${team.members.length === 1 ? "member" : "members"}. Hover to view names.`}>{team.members.length} {team.members.length === 1 ? "member" : "members"}</Badge></TooltipTrigger><TooltipContent side="right" align="start" className="max-h-72 w-72 overflow-y-auto p-0"><div className="border-b px-3 py-2"><p className="font-medium">{team.name} members</p><p className="text-xs text-muted-foreground">{team.members.length} total</p></div>{team.members.length ? <div className="divide-y">{membersFor(team).map((member) => <div key={member.repUid} className="px-3 py-2"><p className="font-medium">{member.displayName}</p>{member.email ? <p className="truncate text-xs text-muted-foreground">{member.email}</p> : null}</div>)}</div> : <p className="px-3 py-4 text-muted-foreground">No members assigned.</p>}</TooltipContent></Tooltip></TooltipProvider></TableCell>
                     <TableCell><Badge variant={team.active ? "success" : "outline"}><CircleDot className="h-3 w-3" />{team.active ? "Active" : "Archived"}</Badge></TableCell>
-                    <TableCell><div className="flex justify-end gap-1">{canExport ? <Button variant="ghost" size="sm" onClick={() => openExport(team)}><Download className="h-4 w-4" />Export</Button> : null}{canEmail ? <Button variant="ghost" size="sm" onClick={() => openEmail(team)}><Mail className="h-4 w-4" />Email</Button> : null}{canManage ? <><Button variant="ghost" size="sm" onClick={() => openEditor(team)}><Pencil className="h-4 w-4" />Edit</Button><Button variant="ghost" size="sm" disabled={!team.active} onClick={() => openMembers(team)}><UsersRound className="h-4 w-4" />Members</Button>{team.active ? <Button variant="ghost" size="sm" onClick={() => void archive(team)}><Archive className="h-4 w-4" />Archive</Button> : null}</> : null}</div></TableCell>
+                    <TableCell><div className="flex justify-end gap-1"><TooltipProvider delayDuration={150}>{canExport ? <TeamIconAction label="Export reports" onClick={() => openExport(team)}><Download className="h-4 w-4" /></TeamIconAction> : null}{canEmail ? <TeamIconAction label="Email reports" onClick={() => openEmail(team)}><Mail className="h-4 w-4" /></TeamIconAction> : null}{canManageAutoEmails ? <TeamIconAction label="Automatic emails" onClick={() => void openAutoEmails(team)}><MailCheck className="h-4 w-4" /></TeamIconAction> : null}{canManage ? <><TeamIconAction label="Edit team" onClick={() => openEditor(team)}><Pencil className="h-4 w-4" /></TeamIconAction><TeamIconAction label="Manage members" disabled={!team.active} onClick={() => openMembers(team)}><UsersRound className="h-4 w-4" /></TeamIconAction>{team.active ? <TeamIconAction label="Archive team" onClick={() => void archive(team)}><Archive className="h-4 w-4" /></TeamIconAction> : null}</> : null}</TooltipProvider></div></TableCell>
                   </TableRow>
                 )) : <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">No teams match the current view.</TableCell></TableRow>}
               </TableBody>
@@ -506,47 +588,52 @@ export function TeamsPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={autoEmailOpen} onOpenChange={(open) => { if (!savingAutoEmails) setAutoEmailOpen(open); }}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+      <Dialog open={Boolean(autoEmailTeam)} onOpenChange={(open) => { if (!open && !savingAutoEmails) setAutoEmailTeam(null); }}>
+        <DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Automatic team emails</DialogTitle>
-            <DialogDescription>Queue selected reports to each active team&apos;s assigned manager after matching uploads. Each team can receive at most one automatic report email per Eastern calendar day.</DialogDescription>
+            <DialogTitle>Automatic emails — {autoEmailTeam?.name}</DialogTitle>
+            <DialogDescription>Create separate approved rules for sales and knocks uploads. Each enabled rule can send once per Eastern day, so one upload type never blocks another.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-5">
-            <label className="flex items-center justify-between gap-4 rounded-xl border p-4">
-              <span><span className="block font-medium">Enable automatic emails</span><span className="text-sm text-muted-foreground">Default is off. Turning this off leaves manual team emails available.</span></span>
-              <Switch checked={autoEmailSettings.enabled} onCheckedChange={(enabled) => setAutoEmailSettings((current) => ({ ...current, enabled }))} />
-            </label>
-
-            <div className="space-y-2">
-              <Label>Send after these uploads</Label>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {autoEmailTriggerOptions.map((option) => <FileOption key={option.kind} option={option} checked={autoEmailSettings.triggerUploadTypes.includes(option.kind)} onCheckedChange={(checked) => setAutoEmailSettings((current) => ({ ...current, triggerUploadTypes: checked ? [...new Set([...current.triggerUploadTypes, option.kind])] : current.triggerUploadTypes.filter((kind) => kind !== option.kind) }))} />)}
-              </div>
+          {loadingAutoEmails ? <Skeleton className="h-64 rounded-xl" /> : <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted/20 p-3">
+              <div><p className="text-sm font-medium">Recipient: {autoEmailTeam?.managerDetails?.email || "No manager email"}</p><p className="text-xs text-muted-foreground">The assigned manager&apos;s current roster email is used when each rule runs.</p></div>
+              <Button type="button" variant="outline" onClick={() => {
+                if (!autoEmailTeam) return;
+                const rule = newAutoEmailRule(autoEmailTeam.teamId, autoEmailRules.length + 1);
+                setAutoEmailRules((current) => [...current, rule]);
+                setAutoEmailCcByRule((current) => ({ ...current, [rule.ruleId]: "" }));
+              }}><Plus className="h-4 w-4" />Add automation</Button>
             </div>
-
-            <div className="space-y-2">
-              <Label>Reports to attach</Label>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {exportFileOptions.map((option) => <FileOption key={option.kind} option={option} checked={autoEmailSettings.reportFiles.includes(option.kind)} onCheckedChange={(checked) => setAutoEmailSettings((current) => ({ ...current, reportFiles: checked ? [...new Set([...current.reportFiles, option.kind])] : current.reportFiles.filter((kind) => kind !== option.kind) }))} />)}
-              </div>
+            <div className="grid gap-3 rounded-xl border p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end">
+              <div className="space-y-2"><Label htmlFor="auto-email-template">Automation templates</Label><Select value={selectedAutoEmailTemplate} onValueChange={setSelectedAutoEmailTemplate}><SelectTrigger id="auto-email-template"><SelectValue placeholder={autoEmailTemplates.length ? "Choose a saved template" : "No saved templates"} /></SelectTrigger><SelectContent>{autoEmailTemplates.map((template) => <SelectItem key={template.templateId} value={template.templateId}>{template.name}</SelectItem>)}</SelectContent></Select></div>
+              <Button type="button" variant="outline" disabled={!selectedAutoEmailTemplate} onClick={applyAutoEmailTemplate}><Plus className="h-4 w-4" />Use template</Button>
+              <Button type="button" size="icon" variant="ghost" aria-label="Delete selected template" disabled={!selectedAutoEmailTemplate} onClick={() => void deleteAutoEmailTemplate()}><Trash2 className="h-4 w-4" /></Button>
             </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <AutoEmailRangePicker id="auto-email-sales-range" label="Sales report range" value={autoEmailSettings.salesRange} onChange={(salesRange) => setAutoEmailSettings((current) => ({ ...current, salesRange }))} />
-              <AutoEmailRangePicker id="auto-email-knocks-range" label="Knock report range" value={autoEmailSettings.knocksRange} onChange={(knocksRange) => setAutoEmailSettings((current) => ({ ...current, knocksRange }))} />
-            </div>
-
-            <div className="rounded-xl border bg-muted/20 p-4 text-sm">
-              <p className="font-medium">Frequency limit: once daily</p>
-              <p className="mt-1 text-muted-foreground">A second matching upload on the same Eastern day will not send another email to that team. {teams.filter((team) => team.active && team.managerDetails?.email).length} active teams currently have a manager email and are eligible.</p>
-            </div>
-
-            <div className="space-y-2"><Label htmlFor="auto-email-subject">Subject</Label><Input id="auto-email-subject" value={autoEmailSettings.subject} onChange={(event) => setAutoEmailSettings((current) => ({ ...current, subject: event.target.value }))} /></div>
-            <div className="space-y-2"><Label htmlFor="auto-email-cc">CC recipients</Label><Input id="auto-email-cc" value={autoEmailCc} onChange={(event) => setAutoEmailCc(event.target.value)} placeholder="person@example.com, another@example.com" /><p className="text-xs text-muted-foreground">These people will be copied on every automatic team email.</p></div>
-            <div className="space-y-2"><Label htmlFor="auto-email-message">Message</Label><Textarea id="auto-email-message" rows={5} value={autoEmailSettings.message} onChange={(event) => setAutoEmailSettings((current) => ({ ...current, message: event.target.value }))} /></div>
-          </div>
-          <DialogFooter><Button variant="outline" disabled={savingAutoEmails} onClick={() => setAutoEmailOpen(false)}>Cancel</Button><Button disabled={savingAutoEmails} onClick={() => void saveAutoEmailSettings()}><MailCheck className="h-4 w-4" />{savingAutoEmails ? "Saving..." : "Save automation"}</Button></DialogFooter>
+            {autoEmailRules.length ? autoEmailRules.map((rule, index) => {
+              const hasSalesReport = rule.reportFiles.some((kind) => kind.endsWith("sales"));
+              const hasKnocksReport = rule.reportFiles.some((kind) => kind.endsWith("knocks"));
+              return <Card key={rule.ruleId} className="border-border/70">
+                <CardContent className="space-y-4 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="min-w-0 flex-1 space-y-2"><Label htmlFor={`auto-rule-name-${rule.ruleId}`}>Automation name</Label><Input id={`auto-rule-name-${rule.ruleId}`} value={rule.name} placeholder={`Automatic report ${index + 1}`} onChange={(event) => updateAutoEmailRule(rule.ruleId, { name: event.target.value })} /></div>
+                    <label className="mt-7 flex items-center gap-2 text-sm"><Switch checked={rule.enabled} onCheckedChange={(enabled) => updateAutoEmailRule(rule.ruleId, { enabled })} /><span>{rule.enabled ? "Approved" : "Off"}</span></label>
+                    <Button type="button" size="icon" variant="ghost" className="mt-6" aria-label={`Save ${rule.name} as a template`} disabled={savingAutoEmailTemplate === rule.ruleId} onClick={() => void saveAutoEmailTemplate(rule)}><BookmarkPlus className="h-4 w-4" /></Button>
+                    <Button type="button" size="icon" variant="ghost" className="mt-6" aria-label={`Delete ${rule.name}`} onClick={() => setAutoEmailRules((current) => current.filter((item) => item.ruleId !== rule.ruleId))}><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2"><Label htmlFor={`auto-rule-trigger-${rule.ruleId}`}>Send after upload</Label><Select value={rule.triggerUploadType} onValueChange={(value) => updateAutoEmailRule(rule.ruleId, { triggerUploadType: value as ExportFileKind, reportFiles: [value as ExportFileKind] })}><SelectTrigger id={`auto-rule-trigger-${rule.ruleId}`}><SelectValue /></SelectTrigger><SelectContent>{autoEmailTriggerOptions.map((option) => <SelectItem key={option.kind} value={option.kind}>{option.label}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="space-y-2"><Label htmlFor={`auto-rule-subject-${rule.ruleId}`}>Subject</Label><Input id={`auto-rule-subject-${rule.ruleId}`} value={rule.subject} placeholder="Orders to date" onChange={(event) => updateAutoEmailRule(rule.ruleId, { subject: event.target.value })} /></div>
+                  </div>
+                  <div className="space-y-2"><Label>Reports to attach</Label><div className="grid gap-2 sm:grid-cols-2">{exportFileOptions.map((option) => <FileOption key={option.kind} option={option} checked={rule.reportFiles.includes(option.kind)} onCheckedChange={(checked) => updateAutoEmailRule(rule.ruleId, { reportFiles: checked ? [...new Set([...rule.reportFiles, option.kind])] : rule.reportFiles.filter((kind) => kind !== option.kind) })} />)}</div></div>
+                  {(hasSalesReport || hasKnocksReport) ? <div className="grid gap-4 sm:grid-cols-2">{hasSalesReport ? <AutoEmailRangePicker id={`auto-rule-sales-${rule.ruleId}`} label="Sales report range" value={rule.salesRange} onChange={(salesRange) => updateAutoEmailRule(rule.ruleId, { salesRange })} /> : null}{hasKnocksReport ? <AutoEmailRangePicker id={`auto-rule-knocks-${rule.ruleId}`} label="Knocks report range" value={rule.knocksRange} onChange={(knocksRange) => updateAutoEmailRule(rule.ruleId, { knocksRange })} /> : null}</div> : null}
+                  <div className="space-y-2"><Label htmlFor={`auto-rule-cc-${rule.ruleId}`}>CC recipients</Label><Input id={`auto-rule-cc-${rule.ruleId}`} value={autoEmailCcByRule[rule.ruleId] ?? rule.cc.join(", ")} placeholder="person@example.com, another@example.com" onChange={(event) => setAutoEmailCcByRule((current) => ({ ...current, [rule.ruleId]: event.target.value }))} /></div>
+                  <div className="space-y-2"><Label htmlFor={`auto-rule-message-${rule.ruleId}`}>Message</Label><Textarea id={`auto-rule-message-${rule.ruleId}`} rows={3} value={rule.message} placeholder="Hello, Attached are your daily reports." onChange={(event) => updateAutoEmailRule(rule.ruleId, { message: event.target.value })} /></div>
+                  <p className="text-xs text-muted-foreground">An enabled rule is approved to send once per day after its selected upload completes. Repeated uploads that day will not resend this rule.</p>
+                </CardContent>
+              </Card>;
+            }) : <div className="rounded-xl border border-dashed p-8 text-center"><MailCheck className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-3 font-medium">No automations for this team</p><p className="mt-1 text-sm text-muted-foreground">Add one rule for sales and another for knocks if they arrive at different times.</p></div>}
+          </div>}
+          <DialogFooter><Button variant="outline" disabled={savingAutoEmails} onClick={() => setAutoEmailTeam(null)}>Cancel</Button><Button disabled={savingAutoEmails || loadingAutoEmails} onClick={() => void saveAutoEmailSettings()}><MailCheck className="h-4 w-4" />{savingAutoEmails ? "Saving..." : `Save ${autoEmailRules.length} ${autoEmailRules.length === 1 ? "automation" : "automations"}`}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -689,6 +776,15 @@ function FileOption({ option, checked, onCheckedChange }: {
       <Checkbox checked={checked} onCheckedChange={(value) => onCheckedChange(value === true)} />
       <span><span className="block text-sm font-medium">{option.label}</span><span className="text-xs text-muted-foreground">{option.description}</span></span>
     </label>
+  );
+}
+
+function TeamIconAction({ label, disabled, onClick, children }: { label: string; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" disabled={disabled} aria-label={label} onClick={onClick}>{children}</Button></TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
 

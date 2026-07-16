@@ -15,9 +15,12 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { authedFetch, authedJson } from "@/src/lib/api/client";
-import { toDateId, weekRangeLabel } from "@/src/lib/date/week";
+import { startOfWeek, toDateId, weekRangeLabel } from "@/src/lib/date/week";
 import { formatDateTime } from "@/src/lib/formatters/date";
 import { formatCompact, formatDelta, formatNumber } from "@/src/lib/formatters/number";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { useAuth } from "@/src/components/auth-provider";
 
 type OrderStatusTotals = {
   total: number;
@@ -49,6 +52,7 @@ type OverviewResponse = {
   orderStatusTotals?: OrderStatusTotals;
   teamSnapshot: { manager: string; location: string; sales: number; goal: number }[];
   efficiency: { repUid: string; displayName: string; sales: number; knocks: number; conversion: number }[];
+  scope: { mode: "all" | "self" | "managedTeam" | "currentTeam"; restricted: boolean; canFilterReps: boolean; reps: { repUid: string; displayName: string }[] };
 };
 
 const emptyOrderStatusTotals = (): OrderStatusTotals => ({ total: 0, installed: 0, pending: 0, pastDue: 0, preorder: 0, canceled: 0, churned: 0, unknown: 0 });
@@ -77,6 +81,23 @@ function addDays(start: string, days: number) {
   const date = new Date(`${start}T12:00:00`);
   date.setDate(date.getDate() + days);
   return date;
+}
+
+function weekStartOptions(reference = new Date(), count = 53) {
+  const currentMonday = startOfWeek(reference);
+  return Array.from({ length: count }, (_, index) => {
+    const monday = new Date(currentMonday);
+    monday.setDate(monday.getDate() - (index * 7));
+    return {
+      value: toDateId(monday),
+      label: monday.toLocaleDateString(undefined, {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      }),
+    };
+  });
 }
 
 function LoadingState() {
@@ -196,18 +217,34 @@ function ProviderGaugeTooltip({
 }
 
 export function DashboardPage() {
+  const { profile } = useAuth();
   const [data, setData] = useState<OverviewResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadedRequestKey, setLoadedRequestKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [exportingYtdPivot, setExportingYtdPivot] = useState(false);
+  const [providerFilter, setProviderFilter] = useState("all");
+  const [repFilter, setRepFilter] = useState("all");
+  const [weekStartFilter, setWeekStartFilter] = useState("");
+  const weekOptions = useMemo(() => weekStartOptions(), []);
+  const currentWeekStart = weekOptions[0]?.value ?? "";
   const reducedMotion = useReducedMotion();
+  const requestKey = `${profile?.authUid ?? "loading"}|${providerFilter}|${repFilter}|${weekStartFilter}`;
+  const loading = loadedRequestKey !== requestKey;
 
   useEffect(() => {
     let active = true;
-    void authedJson<OverviewResponse>("/api/overview")
+    const params = new URLSearchParams();
+    if (providerFilter !== "all") params.set("provider", providerFilter);
+    if (repFilter !== "all") params.set("repId", repFilter);
+    if (weekStartFilter) {
+      params.set("from", weekStartFilter);
+      params.set("to", toDateId(addDays(weekStartFilter, 6)));
+    }
+    void authedJson<OverviewResponse>(`/api/overview${params.size ? `?${params.toString()}` : ""}`)
       .then((value) => {
         if (!active) return;
         setData(value);
+        if (repFilter !== "all" && !value.scope.reps.some((rep) => rep.repUid === repFilter)) setRepFilter("all");
         setError(null);
       })
       .catch((cause) => {
@@ -217,12 +254,12 @@ export function DashboardPage() {
         toast.error(message);
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active) setLoadedRequestKey(requestKey);
       });
     return () => {
       active = false;
     };
-  }, []);
+  }, [profile?.authUid, providerFilter, repFilter, requestKey, weekStartFilter]);
 
   const weekLabel = data ? weekRangeLabel(data.week.start, data.week.end) : "Current week";
   const dayChartData = useMemo(
@@ -280,7 +317,7 @@ export function DashboardPage() {
     [data],
   );
 
-  if (loading && !data) return <LoadingState />;
+  if (loading) return <LoadingState />;
   if (error && !data) {
     return (
       <Alert variant="destructive">
@@ -304,6 +341,7 @@ export function DashboardPage() {
     { label: "T-Fiber", source: data.freshness.tfiber },
   ];
   const selectedYear = Number(data.week.start.slice(0, 4)) || new Date().getFullYear();
+  const canUseOperationalActions = profile?.role === "superAdmin" || profile?.role === "admin";
 
   async function exportYtdWeeklyPivot() {
     setExportingYtdPivot(true);
@@ -344,7 +382,7 @@ export function DashboardPage() {
               <CardDescription className="mt-2">Current sales pulse, roster health, provider mix, and follow-up priorities.</CardDescription>
               <p className="mt-2 text-sm text-muted-foreground">Overview data from salesOrders, uploadRuns, reps, and weekly goals.</p>
             </div>
-            <div className="-mx-6 flex w-[calc(100%+3rem)] gap-2 overflow-x-auto px-6 pb-1 sm:mx-0 sm:w-auto sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+            {canUseOperationalActions ? <div className="-mx-6 flex w-[calc(100%+3rem)] gap-2 overflow-x-auto px-6 pb-1 sm:mx-0 sm:w-auto sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
               <Button variant="outline" className="shrink-0" onClick={() => void exportYtdWeeklyPivot()} disabled={exportingYtdPivot}>
                 <Download className="h-4 w-4" />
                 {exportingYtdPivot ? "Exporting..." : "Export YTD Pivot"}
@@ -361,10 +399,16 @@ export function DashboardPage() {
                   Upload report
                 </Link>
               </Button>
-            </div>
+            </div> : null}
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="grid gap-3 rounded-2xl border border-border/70 bg-muted/15 p-4 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end">
+            <div className="space-y-2"><Label htmlFor="dashboard-rep-filter">Representative</Label><Select value={repFilter} onValueChange={setRepFilter} disabled={!data.scope.canFilterReps}><SelectTrigger id="dashboard-rep-filter"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{data.scope.restricted ? "Me and my entire team" : "All representatives"}</SelectItem>{data.scope.reps.map((rep) => <SelectItem key={rep.repUid} value={rep.repUid}>{rep.displayName}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-2"><Label htmlFor="dashboard-provider-filter">Provider</Label><Select value={providerFilter} onValueChange={setProviderFilter}><SelectTrigger id="dashboard-provider-filter"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All providers</SelectItem><SelectItem value="att">ATT</SelectItem><SelectItem value="tfiber">T-Fiber</SelectItem><SelectItem value="manual">Manual</SelectItem></SelectContent></Select></div>
+            <div className="space-y-2"><Label htmlFor="dashboard-week-filter">Week starting</Label><Select value={weekStartFilter || currentWeekStart} onValueChange={(value) => setWeekStartFilter(value === currentWeekStart ? "" : value)}><SelectTrigger id="dashboard-week-filter"><SelectValue placeholder="Select a Monday" /></SelectTrigger><SelectContent>{weekOptions.map((week, index) => <SelectItem key={week.value} value={week.value}>{week.label}{index === 0 ? " (Current week)" : ""}</SelectItem>)}</SelectContent></Select></div>
+            <Button variant="outline" onClick={() => { setRepFilter("all"); setProviderFilter("all"); setWeekStartFilter(""); }}>Reset filters</Button>
+          </div>
           <div className="grid gap-3 md:grid-cols-3">
             <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3">
               <p className="text-sm font-medium">{weekLabel}</p>
@@ -395,14 +439,14 @@ export function DashboardPage() {
       </Card>
 
       <section className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4">
-        <KpiCard label="Total sales" value={formatNumber(data.totalSales)} detail={weekLabel} icon={TrendingUp} badgeLabel={formatDelta(comparisonDelta)} badgeVariant={comparisonDelta >= 0 ? "success" : "warning"} href="/sales" />
+        <KpiCard label="Total sales" value={formatNumber(data.totalSales)} detail={weekLabel} icon={TrendingUp} badgeLabel={formatDelta(comparisonDelta)} badgeVariant={comparisonDelta >= 0 ? "success" : "warning"} href={canUseOperationalActions ? "/sales" : undefined} />
         <KpiCard label="Goal progress" value={formatPercent(goalProgress)} detail={`${formatNumber(data.totalSales)} of ${formatNumber(data.totalSalesGoal)} goal`} icon={Gauge} badgeLabel="Weekly goal" />
-        <KpiCard label="Total knocks" value={formatNumber(data.totalKnocks)} detail={`${formatCompact(data.activeReps ? data.totalKnocks / data.activeReps : 0)} per active rep`} icon={Target} href="/knocks" />
+        <KpiCard label="Total knocks" value={formatNumber(data.totalKnocks)} detail={`${formatCompact(data.activeReps ? data.totalKnocks / data.activeReps : 0)} per active rep`} icon={Target} href={canUseOperationalActions ? "/knocks" : undefined} />
         <KpiCard label="Conversion" value={formatPercent(conversion)} detail="Sales divided by knocks" icon={BarChart3} />
         <KpiCard label="Active" value={formatNumber(statusTotals.installed)} detail={`Status range: ${statusRangeLabel}`} icon={CheckCircle2} badgeVariant="success" />
         <KpiCard label="Pending" value={formatNumber(statusTotals.pending)} detail={`${formatNumber(statusTotals.pastDue)} past due subset`} icon={Clock3} badgeVariant="warning" />
         <KpiCard label="Past due" value={formatNumber(statusTotals.pastDue)} detail="Pending installs past the report date" icon={TriangleAlert} badgeVariant={statusTotals.pastDue ? "danger" : "success"} />
-        <KpiCard label="Active reps" value={formatNumber(data.activeReps)} detail="Roster members with active status" icon={Users} href="/roster" />
+        <KpiCard label="Active reps" value={formatNumber(data.activeReps)} detail="Roster members with active status" icon={Users} href={canUseOperationalActions ? "/roster" : undefined} />
         <KpiCard label="Alerts" value={formatNumber(data.alerts.length)} detail="Pacing, roster, and upload items" icon={TriangleAlert} badgeVariant={data.alerts.length ? "danger" : "success"} />
       </section>
 
@@ -518,7 +562,7 @@ export function DashboardPage() {
         </Card>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+      <section className={cn("grid gap-4", canUseOperationalActions && "xl:grid-cols-[1fr_1fr]")}>
         <Card className="border-border/70">
           <CardHeader>
             <CardTitle>Attention needed</CardTitle>
@@ -536,7 +580,7 @@ export function DashboardPage() {
                 </div>
               </div>
             )) : <EmptyState title="No active alerts" description="No dashboard alert requires attention right now." />}
-            <div className="grid gap-2 sm:grid-cols-2">
+            {canUseOperationalActions ? <div className="grid gap-2 sm:grid-cols-2">
               <Button variant="outline" asChild>
                 <Link href="/imports/unmatched">Review unmatched</Link>
               </Button>
@@ -546,11 +590,11 @@ export function DashboardPage() {
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>
-            </div>
+            </div> : null}
           </CardContent>
         </Card>
 
-        <Card className="border-border/70">
+        {canUseOperationalActions ? <Card className="border-border/70">
           <CardHeader>
             <CardTitle>Data freshness</CardTitle>
             <CardDescription>Most recent source uploads and processed rows.</CardDescription>
@@ -572,7 +616,7 @@ export function DashboardPage() {
               </div>
             ))}
           </CardContent>
-        </Card>
+        </Card> : null}
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">

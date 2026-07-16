@@ -5,6 +5,7 @@ import { parseCommonFilters, parseDateRangeParams } from "@/src/lib/api/report-f
 import { normalizePerformanceOutcome } from "@/src/lib/performance/performance-utils";
 import { readFirstText, resolveTFiberPastDueAsOfDate, type SaleOutcome, type SalesOrderRecord } from "@/src/lib/sales/outcomes";
 import { errorResponse } from "@/src/lib/api/error-response";
+import { dashboardRepAllowed, resolveDashboardAccessScope } from "@/src/lib/dashboard/scope";
 
 export const runtime = "nodejs";
 
@@ -30,6 +31,8 @@ type RepDoc = Record<string, unknown> & {
   repUid?: string;
   displayName?: string;
   managerName?: string;
+  managerUid?: string | null;
+  teamId?: string | null;
   locationName?: string;
   status?: string;
   weeklySalesGoal?: number;
@@ -138,7 +141,7 @@ function toSalesOrderRecord(order: OrderDoc): SalesOrderRecord {
 
 export async function GET(request: Request) {
   try {
-    await requireActor(request);
+    const actor = await requireActor(request);
     const db = getAdminDb();
     const url = new URL(request.url);
     const common = parseCommonFilters(url.searchParams);
@@ -193,29 +196,48 @@ export async function GET(request: Request) {
       );
     };
 
-    const [currentOrders, statusOrders, comparisonOrders, previousOrders, repsSnapshot, uploadRuns] = await Promise.all([
+    const [currentOrders, statusOrders, comparisonOrders, previousOrders, repsSnapshot, teamsSnapshot, uploadRuns] = await Promise.all([
       getOrders(monday, lastDay),
       getOrders(statusStart, statusEnd),
       getOrders(comparisonCurrentStart, comparisonCurrentEnd),
       getOrders(comparisonPreviousStart, comparisonPreviousEnd),
       db.collection("reps").get(),
+      db.collection("teams").get(),
       db.collection("uploadRuns").orderBy("uploadedAt", "desc").limit(30).get(),
     ]);
 
-    const tfiberPastDueAsOfDate = resolveTFiberPastDueAsOfDate(statusOrders);
-    const repMap = new Map<string, RepDoc>(repsSnapshot.docs.map((document) => [document.id, document.data() as RepDoc]));
-    const activeRepMap = new Map([...repMap.entries()].filter(([, rep]) => String(rep.status || "active") === "active"));
+    const repMap = new Map<string, RepDoc>(repsSnapshot.docs.map((document) => {
+      const data = document.data() as RepDoc;
+      const repUid = String(data.repUid || document.id);
+      return [repUid, { ...data, repUid }];
+    }));
+    const reportingTeams = teamsSnapshot.docs.map((document) => {
+      const data = document.data();
+      const members = Array.isArray(data.members) && data.members.length ? data.members : Array.isArray(data.repUids) ? data.repUids : [];
+      return { teamId: String(data.teamId || document.id), active: data.active !== false, managerRepUid: data.managerRepUid ? String(data.managerRepUid) : null, members: members.map(String) };
+    });
+    const accessScope = resolveDashboardAccessScope(actor.profile, [...repMap.values()].map((rep) => ({ repUid: String(rep.repUid || ""), displayName: String(rep.displayName || ""), managerUid: rep.managerUid ?? null, managerName: String(rep.managerName || ""), teamId: rep.teamId ?? null })), reportingTeams);
+    const selectedRepId = common.repId && dashboardRepAllowed(accessScope, common.repId) ? common.repId : "";
+    const repMatchesDashboard = (repUid: string | null | undefined) => dashboardRepAllowed(accessScope, repUid) && (!selectedRepId || repUid === selectedRepId);
+    const repMatchesCommon = (rep: RepDoc | undefined) => {
+      if (!rep) return !accessScope.restricted && !common.repId && (!common.rep || common.rep === "all") && (!common.manager || common.manager === "all") && (!common.location || common.location === "all");
+      return repMatchesDashboard(String(rep.repUid || ""))
+        && (!common.manager || common.manager === "all" || String(rep.managerName || "") === common.manager)
+        && (!common.location || common.location === "all" || String(rep.locationName || "") === common.location)
+        && (!common.rep || common.rep === "all" || String(rep.displayName || "") === common.rep);
+    };
+    const activeRepMap = new Map([...repMap.entries()].filter(([, rep]) => String(rep.status || "active") === "active" && repMatchesCommon(rep)));
     const applyOrderFilters = (orders: OrderDoc[]) => dedupeOrders(orders.filter((order) => {
       const rep = order.matchedRepUid ? repMap.get(String(order.matchedRepUid)) : undefined;
       const rawProviderKey = providerKey(order.provider || order.providerKey);
-      return (!common.provider || common.provider === "all" || rawProviderKey === providerKey(common.provider))
-        && (!common.manager || common.manager === "all" || String(rep?.managerName || order.rawManagerName || "") === common.manager)
-        && (!common.location || common.location === "all" || String(rep?.locationName || "") === common.location)
-        && (!common.repId || String(rep?.repUid || "") === common.repId)
-        && (!common.rep || common.rep === "all" || String(rep?.displayName || order.rawRepName || "") === common.rep);
+      return repMatchesCommon(rep)
+        && (!common.provider || common.provider === "all" || rawProviderKey === providerKey(common.provider));
     }));
     const filteredCurrentOrders = applyOrderFilters(currentOrders);
     const filteredStatusOrders = applyOrderFilters(statusOrders);
+    const filteredComparisonOrders = applyOrderFilters(comparisonOrders);
+    const filteredPreviousOrders = applyOrderFilters(previousOrders);
+    const tfiberPastDueAsOfDate = resolveTFiberPastDueAsOfDate(filteredStatusOrders);
 
     const repTotals = new Map<string, number>();
     for (const order of filteredCurrentOrders) {
@@ -247,9 +269,18 @@ export async function GET(request: Request) {
 
     let totalKnocks = 0;
     const knocksByRep = new Map<string, number>();
+    const selectedProvider = common.provider && common.provider !== "all" ? providerKey(common.provider) : "all";
     for (const daily of dailySnapshots) {
       for (const document of daily.docs) {
-        const knocks = Number(document.data().knocks ?? document.data().count ?? 0);
+        if (!repMatchesCommon(repMap.get(document.id))) continue;
+        const knockData = document.data();
+        const knocks = selectedProvider === "att"
+          ? Number(knockData.attKnocks ?? 0)
+          : selectedProvider === "tfiber"
+            ? Number(knockData.tfiberKnocks ?? 0)
+            : selectedProvider === "manual" || selectedProvider === "frontier"
+              ? 0
+              : Number(knockData.knocks ?? knockData.count ?? 0);
         totalKnocks += knocks;
         knocksByRep.set(document.id, (knocksByRep.get(document.id) || 0) + knocks);
       }
@@ -291,7 +322,7 @@ export async function GET(request: Request) {
     const freshness = { att: uploadInfo("attSales"), tfiber: uploadInfo("tfiberSales") };
     const todayKey = dateId(today);
     const uploadedToday = [freshness.att, freshness.tfiber].some((item) => item?.uploadedAt && dateId(new Date(item.uploadedAt)) === todayKey);
-    if (!uploadedToday) alerts.push({ type: "upload", title: "No sales report uploaded today", detail: "Upload an ATT or T-Fiber report to keep today’s reporting current." });
+    if (!accessScope.restricted && !uploadedToday) alerts.push({ type: "upload", title: "No sales report uploaded today", detail: "Upload an ATT or T-Fiber report to keep today’s reporting current." });
 
     const orderStatusTotals = emptyStatusTotals();
     const statusFunnel: Record<string, StatusTotals> = {
@@ -343,8 +374,8 @@ export async function GET(request: Request) {
       byProvider,
       topReps,
       comparison: {
-        current: salesTotal(comparisonOrders),
-        previous: salesTotal(previousOrders),
+        current: salesTotal(filteredComparisonOrders),
+        previous: salesTotal(filteredPreviousOrders),
         currentStart: dateId(comparisonCurrentStart),
         currentEnd: dateId(comparisonCurrentEnd),
         previousStart: dateId(comparisonPreviousStart),
@@ -352,11 +383,20 @@ export async function GET(request: Request) {
       },
       alerts,
       goalPacing,
-      freshness,
+      freshness: accessScope.restricted ? { att: null, tfiber: null } : freshness,
       statusFunnel,
       orderStatusTotals,
       teamSnapshot,
       efficiency,
+      scope: {
+        mode: accessScope.mode,
+        restricted: accessScope.restricted,
+        canFilterReps: accessScope.canFilterReps,
+        reps: [...repMap.values()]
+          .filter((rep) => String(rep.status || "active") === "active" && dashboardRepAllowed(accessScope, String(rep.repUid || "")))
+          .map((rep) => ({ repUid: String(rep.repUid || ""), displayName: String(rep.displayName || "Unnamed rep") }))
+          .sort((left, right) => left.displayName.localeCompare(right.displayName)),
+      },
       meta: {
         filtersApplied: Object.entries(common).filter(([, value]) => Boolean(value)),
         tfiberPastDueAsOfDate: dateId(tfiberPastDueAsOfDate),

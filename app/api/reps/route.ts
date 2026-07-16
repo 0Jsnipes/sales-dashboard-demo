@@ -3,18 +3,19 @@ import { z } from "zod";
 import { FieldValue } from "firebase-admin/firestore";
 import { normalizeEmail, normalizeName, normalizeSalesId } from "@/src/lib/matching/normalize";
 import { getAdminDb } from "@/src/lib/firebase/admin";
-import { canManageRoster, requireActor } from "@/src/lib/firebase/server-auth";
+import { canManageRepRoles, canManageRoster, requireActor } from "@/src/lib/firebase/server-auth";
 import { rematchTFiberOrdersForRep } from "@/src/lib/imports/tfiber";
 import { rematchATTOrdersForRep } from "@/src/lib/imports/att";
 import { parseCommonFilters, applyTextSearchFilter } from "@/src/lib/api/report-filters";
 import { autoMoveNoSaleRepsToInactive } from "@/src/lib/reps/lifecycle";
 import { errorResponse } from "@/src/lib/api/error-response";
 import { findTeamForManager, getTeamById } from "@/src/lib/teams/team-service";
+import { normalizeRepAccessRole, repAccessRoleValues } from "@/src/lib/reps/access-role";
 
 export const runtime = "nodejs";
 
 const socials = z.object({ instagram: z.string().max(160).optional(), facebook: z.string().max(160).optional(), tiktok: z.string().max(160).optional(), linkedin: z.string().max(160).optional() }).default({});
-const createRep = z.object({ displayName: z.string().min(2).max(120), email: z.union([z.string().email(), z.literal("")]).default(""), phone: z.string().max(40).optional(), managerUid: z.string().nullable().optional(), managerName: z.string().max(120).default(""), teamId: z.string().trim().min(1).nullable().optional(), locationId: z.string().min(1).max(80), locationName: z.string().min(1).max(120), programIds: z.array(z.string().min(1).max(80)).default([]), vendorType: z.enum(["organic", "subVendor"]).default("organic"), weeklySalesGoal: z.number().int().min(0).max(10000).default(0), weeklyKnocksGoal: z.number().int().min(0).max(10000).default(0), salesIds: z.array(z.string().min(1).max(80)).default([]), aliases: z.array(z.string().min(1).max(120)).default([]), socials });
+const createRep = z.object({ displayName: z.string().min(2).max(120), email: z.union([z.string().email(), z.literal("")]).default(""), phone: z.string().max(40).optional(), managerUid: z.string().nullable().optional(), managerName: z.string().max(120).default(""), teamId: z.string().trim().min(1).nullable().optional(), locationId: z.string().min(1).max(80), locationName: z.string().min(1).max(120), programIds: z.array(z.string().min(1).max(80)).default([]), vendorType: z.enum(["organic", "subVendor"]).default("organic"), accessRole: z.enum(repAccessRoleValues).default("rep"), weeklySalesGoal: z.number().int().min(0).max(10000).default(0), weeklyKnocksGoal: z.number().int().min(0).max(10000).default(0), salesIds: z.array(z.string().min(1).max(80)).default([]), aliases: z.array(z.string().min(1).max(120)).default([]), socials });
 
 const chunks = <T,>(values: T[], size: number) => Array.from({ length: Math.ceil(values.length / size) }, (_, index) => values.slice(index * size, (index + 1) * size));
 
@@ -26,7 +27,7 @@ export async function GET(request: Request) {
     const filters = parseCommonFilters(url.searchParams);
     const status = url.searchParams.get("status") || "active";
     if (!["active", "inactive", "terminated", "all"].includes(status)) return NextResponse.json({ error: "INVALID_STATUS" }, { status: 400 });
-    const autoInactive = actor.profile.role === "superAdmin" || actor.profile.role === "admin" ? await autoMoveNoSaleRepsToInactive(db) : null;
+    const autoInactive = !actor.viewAsAuthUid && (actor.profile.role === "superAdmin" || actor.profile.role === "admin") ? await autoMoveNoSaleRepsToInactive(db) : null;
     let snapshot;
     if (actor.profile.role === "superAdmin" || actor.profile.role === "admin") {
       const query = status === "all" ? db.collection("reps") : db.collection("reps").where("status", "==", status);
@@ -79,6 +80,7 @@ export async function GET(request: Request) {
       const repUid = String((rep as { repUid?: string }).repUid || "");
       return {
         ...rep,
+        accessRole: normalizeRepAccessRole((rep as { accessRole?: unknown }).accessRole),
         firstSaleDateId: firstSaleDateByRepUid.get(repUid) || "",
         lastSaleDateId: lastSaleDateByRepUid.get(repUid) || "",
       };
@@ -93,6 +95,7 @@ export async function POST(request: Request) {
     if (!canManageRoster(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     const input = createRep.safeParse(await request.json());
     if (!input.success) return NextResponse.json({ error: input.error.flatten() }, { status: 400 });
+    if (input.data.accessRole !== "rep" && !canManageRepRoles(actor)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     const [firstName = "", ...rest] = input.data.displayName.trim().split(/\s+/);
     const db = getAdminDb();
     const requestedTeam = input.data.teamId ? await getTeamById(input.data.teamId, db) : null;
@@ -100,7 +103,7 @@ export async function POST(request: Request) {
     const correspondingTeam = requestedTeam ?? await findTeamForManager(input.data.managerUid, input.data.managerName, db);
     const document = db.collection("reps").doc();
     const rep = {
-      repUid: document.id, displayName: input.data.displayName.trim(), firstName, lastName: rest.join(" "), email: input.data.email.trim(), emailNormalized: normalizeEmail(input.data.email), phone: input.data.phone?.trim() || "", salesIds: input.data.salesIds.map(normalizeSalesId), aliases: input.data.aliases.map((alias) => alias.trim()), managerUid: input.data.managerUid ?? null, managerName: input.data.managerName.trim(), teamId: correspondingTeam?.teamId ?? null, locationId: input.data.locationId.trim(), locationName: input.data.locationName.trim(), programIds: input.data.programIds.map((program) => program.trim()), vendorType: input.data.vendorType, weeklySalesGoal: input.data.weeklySalesGoal, weeklyKnocksGoal: input.data.weeklyKnocksGoal, socials: input.data.socials, status: "active" as const, authUid: null, accountStatus: "none" as const, onboarding: { onboarded: false, checks: {} }, search: { displayName: normalizeName(input.data.displayName), aliases: input.data.aliases.map(normalizeName), salesIds: input.data.salesIds.map(normalizeSalesId) }, createdAt: FieldValue.serverTimestamp(), createdBy: actor.token.uid, updatedAt: FieldValue.serverTimestamp(), updatedBy: actor.token.uid,
+      repUid: document.id, displayName: input.data.displayName.trim(), firstName, lastName: rest.join(" "), email: input.data.email.trim(), emailNormalized: normalizeEmail(input.data.email), phone: input.data.phone?.trim() || "", salesIds: input.data.salesIds.map(normalizeSalesId), aliases: input.data.aliases.map((alias) => alias.trim()), managerUid: input.data.managerUid ?? null, managerName: input.data.managerName.trim(), teamId: correspondingTeam?.teamId ?? null, locationId: input.data.locationId.trim(), locationName: input.data.locationName.trim(), programIds: input.data.programIds.map((program) => program.trim()), vendorType: input.data.vendorType, accessRole: input.data.accessRole, weeklySalesGoal: input.data.weeklySalesGoal, weeklyKnocksGoal: input.data.weeklyKnocksGoal, socials: input.data.socials, status: "active" as const, authUid: null, accountStatus: "none" as const, onboarding: { onboarded: false, checks: {} }, search: { displayName: normalizeName(input.data.displayName), aliases: input.data.aliases.map(normalizeName), salesIds: input.data.salesIds.map(normalizeSalesId) }, createdAt: FieldValue.serverTimestamp(), createdBy: actor.token.uid, updatedAt: FieldValue.serverTimestamp(), updatedBy: actor.token.uid,
     };
     if (correspondingTeam) {
       const batch = db.batch();

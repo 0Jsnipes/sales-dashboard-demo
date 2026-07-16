@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { Bell, ChevronDown, LogOut, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
+import { Bell, ChevronDown, Eye, LogOut, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Search, X } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { useAuth } from "@/src/components/auth-provider";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/src/components/layout/theme-toggle";
 import { CommandPalette } from "@/src/components/layout/command-palette";
@@ -30,6 +32,9 @@ import { cn } from "@/lib/utils";
 import { getFirebaseAuth } from "@/src/lib/firebase/client";
 import { visibleAppNav, visibleMobileNav } from "@/src/components/layout/navigation";
 import { businessUnitLabel } from "@/src/lib/access";
+import { authedJsonAsActualUser } from "@/src/lib/api/client";
+import type { AppUser } from "@/src/types/user";
+import { repAccessRoleLabel } from "@/src/lib/reps/access-role";
 
 type AppShellProps = {
   title: string;
@@ -144,9 +149,86 @@ function MobileBottomNav({ onMore }: { onMore: () => void }) {
   );
 }
 
-export function AppShell({ title, subtitle, actions, children }: AppShellProps) {
-  const { user, profile } = useAuth();
+function ViewAsControl() {
+  const { actualProfile, isViewingAs, viewAsProfile, startViewingAs, stopViewingAs } = useAuth();
   const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [users, setUsers] = useState<Array<AppUser & { previewSource: "account" | "roster" }>>([]);
+
+  async function openPicker() {
+    setOpen(true);
+    if (users.length || loading || actualProfile?.role !== "superAdmin") return;
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await authedJsonAsActualUser<{ users: AppUser[]; rosterTargets: AppUser[] }>("/api/users");
+      setUsers([
+        ...(result.users ?? []).map((profile) => ({ ...profile, previewSource: "account" as const })),
+        ...(result.rosterTargets ?? []).map((profile) => ({ ...profile, previewSource: "roster" as const })),
+      ].sort((left, right) => left.email.localeCompare(right.email)));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to load users.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (actualProfile?.role !== "superAdmin") return null;
+  const term = query.trim().toLowerCase();
+  const filteredUsers = users.filter((profile) => !term || [profile.email, profile.role, profile.repAccessRole, profile.authUid].join(" ").toLowerCase().includes(term));
+
+  return (
+    <>
+      <Button variant={isViewingAs ? "secondary" : "outline"} size="sm" onClick={() => void openPicker()}>
+        <Eye className="h-4 w-4" />
+        <span className="hidden xl:inline">{isViewingAs ? `Viewing ${viewAsProfile?.email ?? "user"}` : "View as user"}</span>
+        <span className="xl:hidden">View as</span>
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[85vh] max-w-xl overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>View workspace as a user</DialogTitle>
+            <DialogDescription>Preview an account or any roster representative, including people who do not have a login. Changes are disabled until you exit preview mode.</DialogDescription>
+          </DialogHeader>
+          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search email or role" />
+          <ScrollArea className="max-h-[52vh] rounded-xl border">
+            <div className="divide-y">
+              {loading ? <p className="p-4 text-sm text-muted-foreground">Loading users…</p> : null}
+              {error ? <p className="p-4 text-sm text-destructive">{error}</p> : null}
+              {!loading && !error && filteredUsers.length === 0 ? <p className="p-4 text-sm text-muted-foreground">No users match this search.</p> : null}
+              {filteredUsers.map((target) => (
+                <button
+                  type="button"
+                  key={target.authUid}
+                  className="flex w-full items-center justify-between gap-4 p-4 text-left hover:bg-muted/50"
+                  onClick={() => {
+                    startViewingAs(target);
+                    setOpen(false);
+                    setQuery("");
+                    router.replace(visibleAppNav(target)[0]?.href ?? "/dashboard");
+                    router.refresh();
+                  }}
+                >
+                  <span className="min-w-0"><span className="block truncate font-medium">{target.email}</span><span className="text-xs text-muted-foreground">{target.previewSource === "roster" ? `${repAccessRoleLabel(target.repAccessRole)} · roster preview` : `${target.role} · ${businessUnitLabel(target.businessUnit)}`}</span></span>
+                  <div className="flex items-center gap-2"><Badge variant="secondary">{target.previewSource === "roster" ? "Roster" : "Account"}</Badge><Badge variant={target.authUid === viewAsProfile?.authUid ? "success" : "outline"}>{target.authUid === viewAsProfile?.authUid ? "Viewing" : "Preview"}</Badge></div>
+                </button>
+              ))}
+            </div>
+          </ScrollArea>
+          {isViewingAs ? <Button variant="outline" onClick={() => { stopViewingAs(); setOpen(false); router.replace("/dashboard"); router.refresh(); }}><X className="h-4 w-4" />Exit current preview</Button> : null}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+export function AppShell({ title, subtitle, actions, children }: AppShellProps) {
+  const { user, profile, isViewingAs, viewAsProfile, stopViewingAs } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
   const reducedMotion = useReducedMotion();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => (typeof window !== "undefined" ? window.localStorage.getItem("ab-sidebar-collapsed") === "true" : false));
@@ -156,7 +238,14 @@ export function AppShell({ title, subtitle, actions, children }: AppShellProps) 
     window.localStorage.setItem("ab-sidebar-collapsed", String(collapsed));
   }, [collapsed]);
 
-  const displayName = user?.displayName?.trim() || profile?.email?.split("@")[0] || "Workspace user";
+  useEffect(() => {
+    if (!profile) return;
+    const allowed = visibleAppNav(profile);
+    if (allowed.some((item) => isRouteActive(pathname, item.href))) return;
+    router.replace(allowed[0]?.href ?? "/dashboard");
+  }, [pathname, profile, router]);
+
+  const displayName = isViewingAs ? profile?.email?.split("@")[0] || "Preview user" : user?.displayName?.trim() || profile?.email?.split("@")[0] || "Workspace user";
   const name = displayName;
   const role = profile?.role ?? "member";
   const avatarText = initialsFrom(user?.displayName || profile?.email || "AB");
@@ -170,6 +259,7 @@ export function AppShell({ title, subtitle, actions, children }: AppShellProps) 
   const topActions = useMemo(
     () => (
       <div className="flex items-center gap-2">
+        <ViewAsControl />
         <Button variant="outline" size="sm" onClick={() => setCommandOpen(true)} className="hidden lg:inline-flex">
           <Search className="h-4 w-4" />
           Search
@@ -366,6 +456,13 @@ export function AppShell({ title, subtitle, actions, children }: AppShellProps) 
               <Separator />
             </div>
           </header>
+
+          {isViewingAs ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm sm:px-6 lg:px-8">
+              <div className="flex items-center gap-2"><Eye className="h-4 w-4 text-amber-600" /><span><strong>Preview mode:</strong> viewing the workspace as {viewAsProfile?.email}. This mode is read-only.</span></div>
+              <Button size="sm" variant="outline" onClick={() => { stopViewingAs(); router.replace("/dashboard"); router.refresh(); }}><X className="h-4 w-4" />Exit preview</Button>
+            </div>
+          ) : null}
 
           <main className="flex-1 px-4 py-6 pb-24 sm:px-6 lg:px-8 lg:pb-6">
             <motion.div

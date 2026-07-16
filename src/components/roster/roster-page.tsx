@@ -40,6 +40,7 @@ import type { Team } from "@/src/types/team";
 import { useAuth } from "@/src/components/auth-provider";
 import { normalizePermissions } from "@/src/lib/access";
 import { formatDate, formatDateTime } from "@/src/lib/formatters/date";
+import { REP_ACCESS_ROLE_OPTIONS, normalizeRepAccessRole, repAccessRoleLabel, repRolePermissions, type RepAccessRole } from "@/src/lib/reps/access-role";
 
 type RepForm = {
   displayName: string;
@@ -54,6 +55,7 @@ type RepForm = {
   aliases: string;
   programIds: string;
   vendorType: "organic" | "subVendor";
+  accessRole: RepAccessRole;
   weeklySalesGoal: string;
   weeklyKnocksGoal: string;
 };
@@ -76,6 +78,7 @@ const blankForm: RepForm = {
   aliases: "",
   programIds: "",
   vendorType: "organic",
+  accessRole: "rep",
   weeklySalesGoal: "0",
   weeklyKnocksGoal: "0",
 };
@@ -227,6 +230,7 @@ export function RosterPage() {
   const [managers, setManagers] = useState<ManagerOption[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [saving, setSaving] = useState(false);
+  const [creatingAccountRepUid, setCreatingAccountRepUid] = useState<string | null>(null);
   const [removeRep, setRemoveRep] = useState<Rep | null>(null);
   const [terminateRep, setTerminateRep] = useState<Rep | null>(null);
   const [restoreRep, setRestoreRep] = useState<Rep | null>(null);
@@ -249,6 +253,8 @@ export function RosterPage() {
   const permissions = normalizePermissions(profile?.permissions);
   const canEdit = profile?.role === "superAdmin" || (profile?.role === "admin" && permissions.canEditRoster);
   const canManageRosterOptions = profile?.role === "superAdmin" || permissions.canManageRosterOptions;
+  const canManageRepRoles = profile?.role === "superAdmin" || permissions.canManageRepRoles;
+  const canCreateAccounts = profile?.role === "superAdmin" || (profile?.role === "admin" && permissions.canCreateUsers);
   const canAddAlias = profile?.role === "superAdmin";
 
   const request = useCallback((path: string, init?: RequestInit) => authedFetch(path, init), []);
@@ -345,6 +351,7 @@ export function RosterPage() {
       ),
     },
     { accessorKey: "managerName", header: "Manager", cell: ({ row }) => row.original.managerName || "—" },
+    { accessorKey: "accessRole", header: "Role", cell: ({ row }) => <Badge variant="outline">{repAccessRoleLabel(row.original.accessRole)}</Badge> },
     { accessorKey: "locationName", header: "Location", cell: ({ row }) => row.original.locationName || "—" },
     { accessorKey: "vendorType", header: "Program / vendor", cell: ({ row }) => <Badge variant="outline">{row.original.vendorType}</Badge> },
     { accessorKey: "salesIds", header: "IDs / aliases", cell: ({ row }) => <span>{row.original.salesIds.length} / {row.original.aliases.length}</span> },
@@ -418,6 +425,7 @@ export function RosterPage() {
       aliases: rep.aliases.join(", "),
       programIds: rep.programIds.join(", "),
       vendorType: rep.vendorType ?? "organic",
+      accessRole: normalizeRepAccessRole(rep.accessRole),
       weeklySalesGoal: String(rep.weeklySalesGoal ?? 0),
       weeklyKnocksGoal: String((rep as Rep & { weeklyKnocksGoal?: number }).weeklyKnocksGoal ?? 0),
     };
@@ -459,6 +467,7 @@ export function RosterPage() {
         locationName: form.locationName.trim(),
         programIds: split(form.programIds),
         vendorType: form.vendorType,
+        accessRole: form.accessRole,
         weeklySalesGoal: Number(form.weeklySalesGoal || 0),
         weeklyKnocksGoal: Number(form.weeklyKnocksGoal || 0),
         salesIds: split(form.salesIds),
@@ -587,6 +596,36 @@ export function RosterPage() {
       toast.error(cause instanceof Error ? cause.message : "Unable to add alias.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function createAccount(rep: Rep) {
+    if (!rep.displayName.trim() || !rep.email.trim()) {
+      toast.error("Add the rep's name and contact email before creating an account.");
+      return;
+    }
+    setCreatingAccountRepUid(rep.repUid);
+    try {
+      const response = await request(`/api/reps/${rep.repUid}/account`, { method: "POST" });
+      const result = await response.json() as { error?: unknown; authUid?: string; accountStatus?: Rep["accountStatus"] };
+      if (!response.ok) {
+        const knownMessages: Record<string, string> = {
+          ACCOUNT_ALREADY_LINKED: "This rep already has a linked account.",
+          EMAIL_ALREADY_HAS_ACCOUNT: "That email is already used by another account.",
+          NAME_AND_EMAIL_REQUIRED: "A name and email are required to create an account.",
+          FORBIDDEN: "You do not have permission to create accounts.",
+        };
+        const code = typeof result.error === "string" ? result.error : "";
+        throw new Error(knownMessages[code] ?? formatApiError(result.error, "Unable to create account."));
+      }
+      const updates: Partial<Rep> = { authUid: result.authUid ?? null, accountStatus: result.accountStatus ?? "active" };
+      setReps((current) => current.map((item) => item.repUid === rep.repUid ? { ...item, ...updates } : item));
+      setSelectedRep((current) => current?.repUid === rep.repUid ? { ...current, ...updates } : current);
+      toast.success("Account created. No account email was sent.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to create account.");
+    } finally {
+      setCreatingAccountRepUid(null);
     }
   }
 
@@ -771,7 +810,7 @@ export function RosterPage() {
                       {row.getVisibleCells().map((cell) => <TableCell key={cell.id} className="py-2.5 align-middle">{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>)}
                     </TableRow>
                   )) : (
-                    <TableRow><TableCell colSpan={11}><EmptyState title="No matching reps" description="Try clearing filters or adding a new representative." action={<Button onClick={() => { setEditorOpen(true); setEditing(null); setForm(blankForm); }}>Add rep</Button>} /></TableCell></TableRow>
+                    <TableRow><TableCell colSpan={12}><EmptyState title="No matching reps" description="Try clearing filters or adding a new representative." action={<Button onClick={() => { setEditorOpen(true); setEditing(null); setForm(blankForm); }}>Add rep</Button>} /></TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
@@ -790,6 +829,7 @@ export function RosterPage() {
                   </div>
                   <div className="grid gap-2 text-sm text-muted-foreground">
                     <p>Manager: {rep.managerName || "—"}</p>
+                    <p>Role: {repAccessRoleLabel(rep.accessRole)}</p>
                     <p>Location: {rep.locationName || "—"}</p>
                     {rep.status === "inactive" ? <p>Last sale: {formatDate(rep.lastSaleDateId) || "—"}</p> : null}
                 <p>Sales goal: {rep.weeklySalesGoal || 0}</p>
@@ -860,9 +900,13 @@ export function RosterPage() {
                 </ProfileCard>
                 <ProfileCard title="Account access">
                   <Badge variant={selectedRep.authUid ? (selectedRep.accountStatus === "active" ? "success" : "warning") : "secondary"}>
-                    {selectedRep.authUid ? selectedRep.accountStatus : "No login"}
+                    {selectedRep.authUid ? "Account created" : "No account"}
                   </Badge>
-                  <p className="mt-2 text-sm text-muted-foreground">Create account CTA is a placeholder unless a backend invite endpoint exists.</p>
+                  <p className="mt-2 text-sm text-muted-foreground">Account creation uses this rep&apos;s name and contact email. It does not send an email yet.</p>
+                  <p className="mt-2 text-sm">Role: {repAccessRoleLabel(selectedRep.accessRole)}</p>
+                  <p className="text-sm text-muted-foreground">Dashboard scope: {repRolePermissions(selectedRep.accessRole).dashboardScope}</p>
+                  {!selectedRep.authUid && canCreateAccounts ? <Button className="mt-3" size="sm" onClick={() => void createAccount(selectedRep)} disabled={creatingAccountRepUid === selectedRep.repUid || !selectedRep.displayName.trim() || !selectedRep.email.trim()}>{creatingAccountRepUid === selectedRep.repUid ? "Creating account..." : "Create account"}</Button> : null}
+                  {!selectedRep.authUid && (!selectedRep.displayName.trim() || !selectedRep.email.trim()) ? <p className="text-xs text-warning">Add a name and email to enable account creation.</p> : null}
                 </ProfileCard>
                 <ProfileCard title="Notes / audit">
                   <p>Created: {formatDateTime(selectedRep.createdAt)}</p>
@@ -886,31 +930,34 @@ export function RosterPage() {
       </Sheet>
 
       <Dialog open={editorOpen} onOpenChange={(open) => !open && setEditorOpen(false)}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? "Edit representative" : "Add representative"}</DialogTitle>
-            <DialogDescription>Keep one clean identity record for sales matching and readiness workflows.</DialogDescription>
+            <DialogDescription className="sr-only">Edit representative roster details.</DialogDescription>
           </DialogHeader>
-          <form className="space-y-6" onSubmit={(event) => void saveRep(event)}>
-            <section className="grid gap-3 md:grid-cols-2">
-              <Field label="Identity" helper="Rep name is required.">
+          <form className="space-y-4" onSubmit={(event) => void saveRep(event)}>
+            <div className="grid gap-x-4 gap-y-3 md:grid-cols-2">
+              <Field label="Name">
                 <Input placeholder="Full name" value={form.displayName} onChange={(event) => setForm({ ...form, displayName: event.target.value })} />
               </Field>
-              <Field label="Vendor / program" helper="Used for matching and CRM visibility.">
+              <Field label="Vendor / program">
                 <Select value={form.vendorType} onValueChange={(value) => setForm({ ...form, vendorType: value as RepForm["vendorType"] })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Select vendor type" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="organic">Organic</SelectItem>
                     <SelectItem value="subVendor">Sub-vendor</SelectItem>
                   </SelectContent>
                 </Select>
               </Field>
-            </section>
-            <section className="grid gap-3 md:grid-cols-2">
-              <Field label="Contact email"><Input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></Field>
-              <Field label="Phone"><Input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></Field>
-            </section>
-            <section className="grid gap-3 md:grid-cols-2">
+              <Field label="Dashboard role">
+                <Select value={form.accessRole} onValueChange={(value) => setForm({ ...form, accessRole: value as RepAccessRole })} disabled={!canManageRepRoles}>
+                  <SelectTrigger><SelectValue placeholder="Select dashboard role" /></SelectTrigger>
+                  <SelectContent>{REP_ACCESS_ROLE_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </Field>
+              <Field label="Programs"><Input placeholder="ATT, T-Fiber" value={form.programIds} onChange={(event) => setForm({ ...form, programIds: event.target.value })} /></Field>
+              <Field label="Contact email"><Input type="email" placeholder="name@example.com" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></Field>
+              <Field label="Phone"><Input type="tel" placeholder="(555) 555-5555" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></Field>
               <Field label="Manager">
                 <div className="flex gap-2">
                   <Select value={form.managerUid || "__none__"} onValueChange={(value) => {
@@ -927,7 +974,7 @@ export function RosterPage() {
                   {canManageRosterOptions ? <Button type="button" variant="outline" className="shrink-0" onClick={() => { setManagerDraft(""); setManagerCreateOpen(true); }}><Plus className="h-4 w-4" /> Add</Button> : null}
                 </div>
               </Field>
-              <Field label="Team" helper="Reporting group only; this does not change the manager.">
+              <Field label="Team">
                 <Select value={form.teamId || "__none__"} onValueChange={(value) => setForm({ ...form, teamId: value === "__none__" ? "" : value })}>
                   <SelectTrigger><SelectValue placeholder="Team" /></SelectTrigger>
                   <SelectContent>
@@ -936,8 +983,6 @@ export function RosterPage() {
                   </SelectContent>
                 </Select>
               </Field>
-            </section>
-            <section className="grid gap-3 md:grid-cols-2">
               <Field label="Location">
                 <div className="flex gap-2">
                   <Select value={form.locationId} onValueChange={(value) => setForm({ ...form, locationId: value, locationName: locations.find((item) => item.locationId === value)?.name ?? "" })}>
@@ -949,20 +994,15 @@ export function RosterPage() {
                   {canManageRosterOptions ? <Button type="button" variant="outline" className="shrink-0" onClick={() => { setLocationCreateTarget("editor"); setLocationDraft(""); }}><Plus className="h-4 w-4" /> Add</Button> : null}
                 </div>
               </Field>
-            </section>
-            <section className="grid gap-3 md:grid-cols-2">
-              <Field label="Sales IDs" helper="Comma separated.">
-                <Input value={form.salesIds} onChange={(event) => setForm({ ...form, salesIds: event.target.value })} />
+              <Field label="Sales IDs">
+                <Input placeholder="ID123, ID456" value={form.salesIds} onChange={(event) => setForm({ ...form, salesIds: event.target.value })} />
               </Field>
-              <Field label="Aliases" helper="Comma separated and deduped client-side.">
-                <Input value={form.aliases} onChange={(event) => setForm({ ...form, aliases: event.target.value })} />
+              <Field label="Aliases">
+                <Input placeholder="Alternate name, nickname" value={form.aliases} onChange={(event) => setForm({ ...form, aliases: event.target.value })} />
               </Field>
-            </section>
-            <section className="grid gap-3 md:grid-cols-2">
-              <Field label="Programs"><Input value={form.programIds} onChange={(event) => setForm({ ...form, programIds: event.target.value })} /></Field>
-              <Field label="Weekly sales goal"><Input type="number" min={0} value={form.weeklySalesGoal} onChange={(event) => setForm({ ...form, weeklySalesGoal: event.target.value })} /></Field>
-              <Field label="Weekly knocks goal"><Input type="number" min={0} value={form.weeklyKnocksGoal} onChange={(event) => setForm({ ...form, weeklyKnocksGoal: event.target.value })} /></Field>
-            </section>
+              <Field label="Weekly sales goal"><Input type="number" min={0} placeholder="0" value={form.weeklySalesGoal} onChange={(event) => setForm({ ...form, weeklySalesGoal: event.target.value })} /></Field>
+              <Field label="Weekly knocks goal"><Input type="number" min={0} placeholder="0" value={form.weeklyKnocksGoal} onChange={(event) => setForm({ ...form, weeklyKnocksGoal: event.target.value })} /></Field>
+            </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setEditorOpen(false)}>Cancel</Button>
               <Button type="submit" disabled={saving}>{saving ? "Saving..." : editing ? "Save changes" : "Create representative"}</Button>
