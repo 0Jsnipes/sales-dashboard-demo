@@ -12,6 +12,7 @@ export const teamAutoEmailSettingsSchema = z.object({
   salesRange: z.enum(teamAutoEmailRangePresets),
   knocksRange: z.enum(teamAutoEmailRangePresets),
   frequency: z.literal("daily"),
+  cc: z.array(z.string().trim().email()).max(20),
   subject: z.string().trim().min(1).max(200),
   message: z.string().trim().min(1).max(4000),
 }).superRefine((value, context) => {
@@ -29,6 +30,7 @@ export const defaultTeamAutoEmailSettings: TeamAutoEmailSettings = {
   salesRange: "all",
   knocksRange: "previous-day",
   frequency: "daily",
+  cc: [],
   subject: "Orders to date",
   message: "Hello,\n\nYour team's sales and knock reports are attached for the selected reporting periods.",
 };

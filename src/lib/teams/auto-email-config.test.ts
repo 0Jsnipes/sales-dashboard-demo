@@ -5,6 +5,11 @@ describe("team auto-email settings", () => {
   it("defaults to disabled", () => {
     expect(normalizeTeamAutoEmailSettings(null)).toEqual(defaultTeamAutoEmailSettings);
     expect(normalizeTeamAutoEmailSettings(null).enabled).toBe(false);
+    expect(normalizeTeamAutoEmailSettings({ enabled: false }).cc).toEqual([]);
+  });
+
+  it("keeps configured CC recipients", () => {
+    expect(normalizeTeamAutoEmailSettings({ ...defaultTeamAutoEmailSettings, cc: ["leader@example.com"] }).cc).toEqual(["leader@example.com"]);
   });
 
   it("uses Eastern dates for daily limits and report presets", () => {

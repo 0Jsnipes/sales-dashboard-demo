@@ -4,6 +4,7 @@ import { requireActor } from "@/src/lib/firebase/server-auth";
 import type { Rep } from "@/src/types/rep";
 import { startOfWeek, toDateId } from "@/src/lib/date/week";
 import { formatImportedName } from "@/src/lib/matching/display-name";
+import { enableWorksheetFilters } from "@/src/lib/exports/worksheet";
 import { buildSalesExportRows, buildWorksheetData, EXCEL_DATE_FORMAT } from "@/src/lib/reports/sales-export";
 import { groupAssignmentsByRep, normalizeAssignmentDoc, resolveRepLocation, type RepLocationAssignment } from "@/src/lib/reps/location-assignments";
 import { sanitizeOrderId } from "@/src/lib/sales/outcomes";
@@ -110,7 +111,7 @@ export async function GET(request: Request) {
     }))));
     const worksheet = (rows: Record<string, unknown>[]) => {
       const data = buildWorksheetData(rows);
-      return XLSX.utils.json_to_sheet(data.rows, { header: data.headers, dateNF: EXCEL_DATE_FORMAT });
+      return enableWorksheetFilters(XLSX.utils.json_to_sheet(data.rows, { header: data.headers, dateNF: EXCEL_DATE_FORMAT }));
     };
     const workbook = XLSX.utils.book_new();
     const attRows = reportRows("ATT");

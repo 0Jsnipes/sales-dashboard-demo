@@ -113,10 +113,7 @@ function updateLinkedUser(transaction: Transaction, db: Firestore, rep: Rep, tea
   transaction.set(db.collection(USERS).doc(rep.authUid), { teamId }, { merge: true });
 }
 
-/**
- * Assigns one roster rep to exactly one reporting team. All team documents are
- * read inside the transaction so legacy/stray membership is removed as well.
- */
+/** Sets the rep's primary roster team without removing manually added reporting-team memberships. */
 export async function assignUserToTeam(repUid: string, newTeamId: string | null, actorUid: string, db: Firestore = getAdminDb()) {
   await db.runTransaction(async (transaction) => {
     const repRef = db.collection(REPS).doc(repUid);
@@ -126,12 +123,15 @@ export async function assignUserToTeam(repUid: string, newTeamId: string | null,
     ]);
     if (!repSnapshot.exists) throw new Error("REP_NOT_FOUND");
     const rep = repSnapshot.data() as Rep;
+    const previousTeamId = rep.teamId ?? null;
     const teamDocs = teamsSnapshot.docs.map((document) => ({ reference: document.ref, team: normalizeTeam(document.id, document.data()) }));
     if (newTeamId && !teamDocs.some(({ team }) => team.teamId === newTeamId && team.active)) throw new Error("ACTIVE_TEAM_NOT_FOUND");
 
     for (const { reference, team } of teamDocs) {
-      const members = team.members.filter((id) => id !== repUid);
-      if (team.teamId === newTeamId) members.push(repUid);
+      if (team.teamId !== previousTeamId && team.teamId !== newTeamId) continue;
+      const members = team.teamId === previousTeamId && previousTeamId !== newTeamId
+        ? team.members.filter((id) => id !== repUid)
+        : [...team.members, repUid];
       if (members.length !== team.members.length || team.teamId === newTeamId || team.repUids?.includes(repUid)) {
         transaction.update(reference, {
           members: [...new Set(members)],
@@ -146,31 +146,19 @@ export async function assignUserToTeam(repUid: string, newTeamId: string | null,
   });
 }
 
-export async function removeUserFromTeam(repUid: string, teamId: string, actorUid: string, db: Firestore = getAdminDb()) {
-  const rep = await db.collection(REPS).doc(repUid).get();
-  if (!rep.exists) throw new Error("REP_NOT_FOUND");
-  if ((rep.data() as Rep).teamId && (rep.data() as Rep).teamId !== teamId) return;
-  await assignUserToTeam(repUid, null, actorUid, db);
-}
-
-/** Reconciles a team's desired member list and moves reps from prior teams atomically. */
+/** Reconciles one reporting team's members without changing any other team memberships. */
 export async function syncTeamMembers(teamId: string, memberIds: string[], actorUid: string, db: Firestore = getAdminDb()) {
   const desired = [...new Set(memberIds.map((id) => id.trim()).filter(Boolean))];
   if (desired.length > 400) throw new Error("TEAM_MEMBER_LIMIT_EXCEEDED");
   const target = await getTeamById(teamId, db);
   if (!target) throw new Error("TEAM_NOT_FOUND");
   if (!target.active) throw new Error("TEAM_ARCHIVED");
-  const desiredSet = new Set(desired);
-  const currentSet = new Set(target.members);
   const desiredReps = desired.length ? await db.getAll(...desired.map((repUid) => db.collection(REPS).doc(repUid))) : [];
   if (desiredReps.some((snapshot) => !snapshot.exists)) throw new Error("REP_NOT_FOUND");
-  const repTeamIds = new Map(desiredReps.map((snapshot) => [snapshot.id, (snapshot.data() as Rep).teamId ?? null]));
-  const additions = desired.filter((repUid) => !currentSet.has(repUid) || repTeamIds.get(repUid) !== teamId);
-  const removals = target.members.filter((repUid) => !desiredSet.has(repUid));
-
-  // Each assignment is its own transaction. This keeps every rep/team/user
-  // relationship consistent without approaching Firestore's 500-write limit
-  // when a large team is replaced in one UI save.
-  for (const repUid of additions) await assignUserToTeam(repUid, teamId, actorUid, db);
-  for (const repUid of removals) await removeUserFromTeam(repUid, teamId, actorUid, db);
+  await db.collection(TEAMS).doc(teamId).update({
+    members: desired,
+    repUids: FieldValue.delete(),
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: actorUid,
+  });
 }

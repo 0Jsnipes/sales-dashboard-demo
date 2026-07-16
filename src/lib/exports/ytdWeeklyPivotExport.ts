@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import { toDateId } from "@/src/lib/date/week";
+import { enableWorksheetFilters } from "@/src/lib/exports/worksheet";
 
 export type YtdPivotProvider = "ATT" | "T-Fiber";
 
@@ -332,7 +333,7 @@ function autoSizeColumns(rows: Record<string, unknown>[]) {
 }
 
 function buildWorksheet(rows: Record<string, unknown>[]) {
-  const worksheet = XLSX.utils.json_to_sheet(rows);
+  const worksheet = enableWorksheetFilters(XLSX.utils.json_to_sheet(rows));
   worksheet["!cols"] = autoSizeColumns(rows);
   (worksheet as Record<string, unknown>)["!freeze"] = { xSplit: 0, ySplit: 1 };
   return worksheet;

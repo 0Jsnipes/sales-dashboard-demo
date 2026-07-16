@@ -34,6 +34,7 @@ type AutoEmailSettings = {
   salesRange: AutoEmailRangePreset;
   knocksRange: AutoEmailRangePreset;
   frequency: "daily";
+  cc: string[];
   subject: string;
   message: string;
 };
@@ -45,6 +46,7 @@ const defaultAutoEmailSettings: AutoEmailSettings = {
   salesRange: "all",
   knocksRange: "previous-day",
   frequency: "daily",
+  cc: [],
   subject: "Orders to date",
   message: "Hello,\n\nYour team's sales and knock reports are attached for the selected reporting periods.",
 };
@@ -61,6 +63,10 @@ const autoEmailTriggerOptions: Array<{ kind: ExportFileKind; label: string; desc
   { kind: "tfiber-knocks", label: "T-Fiber knocks upload", description: "Run after a Book1 workbook is imported." },
 ];
 const allExportFiles = () => new Set<ExportFileKind>(exportFileOptions.map((option) => option.kind));
+
+function emailAddresses(value: string) {
+  return [...new Set(value.split(/[;,\n]/).map((email) => email.trim()).filter(Boolean))];
+}
 
 function dateId(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -119,6 +125,7 @@ export function TeamsPage() {
   const [exporting, setExporting] = useState(false);
   const [emailTeam, setEmailTeam] = useState<Team | null>(null);
   const [emailRecipient, setEmailRecipient] = useState("");
+  const [emailCc, setEmailCc] = useState("");
   const [emailSubject, setEmailSubject] = useState("Orders to date");
   const [emailMessage, setEmailMessage] = useState("Hello,\n\nYour team's sales and knock data for the year to date.");
   const [emailFiles, setEmailFiles] = useState<Set<ExportFileKind>>(allExportFiles);
@@ -132,6 +139,7 @@ export function TeamsPage() {
   const [preparingExports, setPreparingExports] = useState(false);
   const [autoEmailOpen, setAutoEmailOpen] = useState(false);
   const [autoEmailSettings, setAutoEmailSettings] = useState<AutoEmailSettings>(defaultAutoEmailSettings);
+  const [autoEmailCc, setAutoEmailCc] = useState("");
   const [savingAutoEmails, setSavingAutoEmails] = useState(false);
 
   const load = useCallback(() => {
@@ -146,6 +154,7 @@ export function TeamsPage() {
         if (teamResult.canManageAutoEmails) {
           const autoEmailResult = await authedJson<{ settings: AutoEmailSettings }>("/api/teams/auto-email-settings");
           setAutoEmailSettings(autoEmailResult.settings ?? defaultAutoEmailSettings);
+          setAutoEmailCc((autoEmailResult.settings?.cc ?? []).join(", "));
         }
         if (teamResult.canManage) {
           const roster = await authedJson<{ reps: Rep[] }>("/api/reps?status=all");
@@ -161,7 +170,13 @@ export function TeamsPage() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const teamNameById = useMemo(() => new Map(teams.map((team) => [team.teamId, team.name])), [teams]);
+  const teamNamesByRepUid = useMemo(() => {
+    const names = new Map<string, string[]>();
+    for (const team of teams) {
+      for (const repUid of team.members) names.set(repUid, [...(names.get(repUid) ?? []), team.name]);
+    }
+    return names;
+  }, [teams]);
   const repById = useMemo(() => new Map(reps.map((rep) => [rep.repUid, rep])), [reps]);
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -365,6 +380,7 @@ export function TeamsPage() {
     const previousDay = emailRange("previous-day", "", "");
     setEmailTeam(team);
     setEmailRecipient(team.managerDetails?.email ?? "");
+    setEmailCc("");
     setEmailSubject("Orders to date");
     setEmailMessage("Hello,\n\nYour team's sales and knock reports are attached for the selected reporting periods.");
     setEmailFiles(allExportFiles());
@@ -392,6 +408,7 @@ export function TeamsPage() {
         method: "POST",
         body: JSON.stringify({
           recipient: emailRecipient.trim(),
+          cc: emailAddresses(emailCc),
           subject: emailSubject.trim(),
           message: emailMessage.trim(),
           files: [...emailFiles],
@@ -431,9 +448,10 @@ export function TeamsPage() {
     try {
       const result = await authedJson<{ settings: AutoEmailSettings }>("/api/teams/auto-email-settings", {
         method: "PUT",
-        body: JSON.stringify(autoEmailSettings),
+        body: JSON.stringify({ ...autoEmailSettings, cc: emailAddresses(autoEmailCc) }),
       });
       setAutoEmailSettings(result.settings);
+      setAutoEmailCc(result.settings.cc.join(", "));
       setAutoEmailOpen(false);
       toast.success(result.settings.enabled ? "Automatic team emails are on." : "Automatic team emails are off.");
     } catch (cause) {
@@ -525,6 +543,7 @@ export function TeamsPage() {
             </div>
 
             <div className="space-y-2"><Label htmlFor="auto-email-subject">Subject</Label><Input id="auto-email-subject" value={autoEmailSettings.subject} onChange={(event) => setAutoEmailSettings((current) => ({ ...current, subject: event.target.value }))} /></div>
+            <div className="space-y-2"><Label htmlFor="auto-email-cc">CC recipients</Label><Input id="auto-email-cc" value={autoEmailCc} onChange={(event) => setAutoEmailCc(event.target.value)} placeholder="person@example.com, another@example.com" /><p className="text-xs text-muted-foreground">These people will be copied on every automatic team email.</p></div>
             <div className="space-y-2"><Label htmlFor="auto-email-message">Message</Label><Textarea id="auto-email-message" rows={5} value={autoEmailSettings.message} onChange={(event) => setAutoEmailSettings((current) => ({ ...current, message: event.target.value }))} /></div>
           </div>
           <DialogFooter><Button variant="outline" disabled={savingAutoEmails} onClick={() => setAutoEmailOpen(false)}>Cancel</Button><Button disabled={savingAutoEmails} onClick={() => void saveAutoEmailSettings()}><MailCheck className="h-4 w-4" />{savingAutoEmails ? "Saving..." : "Save automation"}</Button></DialogFooter>
@@ -539,19 +558,19 @@ export function TeamsPage() {
             <div className="space-y-2"><Label htmlFor="team-description">Description</Label><Input id="team-description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></div>
             <div className="space-y-2"><Label htmlFor="team-manager">Team manager</Label><Select value={form.managerRepUid || "__none__"} onValueChange={(value) => setForm({ ...form, managerRepUid: value === "__none__" ? "" : value })}><SelectTrigger id="team-manager"><SelectValue placeholder="Choose a manager" /></SelectTrigger><SelectContent><SelectItem value="__none__">No team manager</SelectItem>{reps.filter((rep) => rep.status === "active").map((rep) => <SelectItem key={rep.repUid} value={rep.repUid}>{rep.displayName}{rep.email ? ` — ${rep.email}` : " — no email"}</SelectItem>)}</SelectContent></Select><p className="text-xs text-muted-foreground">Email exports go to this person when an email is listed.</p></div>
             <div className="space-y-3 rounded-xl border p-3">
-              <div className="flex items-center justify-between gap-3"><div><Label htmlFor="team-editor-member-search">Team members</Label><p className="text-xs text-muted-foreground">Current members are checked and shown first. Selecting someone from another team will move them here when saved.</p></div><Badge variant="secondary">{editorMembers.size} selected</Badge></div>
+              <div className="flex items-center justify-between gap-3"><div><Label htmlFor="team-editor-member-search">Team members</Label><p className="text-xs text-muted-foreground">Current members are checked and shown first. Representatives can belong to multiple reporting teams.</p></div><Badge variant="secondary">{editorMembers.size} selected</Badge></div>
               {!form.active ? <p className="rounded-lg bg-muted p-2 text-xs text-muted-foreground">Reactivate this team before changing its members.</p> : null}
               <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input id="team-editor-member-search" className="pl-9" placeholder="Search representatives" value={editorMemberQuery} onChange={(event) => setEditorMemberQuery(event.target.value)} disabled={!form.active} /></div>
               <ScrollArea className="h-64 rounded-xl border">
                 <div className="divide-y">
                   {editorVisibleReps.length ? editorVisibleReps.map((rep) => {
                     const checked = editorMembers.has(rep.repUid);
-                    const existingTeam = rep.teamId ? teamNameById.get(rep.teamId) : null;
+                    const existingTeams = teamNamesByRepUid.get(rep.repUid) ?? [];
                     return (
                       <label key={rep.repUid} className="flex cursor-pointer items-center gap-3 p-3 hover:bg-muted/50">
                         <Checkbox disabled={!form.active} checked={checked} onCheckedChange={(value) => setEditorMembers((current) => { const next = new Set(current); if (value === true) next.add(rep.repUid); else next.delete(rep.repUid); return next; })} />
                         <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{rep.displayName}</p><p className="truncate text-xs text-muted-foreground">{rep.email || "No email"}</p></div>
-                        <Badge variant={checked ? "secondary" : "outline"}>{checked ? "On this team" : existingTeam ? existingTeam : "No team"}</Badge>
+                        <Badge variant={checked ? "secondary" : "outline"}>{checked ? "On this team" : existingTeams.length ? existingTeams.join(", ") : "No teams"}</Badge>
                       </label>
                     );
                   }) : <p className="p-6 text-center text-sm text-muted-foreground">No representatives match this search.</p>}
@@ -619,6 +638,7 @@ export function TeamsPage() {
               <div className="space-y-2"><Label htmlFor="team-email-recipient">Manager email</Label><Input id="team-email-recipient" type="email" value={emailRecipient} onChange={(event) => setEmailRecipient(event.target.value)} placeholder="manager@example.com" /></div>
               <div className="space-y-2"><Label htmlFor="team-email-subject">Subject</Label><Input id="team-email-subject" value={emailSubject} onChange={(event) => setEmailSubject(event.target.value)} /></div>
             </div>
+            <div className="space-y-2"><Label htmlFor="team-email-cc">CC recipients</Label><Input id="team-email-cc" value={emailCc} onChange={(event) => setEmailCc(event.target.value)} placeholder="person@example.com, another@example.com" /><p className="text-xs text-muted-foreground">Separate multiple addresses with commas, semicolons, or new lines.</p></div>
             <div className="space-y-2"><Label htmlFor="team-email-message">Message</Label><Textarea id="team-email-message" rows={5} value={emailMessage} onChange={(event) => setEmailMessage(event.target.value)} /></div>
             <div className="grid gap-4 sm:grid-cols-2">
               <EmailRangePicker id="team-email-sales" label="Sales date range" mode={emailSalesRangeMode} customStart={emailSalesCustomStart} customEnd={emailSalesCustomEnd} onModeChange={setEmailSalesRangeMode} onStartChange={setEmailSalesCustomStart} onEndChange={setEmailSalesCustomEnd} />
@@ -641,13 +661,14 @@ export function TeamsPage() {
 
       <Dialog open={Boolean(memberTeam)} onOpenChange={(open) => !open && setMemberTeam(null)}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>Manage {memberTeam?.name} members</DialogTitle><DialogDescription>{selectedMembers.size} selected. Adding a rep here automatically removes them from any prior team.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Manage {memberTeam?.name} members</DialogTitle><DialogDescription>{selectedMembers.size} selected. Adding a rep here does not remove them from their manager&apos;s team or any other reporting team.</DialogDescription></DialogHeader>
           <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" placeholder="Search by name or email" value={memberQuery} onChange={(event) => setMemberQuery(event.target.value)} /></div>
           <ScrollArea className="h-[420px] rounded-xl border">
             <div className="divide-y">
               {visibleReps.map((rep) => {
                 const checked = selectedMembers.has(rep.repUid);
-                return <label key={rep.repUid} className="flex cursor-pointer items-center gap-3 p-3 hover:bg-muted/50"><Checkbox checked={checked} onCheckedChange={(value) => setSelectedMembers((current) => { const next = new Set(current); if (value === true) next.add(rep.repUid); else next.delete(rep.repUid); return next; })} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{rep.displayName}</p><p className="truncate text-xs text-muted-foreground">{rep.email || "No email"}</p></div><Badge variant="outline">{checked ? memberTeam?.name : rep.teamId ? teamNameById.get(rep.teamId) ?? "Other team" : "No team"}</Badge></label>;
+                const existingTeams = teamNamesByRepUid.get(rep.repUid) ?? [];
+                return <label key={rep.repUid} className="flex cursor-pointer items-center gap-3 p-3 hover:bg-muted/50"><Checkbox checked={checked} onCheckedChange={(value) => setSelectedMembers((current) => { const next = new Set(current); if (value === true) next.add(rep.repUid); else next.delete(rep.repUid); return next; })} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{rep.displayName}</p><p className="truncate text-xs text-muted-foreground">{rep.email || "No email"}</p></div><Badge variant="outline">{checked ? "On this team" : existingTeams.length ? existingTeams.join(", ") : "No teams"}</Badge></label>;
               })}
             </div>
           </ScrollArea>

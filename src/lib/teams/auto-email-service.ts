@@ -84,6 +84,7 @@ export async function queueAutomaticTeamReports(input: { trigger: TeamAutoEmailU
       const result = await queueTeamReportEmail({
         team,
         recipient,
+        cc: settings.cc,
         subject: settings.subject,
         message: settings.message,
         files: settings.reportFiles,

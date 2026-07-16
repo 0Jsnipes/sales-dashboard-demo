@@ -9,6 +9,7 @@ import type { Team } from "@/src/types/team";
 type QueueTeamReportOptions = {
   team: Team;
   recipient: string;
+  cc?: string[];
   subject: string;
   message: string;
   files: TeamReportFileKind[];
@@ -33,6 +34,11 @@ function rangeFilePart(range: TeamReportRange) {
 
 export async function queueTeamReportEmail(options: QueueTeamReportOptions) {
   const { team, recipient, subject, message, files, ranges, requestedBy, metadata = {} } = options;
+  const recipientKey = recipient.trim().toLowerCase();
+  const cc = [...new Map((options.cc ?? [])
+    .map((email) => email.trim())
+    .filter((email) => email && email.toLowerCase() !== recipientKey)
+    .map((email) => [email.toLowerCase(), email])).values()];
   const db = getAdminDb();
   const mailCollection = process.env.FIREBASE_TRIGGER_EMAIL_COLLECTION?.trim() || "mail";
   const mailReference = db.collection(mailCollection).doc();
@@ -58,6 +64,7 @@ export async function queueTeamReportEmail(options: QueueTeamReportOptions) {
 
   await mailReference.create({
     to: [recipient],
+    ...(cc.length ? { cc } : {}),
     message: { subject, text: message, attachments },
     createdAt: FieldValue.serverTimestamp(),
     teamId: team.teamId,
@@ -67,6 +74,7 @@ export async function queueTeamReportEmail(options: QueueTeamReportOptions) {
   await db.collection("teamEmailLogs").add({
     teamId: team.teamId,
     recipient,
+    cc,
     subject,
     files,
     ranges,
@@ -77,5 +85,5 @@ export async function queueTeamReportEmail(options: QueueTeamReportOptions) {
     queuedBy: requestedBy,
     ...metadata,
   });
-  return { recipient, mailDocumentId: mailReference.id };
+  return { recipient, cc, mailDocumentId: mailReference.id };
 }

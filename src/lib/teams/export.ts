@@ -2,6 +2,7 @@ import "server-only";
 
 import * as XLSX from "xlsx";
 import { getAdminDb } from "@/src/lib/firebase/admin";
+import { enableWorksheetFilters } from "@/src/lib/exports/worksheet";
 import { readKnockExportCacheRows } from "@/src/lib/knocks/export-cache";
 import { buildSourceExportRows, buildSourceWorksheetData, EXCEL_DATE_FORMAT } from "@/src/lib/reports/sales-export";
 import type { Team } from "@/src/types/team";
@@ -30,7 +31,7 @@ export function sortSalesOrdersNewestFirst<T extends { orderDateId?: unknown }>(
 function sourceWorksheet(rows: SourceRow[]) {
   const sourceRows = buildSourceExportRows(rows);
   const data = buildSourceWorksheetData(sourceRows);
-  return XLSX.utils.json_to_sheet(data.rows, { header: data.headers, dateNF: EXCEL_DATE_FORMAT });
+  return enableWorksheetFilters(XLSX.utils.json_to_sheet(data.rows, { header: data.headers, dateNF: EXCEL_DATE_FORMAT }));
 }
 
 export async function buildTeamSalesExport(team: Team, range: ExportRange, provider: TeamExportProvider, options: TeamSalesExportOptions = {}) {

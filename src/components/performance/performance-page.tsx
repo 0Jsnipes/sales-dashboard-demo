@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { authedFetch, authedJson } from "@/src/lib/api/client";
 import { useAuth } from "@/src/components/auth-provider";
 import { endOfWeek, startOfWeek, toDateId, weekRangeLabel } from "@/src/lib/date/week";
+import { enableWorksheetFilters } from "@/src/lib/exports/worksheet";
 import { formatDate } from "@/src/lib/formatters/date";
 import { formatNumber, formatPercent } from "@/src/lib/formatters/number";
 import { calculateCancellationRate, calculateInstallRate, outcomeBadgeVariant, type PerformanceOrder } from "@/src/lib/performance/performance-utils";
@@ -270,7 +271,7 @@ async function downloadWorkbook(filename: string, sheets: Array<{ name: string; 
   const workbook = XLSX.utils.book_new();
   for (const sheet of sheets) {
     const data = buildWorksheetData(sheet.rows);
-    const worksheet = XLSX.utils.json_to_sheet(data.rows, { header: data.headers, dateNF: EXCEL_DATE_FORMAT });
+    const worksheet = enableWorksheetFilters(XLSX.utils.json_to_sheet(data.rows, { header: data.headers, dateNF: EXCEL_DATE_FORMAT }));
     XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name.slice(0, 31) || "Sheet1");
   }
   const output = XLSX.write(workbook, { type: "array", bookType: "xlsx" });

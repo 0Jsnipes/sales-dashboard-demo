@@ -5,6 +5,7 @@ import { requireActor } from "@/src/lib/firebase/server-auth";
 import type { Rep } from "@/src/types/rep";
 import { parseCommonFilters, toDateId } from "@/src/lib/api/report-filters";
 import { buildRepSearchIndex, normalizeEmail, normalizeName, normalizeSalesId } from "@/src/lib/matching/normalize";
+import { enableWorksheetFilters } from "@/src/lib/exports/worksheet";
 import { buildWorksheetData } from "@/src/lib/reports/sales-export";
 import { errorResponse } from "@/src/lib/api/error-response";
 
@@ -156,7 +157,7 @@ export async function GET(request: Request) {
     rows.sort((left, right) => text(left.Date).localeCompare(text(right.Date)) || text(left.Rep).localeCompare(text(right.Rep)));
     const worksheetData = buildWorksheetData(rows);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(worksheetData.rows, { header: worksheetData.headers }), "Knocks");
+    XLSX.utils.book_append_sheet(workbook, enableWorksheetFilters(XLSX.utils.json_to_sheet(worksheetData.rows, { header: worksheetData.headers })), "Knocks");
     const file = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
     return new NextResponse(file, {
       headers: {

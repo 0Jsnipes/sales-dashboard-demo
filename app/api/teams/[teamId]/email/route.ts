@@ -16,6 +16,7 @@ const dateRange = z.object({
 
 const input = z.object({
   recipient: z.string().trim().email().optional(),
+  cc: z.array(z.string().trim().email()).max(20).default([]),
   subject: z.string().trim().min(1).max(200).default("Orders to date"),
   message: z.string().trim().min(1).max(4000),
   files: z.array(z.enum(teamReportFileKinds)).min(1).max(4),
@@ -44,6 +45,7 @@ export async function POST(request: Request, { params }: Params) {
     const queued = await queueTeamReportEmail({
       team,
       recipient,
+      cc: value.data.cc,
       subject: value.data.subject,
       message: value.data.message,
       files: value.data.files,
