@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseTeamExportRange, teamExportSlug } from "./export";
+import { parseTeamExportRange, sortSalesOrdersNewestFirst, teamExportSlug } from "./export";
 import type { Team } from "@/src/types/team";
 
 describe("team export utilities", () => {
@@ -17,5 +17,15 @@ describe("team export utilities", () => {
 
   it("creates a download-safe team slug", () => {
     expect(teamExportSlug({ name: "  Team A / North  " } as Team)).toBe("team-a-north");
+  });
+
+  it("sorts emailed sales rows from newest to oldest", () => {
+    const rows = sortSalesOrdersNewestFirst([
+      { orderDateId: "2026-07-01", orderId: "oldest" },
+      { orderDateId: "2026-07-15", orderId: "newest" },
+      { orderDateId: "2026-07-10", orderId: "middle" },
+    ]);
+
+    expect(rows.map((row) => row.orderId)).toEqual(["newest", "middle", "oldest"]);
   });
 });

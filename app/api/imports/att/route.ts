@@ -6,8 +6,10 @@ import { getAdminApp, getAdminDb } from "@/src/lib/firebase/admin";
 import { importATTRows, parseATTReport } from "@/src/lib/imports/att";
 import { expectedImportFileLabel, validateImportFileName } from "@/src/lib/imports/file-conventions";
 import { errorResponse } from "@/src/lib/api/error-response";
+import { safelyQueueAutomaticTeamReports } from "@/src/lib/teams/auto-email-service";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   try {
@@ -23,7 +25,8 @@ export async function POST(request: Request) {
     await getStorage(getAdminApp()).bucket().file(storagePath).save(buffer, { contentType: file.type || "text/csv", metadata: { metadata: { uploadId, uploadedBy: actor.token.uid } } });
     await getAdminDb().collection("uploadRuns").doc(uploadId).set({ uploadId, type: "attSales", fileName: file.name, storagePath, uploadedBy: actor.token.uid, uploadedAt: new Date(), status: "pending" });
     const summary = await importATTRows({ rows: parseATTReport(buffer), uploadId, actorUid: actor.token.uid, fileName: file.name, storagePath });
-    return NextResponse.json({ uploadId, storagePath, summary }, { status: 201 });
+    const autoEmails = await safelyQueueAutomaticTeamReports({ trigger: "att-sales", uploadId, actorUid: actor.token.uid });
+    return NextResponse.json({ uploadId, storagePath, summary, autoEmails }, { status: 201 });
   } catch (error) {
     return errorResponse("imports/att", error, "UPLOAD_FAILED");
   }

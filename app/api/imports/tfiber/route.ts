@@ -6,8 +6,10 @@ import { getAdminApp, getAdminDb } from "@/src/lib/firebase/admin";
 import { importTFiberRows, parseTFiberWorkbook } from "@/src/lib/imports/tfiber";
 import { expectedImportFileLabel, validateImportFileName } from "@/src/lib/imports/file-conventions";
 import { errorResponse } from "@/src/lib/api/error-response";
+import { safelyQueueAutomaticTeamReports } from "@/src/lib/teams/auto-email-service";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 export async function POST(request: Request) {
   try {
     const actor = await requireActor(request);
@@ -24,7 +26,8 @@ export async function POST(request: Request) {
     await getStorage(getAdminApp()).bucket().file(storagePath).save(buffer, { contentType: file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", metadata: { metadata: { uploadId, uploadedBy: actor.token.uid } } });
     await getAdminDb().collection("uploadRuns").doc(uploadId).set({ uploadId, type: "tfiberSales", fileName: file.name, storagePath, uploadedBy: actor.token.uid, uploadedAt: new Date(), status: "pending" });
     const summary = await importTFiberRows({ rows: parseTFiberWorkbook(buffer), uploadId, actorUid: actor.token.uid, fileName: file.name, storagePath });
-    return NextResponse.json({ uploadId, storagePath, summary }, { status: 201 });
+    const autoEmails = await safelyQueueAutomaticTeamReports({ trigger: "tfiber-sales", uploadId, actorUid: actor.token.uid });
+    return NextResponse.json({ uploadId, storagePath, summary, autoEmails }, { status: 201 });
   } catch (error) {
     return errorResponse("imports/tfiber", error, "UPLOAD_FAILED");
   }

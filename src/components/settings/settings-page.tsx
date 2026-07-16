@@ -56,6 +56,7 @@ type UserRow = {
     canManageTeams: boolean;
     canExportTeamReports: boolean;
     canEmailTeamReports: boolean;
+    canManageTeamAutoEmails: boolean;
     canManageRosterOptions: boolean;
     canManageResources: boolean;
     canImportEmailReports: boolean;
@@ -99,6 +100,7 @@ const actionPermissionGroups = [
   { key: "canManageTeams", label: "Create and edit teams", group: "Feature access" },
   { key: "canExportTeamReports", label: "Export team reports", group: "Feature access" },
   { key: "canEmailTeamReports", label: "Email team reports", group: "Feature access" },
+  { key: "canManageTeamAutoEmails", label: "Manage automatic team emails", group: "Feature access" },
   { key: "canManageRosterOptions", label: "Add managers and locations", group: "Feature access" },
   { key: "canManageResources", label: "Add Tools resources", group: "Feature access" },
   { key: "canImportEmailReports", label: "View email report imports", group: "Feature access" },

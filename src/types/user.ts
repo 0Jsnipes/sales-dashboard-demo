@@ -35,6 +35,7 @@ export interface AppUser {
     canManageTeams: boolean;
     canExportTeamReports: boolean;
     canEmailTeamReports: boolean;
+    canManageTeamAutoEmails: boolean;
     canManageRosterOptions: boolean;
     canManageResources: boolean;
     canImportEmailReports: boolean;

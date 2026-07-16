@@ -111,7 +111,7 @@ export async function importEmailAttachment(file: EmailAttachment, options: Impo
         origin,
       },
     });
-    return { fileName: file.fileName, type: "knockImport", summary: result.summary, uploadId: result.uploadId };
+    return { fileName: file.fileName, type: "knockImport", source: result.source, summary: result.summary, uploadId: result.uploadId };
   }
 
   throw new Error(`Unsupported attachment type for ${file.fileName}.`);

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { canExportTeamReports, canManageTeams, canEmailTeamReports, canViewTeams, requireActor } from "@/src/lib/firebase/server-auth";
+import { canExportTeamReports, canManageTeamAutoEmails, canManageTeams, canEmailTeamReports, canViewTeams, requireActor } from "@/src/lib/firebase/server-auth";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { createTeam, getTeamById, getTeams, syncTeamMembers } from "@/src/lib/teams/team-service";
 import { errorResponse } from "@/src/lib/api/error-response";
@@ -43,6 +43,7 @@ export async function GET(request: Request) {
       canManage,
       canExport: canExportTeamReports(actor),
       canEmail: canEmailTeamReports(actor),
+      canManageAutoEmails: canManageTeamAutoEmails(actor),
       canPrepareExports: canExportTeamReports(actor),
     });
   } catch (error) {

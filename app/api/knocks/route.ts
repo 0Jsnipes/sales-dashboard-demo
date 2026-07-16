@@ -6,8 +6,10 @@ import { parseCommonFilters, parseDateRangeParams, toDateId } from "@/src/lib/ap
 import { buildRepSearchIndex, normalizeEmail, normalizeSalesId, normalizeName } from "@/src/lib/matching/normalize";
 import { importKnockWorkbook } from "@/src/lib/knocks/import";
 import { errorResponse } from "@/src/lib/api/error-response";
+import { safelyQueueAutomaticTeamReports } from "@/src/lib/teams/auto-email-service";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 type KnockOrder = {
   orderUid: string;
@@ -238,7 +240,12 @@ export async function POST(request: Request) {
       sourceOverride,
       contentType: file.type,
     });
-    return NextResponse.json(result, { status: 201 });
+    const autoEmails = await safelyQueueAutomaticTeamReports({
+      trigger: result.source === "att_salesrabbit" ? "att-knocks" : "tfiber-knocks",
+      uploadId: result.uploadId,
+      actorUid: actor.token.uid,
+    });
+    return NextResponse.json({ ...result, autoEmails }, { status: 201 });
   } catch (error) {
     return errorResponse("knocks", error);
   }

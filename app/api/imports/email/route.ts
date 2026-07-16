@@ -2,8 +2,19 @@ import { NextResponse } from "next/server";
 import { importEmailAttachments } from "@/src/lib/imports/email-import";
 import { mailgunSignatureValid, senderAllowed, sharedSecretValid } from "@/src/lib/imports/mailgun-auth";
 import { errorResponse } from "@/src/lib/api/error-response";
+import { safelyQueueAutomaticTeamReports } from "@/src/lib/teams/auto-email-service";
+import type { TeamAutoEmailUploadType } from "@/src/lib/teams/auto-email-config";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
+
+function autoEmailTrigger(result: Record<string, unknown>): TeamAutoEmailUploadType | null {
+  if (result.type === "attSales") return "att-sales";
+  if (result.type === "tfiberSales") return "tfiber-sales";
+  if (result.type === "knockImport" && result.source === "att_salesrabbit") return "att-knocks";
+  if (result.type === "knockImport" && result.source === "tfiber") return "tfiber-knocks";
+  return null;
+}
 
 function inboundRequestValid(request: Request, form: FormData) {
   const signingKey = process.env.MAILGUN_WEBHOOK_SIGNING_KEY?.trim();
@@ -51,8 +62,14 @@ export async function POST(request: Request) {
       });
     }
     const { results, ignored } = await importEmailAttachments(attachments, { actorUid, sender, subject, origin: "mailgun-email-webhook" });
+    const autoEmails = [];
+    for (const result of results) {
+      const trigger = autoEmailTrigger(result);
+      const uploadId = String(result.uploadId ?? "");
+      if (trigger && uploadId) autoEmails.push(await safelyQueueAutomaticTeamReports({ trigger, uploadId, actorUid }));
+    }
 
-    return NextResponse.json({ ok: true, sender, subject, imported: results.length, ignoredAttachments: ignored, results });
+    return NextResponse.json({ ok: true, sender, subject, imported: results.length, ignoredAttachments: ignored, results, autoEmails });
   } catch (error) {
     return errorResponse("imports/email", error);
   }

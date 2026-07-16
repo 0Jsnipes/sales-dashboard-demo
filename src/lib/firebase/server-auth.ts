@@ -62,6 +62,10 @@ export function canEmailTeamReports(actor: ServerActor) {
   return hasFeaturePermission(actor, "canEmailTeamReports");
 }
 
+export function canManageTeamAutoEmails(actor: ServerActor) {
+  return hasFeaturePermission(actor, "canManageTeamAutoEmails");
+}
+
 export function canManageRosterOptions(actor: ServerActor) {
   return hasFeaturePermission(actor, "canManageRosterOptions");
 }

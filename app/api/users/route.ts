@@ -32,6 +32,7 @@ const permissions = z.object({
   canManageTeams: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canManageTeams),
   canExportTeamReports: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canExportTeamReports),
   canEmailTeamReports: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canEmailTeamReports),
+  canManageTeamAutoEmails: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canManageTeamAutoEmails),
   canManageRosterOptions: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canManageRosterOptions),
   canManageResources: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canManageResources),
   canImportEmailReports: z.boolean().default(DEFAULT_ADMIN_PERMISSIONS.canImportEmailReports),
