@@ -5,6 +5,8 @@ export type BusinessUnit = "fiber" | "energy" | "all";
 
 export interface AppUser {
   authUid: string;
+  demoSeedId?: string | null;
+  demoPresentationRole?: "superAdmin" | null;
   email: string;
   role: UserRole;
   businessUnit: BusinessUnit;

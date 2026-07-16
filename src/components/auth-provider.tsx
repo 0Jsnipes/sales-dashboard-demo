@@ -22,6 +22,7 @@ const AuthContext = createContext<AuthState>({ user: null, profile: null, actual
 function normalizeProfile(data: AppUser): AppUser {
   return {
     ...data,
+    role: data.demoSeedId && data.demoPresentationRole === "superAdmin" ? "superAdmin" : data.role,
     businessUnit: normalizeBusinessUnit(data.businessUnit),
     mustChangePassword: Boolean(data.mustChangePassword),
     locationIds: Array.isArray(data.locationIds) ? data.locationIds : [],
@@ -43,11 +44,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setViewAsProfile(null);
   }, []);
   const startViewingAs = useCallback((profile: AppUser) => {
-    if (state.profile?.role !== "superAdmin") return;
+    if (state.profile?.role !== "superAdmin" || state.profile.demoSeedId) return;
     const normalized = normalizeProfile(profile);
     setViewAsAuthUid(normalized.authUid);
     setViewAsProfile(normalized);
-  }, [state.profile?.role]);
+  }, [state.profile]);
   const refreshProfile = useCallback(async () => {
     const user = getFirebaseAuth().currentUser;
     if (!user) {

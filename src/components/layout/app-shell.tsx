@@ -160,7 +160,7 @@ function ViewAsControl() {
 
   async function openPicker() {
     setOpen(true);
-    if (users.length || loading || actualProfile?.role !== "superAdmin") return;
+    if (users.length || loading || actualProfile?.role !== "superAdmin" || actualProfile.demoSeedId) return;
     setLoading(true);
     setError(null);
     try {
@@ -176,7 +176,7 @@ function ViewAsControl() {
     }
   }
 
-  if (actualProfile?.role !== "superAdmin") return null;
+  if (actualProfile?.role !== "superAdmin" || actualProfile.demoSeedId) return null;
   const term = query.trim().toLowerCase();
   const filteredUsers = users.filter((profile) => !term || [profile.email, profile.role, profile.repAccessRole, profile.authUid].join(" ").toLowerCase().includes(term));
 

@@ -17,7 +17,14 @@ export async function requireActor(request: Request): Promise<ServerActor> {
   const token = await getAdminAuth().verifyIdToken(header.slice(7));
   const profile = await getAdminDb().collection("users").doc(token.uid).get();
   if (!profile.exists) throw new Error("PROFILE_NOT_FOUND");
-  const actualProfile = profile.data() as AppUser;
+  const storedProfile = profile.data() as AppUser;
+  const actualProfile: AppUser = storedProfile.demoSeedId && storedProfile.demoPresentationRole === "superAdmin"
+    ? { ...storedProfile, role: "superAdmin" }
+    : storedProfile;
+  if (actualProfile.demoSeedId) {
+    const { pathname } = new URL(request.url);
+    if (request.method !== "GET" || pathname !== "/api/overview") throw new Error("DEMO_READ_ONLY");
+  }
   const viewAsAuthUid = request.headers.get(VIEW_AS_HEADER)?.trim() || null;
   if (!viewAsAuthUid) return { token, profile: actualProfile, actualProfile, viewAsAuthUid: null };
   if (actualProfile.role !== "superAdmin") throw new Error("FORBIDDEN");

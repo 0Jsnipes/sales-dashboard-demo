@@ -64,7 +64,7 @@ export function normalizePermissions(value: unknown): AppUser["permissions"] {
 
 export function canAccessRule(profile: AppUser | null | undefined, rule: AccessRule) {
   if (!profile) return false;
-  if (profile.role === "superAdmin") return true;
+  if (profile.role === "superAdmin" && !profile.demoSeedId) return true;
   if (rule.superAdminOnly) return false;
 
   const userUnit = normalizeBusinessUnit(profile.businessUnit);

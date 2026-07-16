@@ -143,6 +143,11 @@ export async function GET(request: Request) {
   try {
     const actor = await requireActor(request);
     const db = getAdminDb();
+    const demoWorkspace = String((actor.profile as typeof actor.profile & { demoSeedId?: unknown }).demoSeedId ?? "") === "ab-showcase-v1";
+    const salesOrdersCollection = demoWorkspace ? "demoSalesOrders" : "salesOrders";
+    const repsCollection = demoWorkspace ? "demoReps" : "reps";
+    const teamsCollection = demoWorkspace ? "demoTeams" : "teams";
+    const knockDailyCollection = demoWorkspace ? "demoKnockDaily" : "knockDaily";
     const url = new URL(request.url);
     const common = parseCommonFilters(url.searchParams);
     const range = parseDateRangeParams(url.searchParams);
@@ -185,7 +190,7 @@ export async function GET(request: Request) {
     const getOrders = async (start: Date, end: Date) => {
       const startId = dateId(start);
       const endId = dateId(end);
-      const get = (provider: string) => db.collection("salesOrders").doc(provider).collection("orders").where("orderDateId", ">=", startId).where("orderDateId", "<=", endId).get();
+      const get = (provider: string) => db.collection(salesOrdersCollection).doc(provider).collection("orders").where("orderDateId", ">=", startId).where("orderDateId", "<=", endId).get();
       const [att, tfiber, manual] = await Promise.all([get("att"), get("tfiber"), get("manual")]);
       return dedupeOrders(
         [
@@ -201,8 +206,8 @@ export async function GET(request: Request) {
       getOrders(statusStart, statusEnd),
       getOrders(comparisonCurrentStart, comparisonCurrentEnd),
       getOrders(comparisonPreviousStart, comparisonPreviousEnd),
-      db.collection("reps").get(),
-      db.collection("teams").get(),
+      db.collection(repsCollection).get(),
+      db.collection(teamsCollection).get(),
       db.collection("uploadRuns").orderBy("uploadedAt", "desc").limit(30).get(),
     ]);
 
@@ -265,7 +270,7 @@ export async function GET(request: Request) {
 
     const dailyCursors: Date[] = [];
     for (let cursor = new Date(monday); cursor <= lastDay; cursor = addDays(cursor, 1)) dailyCursors.push(cursor);
-    const dailySnapshots = await Promise.all(dailyCursors.map((cursor) => db.collection("knockDaily").doc(dateId(cursor)).collection("reps").get()));
+    const dailySnapshots = await Promise.all(dailyCursors.map((cursor) => db.collection(knockDailyCollection).doc(dateId(cursor)).collection("reps").get()));
 
     let totalKnocks = 0;
     const knocksByRep = new Map<string, number>();
