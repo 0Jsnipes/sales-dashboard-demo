@@ -21,3 +21,23 @@ export function ThemeToggle() {
     </Button>
   );
 }
+
+export function ThemeToggleRow({
+  className,
+  labelHidden = false,
+  iconClassName = "h-4 w-4 shrink-0",
+}: {
+  className?: string;
+  labelHidden?: boolean;
+  iconClassName?: string;
+}) {
+  const { theme, setTheme, resolvedTheme } = useTheme();
+  const isDark = (theme === "system" ? resolvedTheme : theme) === "dark";
+
+  return (
+    <button type="button" className={className} onClick={() => setTheme(isDark ? "light" : "dark")} aria-label="Toggle color theme">
+      {isDark ? <SunMedium className={iconClassName} /> : <MoonStar className={iconClassName} />}
+      <span className={labelHidden ? "sr-only" : "truncate"}>{isDark ? "Light mode" : "Dark mode"}</span>
+    </button>
+  );
+}

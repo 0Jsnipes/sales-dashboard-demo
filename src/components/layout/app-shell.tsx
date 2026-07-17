@@ -3,14 +3,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { Bell, ChevronDown, Eye, LogOut, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Search, X } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { useAuth } from "@/src/components/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -24,7 +23,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { ThemeToggle } from "@/src/components/layout/theme-toggle";
+import { ThemeToggleRow } from "@/src/components/layout/theme-toggle";
 import { CommandPalette } from "@/src/components/layout/command-palette";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -38,7 +37,6 @@ import { repAccessRoleLabel } from "@/src/lib/reps/access-role";
 
 type AppShellProps = {
   title: string;
-  subtitle: string;
   actions?: React.ReactNode;
   children: React.ReactNode;
 };
@@ -54,6 +52,28 @@ function initialsFrom(value: string) {
 
 function isRouteActive(pathname: string, href: string) {
   return pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
+}
+
+function sidebarRowClass(collapsed: boolean, active = false) {
+  return cn(
+    "group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+    active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+    collapsed && "justify-center px-2",
+  );
+}
+
+function CollapsedTooltip({ collapsed, label, children }: { collapsed: boolean; label: string; children: React.ReactElement }) {
+  if (!collapsed) return children;
+  return (
+    <TooltipProvider delayDuration={0}>
+      <Tooltip>
+        <TooltipTrigger asChild>{children}</TooltipTrigger>
+        <TooltipContent side="right" sideOffset={12}>
+          {label}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 }
 
 function ShellNav({ collapsed, onNavigate, mobile = false }: { collapsed: boolean; onNavigate?: () => void; mobile?: boolean }) {
@@ -149,7 +169,7 @@ function MobileBottomNav({ onMore }: { onMore: () => void }) {
   );
 }
 
-function ViewAsControl() {
+function ViewAsControl({ collapsed = false, onNavigate }: { collapsed?: boolean; onNavigate?: () => void }) {
   const { actualProfile, isViewingAs, viewAsProfile, startViewingAs, stopViewingAs } = useAuth();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -182,11 +202,12 @@ function ViewAsControl() {
 
   return (
     <>
-      <Button variant={isViewingAs ? "secondary" : "outline"} size="sm" onClick={() => void openPicker()}>
-        <Eye className="h-4 w-4" />
-        <span className="hidden xl:inline">{isViewingAs ? `Viewing ${viewAsProfile?.email ?? "user"}` : "View as user"}</span>
-        <span className="xl:hidden">View as</span>
-      </Button>
+      <CollapsedTooltip collapsed={collapsed} label={isViewingAs ? `Viewing ${viewAsProfile?.email ?? "user"}` : "View as user"}>
+        <button type="button" className={sidebarRowClass(collapsed, isViewingAs)} onClick={() => void openPicker()}>
+          <Eye className="h-4 w-4 shrink-0" />
+          <span className={cn("truncate", collapsed && "sr-only")}>{isViewingAs ? `Viewing ${viewAsProfile?.email ?? "user"}` : "View as user"}</span>
+        </button>
+      </CollapsedTooltip>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[85vh] max-w-xl overflow-hidden">
           <DialogHeader>
@@ -208,6 +229,7 @@ function ViewAsControl() {
                     startViewingAs(target);
                     setOpen(false);
                     setQuery("");
+                    onNavigate?.();
                     router.replace(visibleAppNav(target)[0]?.href ?? "/dashboard");
                     router.refresh();
                   }}
@@ -218,15 +240,96 @@ function ViewAsControl() {
               ))}
             </div>
           </ScrollArea>
-          {isViewingAs ? <Button variant="outline" onClick={() => { stopViewingAs(); setOpen(false); router.replace("/dashboard"); router.refresh(); }}><X className="h-4 w-4" />Exit current preview</Button> : null}
+          {isViewingAs ? <Button variant="outline" onClick={() => { stopViewingAs(); setOpen(false); onNavigate?.(); router.replace("/dashboard"); router.refresh(); }}><X className="h-4 w-4" />Exit current preview</Button> : null}
         </DialogContent>
       </Dialog>
     </>
   );
 }
 
-export function AppShell({ title, subtitle, actions, children }: AppShellProps) {
-  const { user, profile, isViewingAs, viewAsProfile, stopViewingAs } = useAuth();
+function ShellUtilities({ collapsed, onSearch, onNavigate }: { collapsed: boolean; onSearch: () => void; onNavigate?: () => void }) {
+  return (
+    <div className="flex flex-col gap-1 px-2 py-2">
+      <CollapsedTooltip collapsed={collapsed} label="Search">
+        <button type="button" className={sidebarRowClass(collapsed)} onClick={() => { onNavigate?.(); onSearch(); }}>
+          <Search className="h-4 w-4 shrink-0" />
+          <span className={cn("truncate", collapsed && "sr-only")}>Search</span>
+        </button>
+      </CollapsedTooltip>
+      <CollapsedTooltip collapsed={collapsed} label="Notifications coming soon">
+        <button type="button" className={cn(sidebarRowClass(collapsed), "cursor-default")} title="Notifications coming soon">
+          <Bell className="h-4 w-4 shrink-0" />
+          <span className={cn("truncate", collapsed && "sr-only")}>Notifications</span>
+          {!collapsed ? <Badge variant="outline" className="ml-auto h-5 rounded-full px-2 text-[10px] uppercase tracking-wide">Soon</Badge> : null}
+        </button>
+      </CollapsedTooltip>
+      <CollapsedTooltip collapsed={collapsed} label="Toggle theme">
+        <ThemeToggleRow className={sidebarRowClass(collapsed)} labelHidden={collapsed} iconClassName="h-4 w-4 shrink-0" />
+      </CollapsedTooltip>
+      <ViewAsControl collapsed={collapsed} onNavigate={onNavigate} />
+    </div>
+  );
+}
+
+function UserFooterCard({ collapsed = false }: { collapsed?: boolean }) {
+  const { user, profile, isViewingAs } = useAuth();
+  const router = useRouter();
+  const displayName = isViewingAs ? profile?.email?.split("@")[0] || "Preview user" : user?.displayName?.trim() || profile?.email?.split("@")[0] || "Workspace user";
+  const avatarText = initialsFrom(user?.displayName || profile?.email || "AB");
+  const avatarImage = user?.photoURL ?? undefined;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "w-full rounded-xl border border-border/70 bg-muted/40 p-3 text-left outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
+            collapsed && "flex justify-center border-none bg-transparent p-2",
+          )}
+          aria-label="Account menu"
+        >
+          <span className={cn("flex items-center gap-3", collapsed && "justify-center")}>
+            <Avatar className="h-9 w-9">
+              <AvatarImage src={avatarImage} alt={displayName} />
+              <AvatarFallback>{avatarText || "AB"}</AvatarFallback>
+            </Avatar>
+            {!collapsed ? (
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium">{displayName}</span>
+                <span className="block truncate text-xs text-muted-foreground">{profile?.email ?? user?.email ?? "Authenticated user"}</span>
+              </span>
+            ) : null}
+            {!collapsed ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : null}
+          </span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" side="top" className="w-56">
+        <DropdownMenuLabel>
+          <div className="flex flex-col">
+            <span className="font-medium normal-case tracking-normal text-foreground">{displayName}</span>
+            <span className="text-xs font-normal text-muted-foreground">{profile?.role ?? "member"}</span>
+          </div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => router.push("/settings")}>Workspace settings</DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={async () => {
+            await signOut(getFirebaseAuth());
+            router.replace("/sign-in");
+          }}
+        >
+          <LogOut className="mr-2 h-4 w-4" />
+          Sign out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+export function AppShell({ title, actions, children }: AppShellProps) {
+  const { profile, isViewingAs, viewAsProfile, stopViewingAs } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const reducedMotion = useReducedMotion();
@@ -245,80 +348,6 @@ export function AppShell({ title, subtitle, actions, children }: AppShellProps) 
     router.replace(allowed[0]?.href ?? "/dashboard");
   }, [pathname, profile, router]);
 
-  const displayName = isViewingAs ? profile?.email?.split("@")[0] || "Preview user" : user?.displayName?.trim() || profile?.email?.split("@")[0] || "Workspace user";
-  const name = displayName;
-  const role = profile?.role ?? "member";
-  const avatarText = initialsFrom(user?.displayName || profile?.email || "AB");
-  const avatarImage = user?.photoURL ?? undefined;
-  const subtitleParts = [
-    subtitle,
-    profile?.locationIds?.length ? `${profile.locationIds.length} location${profile.locationIds.length === 1 ? "" : "s"}` : null,
-    profile?.email ?? user?.email ?? "Authenticated workspace",
-  ].filter(Boolean);
-
-  const topActions = useMemo(
-    () => (
-      <div className="flex items-center gap-2">
-        <ViewAsControl />
-        <Button variant="outline" size="sm" onClick={() => setCommandOpen(true)} className="hidden lg:inline-flex">
-          <Search className="h-4 w-4" />
-          Search
-        </Button>
-        <Button variant="ghost" size="icon-sm" aria-label="Open search" className="lg:hidden" onClick={() => setCommandOpen(true)}>
-          <Search className="h-4 w-4" />
-        </Button>
-        <TooltipProvider delayDuration={0}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" aria-label="Notifications" title="Notifications coming soon">
-                <Bell className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Notifications coming soon</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        <ThemeToggle />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="h-10 max-w-[220px] rounded-full px-2">
-              <Avatar className="h-7 w-7">
-                <AvatarImage src={avatarImage} alt={name} />
-                <AvatarFallback>{avatarText || "AB"}</AvatarFallback>
-              </Avatar>
-              <span className="hidden text-left md:flex md:flex-col">
-                <span className="text-sm font-medium leading-none">{name}</span>
-                <span className="mt-1 text-xs text-muted-foreground">{role}</span>
-              </span>
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>
-              <div className="flex flex-col">
-                <span className="font-medium normal-case tracking-normal text-foreground">{name}</span>
-                <span className="text-xs font-normal text-muted-foreground">{profile?.role ?? "member"}</span>
-              </div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => router.push("/settings")}>Workspace settings</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push("/dashboard")}>Dashboard</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={async () => {
-                await signOut(getFirebaseAuth());
-                router.replace("/sign-in");
-              }}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Sign out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    ),
-    [avatarImage, avatarText, name, profile?.role, router, role],
-  );
-
   return (
     <div className="dashboard-shell min-h-screen bg-background text-foreground">
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
@@ -326,32 +355,17 @@ export function AppShell({ title, subtitle, actions, children }: AppShellProps) 
         <SheetContent side="left" className="flex w-[88vw] flex-col gap-0 p-0 sm:w-[330px]">
           <div className="flex items-center gap-3 border-b border-border/70 px-4 py-4">
             <Image src="/legacy-assets/ab-logo.png" alt="AB Marketing" width={40} height={40} className="rounded-xl" />
-            <div className="min-w-0">
-              <p className="text-sm font-semibold leading-none">AB Marketing</p>
-              <p className="mt-1 text-xs text-muted-foreground">Sales operations workspace</p>
-            </div>
+            <p className="text-sm font-semibold leading-none">AB Marketing</p>
           </div>
           <ScrollArea className="flex-1">
-            <div className="flex flex-col gap-3 p-2">
-              <div className="px-2 pt-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Navigation</p>
-              </div>
+            <div className="flex flex-col p-2">
               <ShellNav collapsed={false} onNavigate={() => setMobileOpen(false)} mobile />
+              <Separator className="my-1" />
+              <ShellUtilities collapsed={false} onSearch={() => setCommandOpen(true)} onNavigate={() => setMobileOpen(false)} />
             </div>
           </ScrollArea>
-          <div className="border-t border-border/70 p-4">
-            <Card className="border-border/70 bg-muted/40 p-4">
-              <div className="flex items-center gap-3">
-                <Avatar className="h-9 w-9">
-                  <AvatarImage src={avatarImage} alt={name} />
-                  <AvatarFallback>{avatarText || "AB"}</AvatarFallback>
-                </Avatar>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{name}</p>
-                  <p className="truncate text-xs text-muted-foreground">{profile?.email ?? "Authenticated user"}</p>
-                </div>
-              </div>
-            </Card>
+          <div className="border-t border-border/70 p-3">
+            <UserFooterCard />
           </div>
         </SheetContent>
       </Sheet>
@@ -365,57 +379,24 @@ export function AppShell({ title, subtitle, actions, children }: AppShellProps) 
         >
           <div className={cn("flex items-center gap-3 border-b border-border/70 px-4 py-4", collapsed && "justify-center px-3")}>
             <Image src="/legacy-assets/ab-logo.png" alt="AB Marketing" width={40} height={40} className="rounded-xl" />
-            {!collapsed ? (
-              <div className="min-w-0">
-                <p className="text-sm font-semibold leading-none">AB Marketing</p>
-                <p className="mt-1 text-xs text-muted-foreground">Sales operations workspace</p>
-              </div>
-            ) : null}
+            {!collapsed ? <p className="text-sm font-semibold leading-none">AB Marketing</p> : null}
           </div>
           <ScrollArea className="flex-1">
-            <div className="flex flex-col gap-3 p-2">
-              {!collapsed ? (
-                <div className="px-2 pt-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Workspace</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <Badge variant="secondary" className="rounded-full">
-                      {profile?.role ?? "member"}
-                    </Badge>
-                    <Badge variant="outline" className="rounded-full">
-                      {businessUnitLabel(profile?.businessUnit)}
-                    </Badge>
-                  </div>
-                </div>
-              ) : null}
-              {!collapsed ? <Separator className="my-1" /> : null}
-              <div className={cn("px-2", collapsed && "pt-2")}>
-                {!collapsed ? <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Navigation</p> : null}
-                <ShellNav collapsed={collapsed} />
-              </div>
+            <div className="px-2 py-1">
+              <ShellNav collapsed={collapsed} />
             </div>
           </ScrollArea>
+          <div className="border-t border-border/70">
+            <ShellUtilities collapsed={collapsed} onSearch={() => setCommandOpen(true)} />
+          </div>
           <div className="border-t border-border/70 p-3">
-            <Card className={cn("border-border/70 bg-muted/40 p-4", collapsed && "p-3")}>
-              <div className={cn("flex items-center gap-3", collapsed && "justify-center")}>
-                <Avatar className="h-10 w-10">
-                  <AvatarImage src={avatarImage} alt={name} />
-                  <AvatarFallback>{avatarText || "AB"}</AvatarFallback>
-                </Avatar>
-                {!collapsed ? (
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{name}</p>
-                    <p className="truncate text-xs text-muted-foreground">{profile?.email ?? user?.email ?? "Authenticated user"}</p>
-                  </div>
-                ) : null}
-                {!collapsed ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : null}
-              </div>
-            </Card>
+            <UserFooterCard collapsed={collapsed} />
           </div>
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 border-b border-border/70 bg-background/85 backdrop-blur-xl">
-            <div className="flex items-center gap-3 px-4 py-3.5 sm:px-6 sm:py-4 lg:px-8">
+            <div className="flex items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
               <TooltipProvider delayDuration={0}>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -432,28 +413,8 @@ export function AppShell({ title, subtitle, actions, children }: AppShellProps) 
                   <TooltipContent side="bottom">{collapsed ? "Expand sidebar" : "Collapse sidebar"}</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-              <div className="min-w-0 flex-1 space-y-1">
-                <div className="hidden flex-wrap items-center gap-2 sm:flex">
-                  <Badge variant="outline" className="rounded-full">
-                    {title}
-                  </Badge>
-                  <span className="hidden text-xs uppercase tracking-[0.18em] text-muted-foreground md:inline">AB Marketing</span>
-                </div>
-                <h1 className="truncate text-xl font-semibold tracking-tight sm:text-3xl">{title}</h1>
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-                  {subtitleParts.map((part, index) => (
-                    <span key={`${part}-${index}`}>
-                      {index > 0 ? <span className="mx-2 text-border">/</span> : null}
-                      {part}
-                    </span>
-                  ))}
-                </div>
-              </div>
+              <h1 className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight sm:text-xl">{title}</h1>
               {actions}
-              {topActions}
-            </div>
-            <div className="hidden px-4 pb-4 sm:px-6 lg:block lg:px-8">
-              <Separator />
             </div>
           </header>
 

@@ -4,19 +4,16 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { AlertTriangle, ArrowRight, BarChart3, CheckCircle2, Clock3, Download, FileUp, Gauge, Target, TrendingUp, TriangleAlert, Users } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, LabelList, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { authedFetch, authedJson } from "@/src/lib/api/client";
+import { normalizePermissions } from "@/src/lib/access";
 import { startOfWeek, toDateId, weekRangeLabel } from "@/src/lib/date/week";
-import { formatDateTime } from "@/src/lib/formatters/date";
+import { formatHoursAsDuration } from "@/src/lib/formatters/duration";
 import { formatCompact, formatDelta, formatNumber } from "@/src/lib/formatters/number";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -55,15 +52,45 @@ type OverviewResponse = {
   scope: { mode: "all" | "self" | "managedTeam" | "currentTeam"; restricted: boolean; canFilterReps: boolean; reps: { repUid: string; displayName: string }[] };
 };
 
+type KnockHoursRow = {
+  repUid: string;
+  displayName: string;
+  managerName: string;
+  teamId: string | null;
+  locationName: string;
+  vendorType: string;
+  knocks: number;
+  sales: number;
+  hoursWorked: number;
+  daysWorked: number;
+  firstKnockAt: string;
+  lastKnockAt: string;
+};
+
+type KnockHoursResponse = { period: string; range: { start: string; end: string }; rows: KnockHoursRow[] };
+
 const emptyOrderStatusTotals = (): OrderStatusTotals => ({ total: 0, installed: 0, pending: 0, pastDue: 0, preorder: 0, canceled: 0, churned: 0, unknown: 0 });
 
-const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+// Categorical palette validated with the dataviz six-checks script (all-pairs, light + dark).
 const providerColors: Record<string, string> = {
-  ATT: "#2563eb",
-  "T-Fiber": "#d946ef",
-  Frontier: "#f97316",
-  Manual: "#94a3b8",
+  ATT: "#2a78d6",
+  "T-Fiber": "#d55181",
+  Frontier: "#c98500",
+  Manual: "#008300",
 };
+
+const accent = {
+  blue: "var(--primary)",
+  sky: "var(--info)",
+  green: "var(--success)",
+  red: "var(--destructive)",
+  amber: "#c98500",
+  teal: "#1baf7a",
+  magenta: "#b76e8f",
+  violet: "#8d7cd8",
+};
+
+const microLabel = "text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground";
 
 function formatPercent(value: number) {
   return `${Math.round(value)}%`;
@@ -74,7 +101,7 @@ function salesSharePercent(part: number, total: number) {
 }
 
 function providerColor(name: string) {
-  return providerColors[name] ?? "#94a3b8";
+  return providerColors[name] ?? "#898781";
 }
 
 function addDays(start: string, days: number) {
@@ -102,116 +129,162 @@ function weekStartOptions(reference = new Date(), count = 53) {
 
 function LoadingState() {
   return (
-    <div className="space-y-4">
-      <Card className="border-border/70">
-        <CardHeader className="gap-4">
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-44" />
-            <Skeleton className="h-4 w-80" />
-            <Skeleton className="h-4 w-64" />
-          </div>
-          <div className="grid gap-3 xl:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, index) => <Skeleton key={index} className="h-20 rounded-2xl" />)}
-          </div>
-        </CardHeader>
-      </Card>
-      <section className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4">
-        {Array.from({ length: 8 }).map((_, index) => <Skeleton key={index} className="h-28 rounded-2xl sm:h-32" />)}
-      </section>
-      <section className="grid gap-4 xl:grid-cols-[1.35fr_.85fr]">
-        <Skeleton className="h-[320px] rounded-2xl sm:h-[420px] xl:h-[520px]" />
-        <Skeleton className="h-[320px] rounded-2xl sm:h-[420px] xl:h-[520px]" />
-      </section>
+    <div className="space-y-4 sm:space-y-6">
+      <Skeleton className="h-9 w-full rounded-none sm:w-96" />
+      <Skeleton className="h-28 w-full rounded-none sm:h-20" />
+      <div className="grid grid-cols-2 gap-px border border-border bg-border md:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, index) => <Skeleton key={index} className="h-32 rounded-none" />)}
+      </div>
+      <div className="grid gap-4 xl:grid-cols-[1.2fr_.9fr]">
+        <Skeleton className="h-[320px] rounded-none" />
+        <Skeleton className="h-[320px] rounded-none" />
+      </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Skeleton className="h-[280px] rounded-none" />
+        <Skeleton className="h-[280px] rounded-none" />
+      </div>
     </div>
   );
 }
 
 function EmptyState({ title, description }: { title: string; description: string }) {
   return (
-    <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 p-6 text-center">
-      <h3 className="text-base font-semibold">{title}</h3>
+    <div className="border border-dashed border-border bg-muted/20 p-6 text-center">
+      <h3 className="text-sm font-semibold">{title}</h3>
       <p className="mt-2 text-sm text-muted-foreground">{description}</p>
     </div>
   );
 }
 
-function KpiCard({
+function Panel({
+  title,
+  description,
+  meta,
+  accentColor,
+  className,
+  bodyClassName,
+  children,
+}: {
+  title: string;
+  description?: string;
+  meta?: string;
+  accentColor?: string;
+  className?: string;
+  bodyClassName?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className={cn("flex flex-col border border-border bg-card", className)}>
+      {accentColor ? <div className="h-[3px] w-full" style={{ background: accentColor }} aria-hidden /> : null}
+      <header className="flex items-start justify-between gap-4 border-b border-border px-4 py-4 sm:px-5">
+        <div className="min-w-0">
+          <h3 className="text-[15px] font-semibold tracking-tight">{title}</h3>
+          {description ? <p className="mt-1 text-[13px] text-muted-foreground">{description}</p> : null}
+        </div>
+        {meta ? <p className={cn("shrink-0 pt-1 text-right", microLabel)}>{meta}</p> : null}
+      </header>
+      <div className={cn("flex-1 p-4 sm:p-5", bodyClassName)}>{children}</div>
+    </section>
+  );
+}
+
+function StatTile({
   label,
   value,
   detail,
   icon: Icon,
-  badgeLabel = "Live",
-  badgeVariant = "outline" as const,
+  accentColor,
+  delta,
+  deltaPositive,
+  progress,
+  valueColor,
   href,
 }: {
   label: string;
   value: string | number;
   detail: string;
   icon: ComponentType<{ className?: string }>;
-  badgeLabel?: string;
-  badgeVariant?: "default" | "secondary" | "outline" | "success" | "warning" | "danger" | "info";
+  accentColor: string;
+  delta?: string;
+  deltaPositive?: boolean;
+  progress?: number;
+  valueColor?: string;
   href?: string;
 }) {
   const body = (
     <>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-xs text-muted-foreground sm:text-sm">{label}</p>
-          <p className="mt-1.5 text-2xl font-semibold tracking-tight sm:mt-2 sm:text-3xl">{value}</p>
+      <div className="h-[3px] w-full" style={{ background: accentColor }} aria-hidden />
+      <div className="flex flex-1 flex-col p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-2">
+          <p className={cn("truncate", microLabel)}>{label}</p>
+          <span
+            className="flex h-7 w-7 shrink-0 items-center justify-center"
+            style={{ background: `color-mix(in oklab, ${accentColor} 14%, transparent)`, color: accentColor }}
+            aria-hidden
+          >
+            <Icon className="h-4 w-4" />
+          </span>
         </div>
-        <div className="shrink-0 rounded-2xl bg-primary/10 p-2.5 text-primary sm:p-3">
-          <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
-        </div>
+        <p className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl" style={valueColor ? { color: valueColor } : undefined}>
+          {value}
+          {delta ? (
+            <span className={cn("ml-2 align-middle text-[13px] font-semibold", deltaPositive ? "text-success" : "text-destructive")}>{delta}</span>
+          ) : null}
+        </p>
+        {typeof progress === "number" ? (
+          <div className="mt-2.5 h-1.5 w-full bg-muted">
+            <div className="h-full" style={{ width: `${Math.min(100, Math.max(0, progress))}%`, background: accentColor }} />
+          </div>
+        ) : null}
+        <p className="mt-2 line-clamp-2 text-[13px] leading-snug text-muted-foreground">{detail}</p>
       </div>
-      <p className="mt-2 line-clamp-2 text-xs text-muted-foreground sm:mt-3 sm:text-sm">{detail}</p>
-      <Badge variant={badgeVariant} className="mt-3 w-fit sm:mt-5">
-        {badgeLabel}
-      </Badge>
     </>
   );
-  const className = cn(
-    "flex h-full w-full flex-col rounded-2xl border border-border/70 bg-card p-4 text-left shadow-sm transition sm:p-5",
-    href ? "hover:-translate-y-0.5 hover:shadow-md" : "",
-  );
-
-  return href ? (
-    <Link href={href} className={className}>
-      {body}
-    </Link>
-  ) : <div className={className}>{body}</div>;
+  const className = cn("flex h-full w-full flex-col bg-card text-left", href && "transition-colors hover:bg-muted/40");
+  return href ? <Link href={href} className={className}>{body}</Link> : <div className={className}>{body}</div>;
 }
 
-function ChartCard({ title, description, badge, children, className }: { title: string; description: string; badge?: string; children: React.ReactNode; className?: string }) {
+function ChartTooltip({
+  active,
+  payload,
+  label,
+  unit = "sales",
+}: {
+  active?: boolean;
+  payload?: Array<{ name?: string; value?: number; payload?: { name?: string; label?: string; fill?: string } }>;
+  label?: string | number;
+  unit?: string;
+}) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0];
+  const heading = label ?? row?.payload?.label ?? row?.payload?.name ?? row?.name;
   return (
-    <Card className={cn("overflow-hidden border-border/70", className)}>
-      <CardHeader className="flex-row items-start justify-between gap-4">
-        <div>
-          <CardTitle>{title}</CardTitle>
-          <CardDescription>{description}</CardDescription>
-        </div>
-        {badge ? <Badge variant="outline">{badge}</Badge> : null}
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
+    <div className="border border-border bg-popover px-3 py-2 text-popover-foreground shadow-md">
+      <p className="text-xs text-muted-foreground">{String(heading ?? "")}</p>
+      <p className="mt-0.5 text-sm font-semibold tabular-nums">{formatNumber(Number(row?.value ?? 0))} <span className="font-normal text-muted-foreground">{unit}</span></p>
+    </div>
   );
 }
 
-function ProviderGaugeTooltip({
+function KnockHoursTooltip({
   active,
   payload,
 }: {
   active?: boolean;
-  payload?: Array<{ name?: string; value?: number; payload?: { name?: string; value?: number } }>;
+  payload?: Array<{ payload?: KnockHoursRow }>;
 }) {
   if (!active || !payload?.length) return null;
-  const row = payload[0];
-  const name = String(row?.name ?? row?.payload?.name ?? "Provider");
-  const value = Number(row?.value ?? row?.payload?.value ?? 0);
+  const row = payload[0]?.payload;
+  if (!row) return null;
   return (
-    <div className="rounded-2xl border border-border/70 bg-popover/95 px-4 py-3 text-popover-foreground shadow-2xl backdrop-blur">
-      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Provider</p>
-      <p className="mt-1 text-sm font-medium">{name}</p>
-      <p className="mt-2 text-sm font-semibold" style={{ color: providerColor(name) }}>{formatNumber(value)} sales</p>
+    <div className="border border-border bg-popover px-3 py-2 text-popover-foreground shadow-md">
+      <p className="text-sm font-medium">{row.displayName}</p>
+      <div className="mt-1 space-y-0.5 text-[13px] tabular-nums">
+        <p><span className="text-muted-foreground">Hours worked:</span> <span className="font-semibold">{formatHoursAsDuration(row.hoursWorked)}</span></p>
+        <p><span className="text-muted-foreground">Knocks:</span> <span className="font-semibold">{formatNumber(row.knocks)}</span></p>
+        <p><span className="text-muted-foreground">Sales:</span> <span className="font-semibold">{formatNumber(row.sales)}</span></p>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">{row.daysWorked} {row.daysWorked === 1 ? "day" : "days"} worked</p>
     </div>
   );
 }
@@ -225,6 +298,10 @@ export function DashboardPage() {
   const [providerFilter, setProviderFilter] = useState("all");
   const [repFilter, setRepFilter] = useState("all");
   const [weekStartFilter, setWeekStartFilter] = useState("");
+  const [knockHours, setKnockHours] = useState<KnockHoursResponse | null>(null);
+  const [knockHoursError, setKnockHoursError] = useState<string | null>(null);
+  const [knockHoursLoadedKey, setKnockHoursLoadedKey] = useState("");
+  const [knockHoursForbidden, setKnockHoursForbidden] = useState(false);
   const weekOptions = useMemo(() => weekStartOptions(), []);
   const currentWeekStart = weekOptions[0]?.value ?? "";
   const reducedMotion = useReducedMotion();
@@ -261,18 +338,46 @@ export function DashboardPage() {
     };
   }, [profile?.authUid, providerFilter, repFilter, requestKey, weekStartFilter]);
 
+  const canSeeKnockHours = Boolean(
+    profile && (profile.role === "superAdmin" || normalizePermissions(profile.permissions ?? {}).canViewKnockHours),
+  ) && !knockHoursForbidden;
+
+  const knockHoursRequestKey = `${profile?.authUid ?? "loading"}|${weekStartFilter || currentWeekStart}`;
+  const knockHoursLoading = canSeeKnockHours && knockHoursLoadedKey !== knockHoursRequestKey;
+
+  useEffect(() => {
+    if (!canSeeKnockHours) return;
+    let active = true;
+    const anchor = toDateId(addDays(weekStartFilter || currentWeekStart, 6));
+    const params = new URLSearchParams({ period: "weekly", anchor, lcp: "all" });
+    void authedJson<KnockHoursResponse>(`/api/performance/knock-hours?${params.toString()}`)
+      .then((value) => {
+        if (!active) return;
+        setKnockHours(value);
+        setKnockHoursError(null);
+      })
+      .catch((cause) => {
+        if (!active) return;
+        const message = cause instanceof Error ? cause.message : "Unable to load knock hours.";
+        if (/forbidden/i.test(message)) {
+          setKnockHoursForbidden(true);
+          return;
+        }
+        setKnockHoursError(message);
+      })
+      .finally(() => {
+        if (active) setKnockHoursLoadedKey(knockHoursRequestKey);
+      });
+    return () => {
+      active = false;
+    };
+  }, [canSeeKnockHours, currentWeekStart, knockHoursRequestKey, profile?.authUid, weekStartFilter]);
+
   const weekLabel = data ? weekRangeLabel(data.week.start, data.week.end) : "Current week";
-  const dayChartData = useMemo(
-    () =>
-      data?.byDay.map((value, index) => {
-        const date = addDays(data.week.start, index);
-        return {
-          dateId: toDateId(date),
-          label: `${weekDays[index] ?? `Day ${index + 1}`} ${date.toLocaleDateString(undefined, { month: "numeric", day: "numeric" })}`,
-          sales: value,
-        };
-      }) ?? [],
-    [data],
+
+  const knockHoursRows = useMemo(
+    () => (knockHours?.rows ?? []).filter((row) => repFilter === "all" || row.repUid === repFilter),
+    [knockHours, repFilter],
   );
 
   const providerBreakdown = useMemo(
@@ -303,8 +408,8 @@ export function DashboardPage() {
     const total = statusTotals.total || data?.totalSales || 0;
     return [
       { name: "Active", value: statusTotals.installed, fill: "var(--success)", share: salesSharePercent(statusTotals.installed, total) },
-      { name: "Pending total", value: statusTotals.pending, fill: "var(--warning)", share: salesSharePercent(statusTotals.pending, total) },
-      { name: "Past due subset", value: statusTotals.pastDue, fill: "var(--destructive)", share: salesSharePercent(statusTotals.pastDue, total) },
+      { name: "Pending", value: statusTotals.pending, fill: "var(--warning)", share: salesSharePercent(statusTotals.pending, total) },
+      { name: "Past due", value: statusTotals.pastDue, fill: "var(--destructive)", share: salesSharePercent(statusTotals.pastDue, total) },
       { name: "Preorders", value: statusTotals.preorder, fill: "var(--info)", share: salesSharePercent(statusTotals.preorder, total) },
       { name: "Canceled", value: statusTotals.canceled, fill: "var(--danger)", share: salesSharePercent(statusTotals.canceled, total) },
       { name: "Churned", value: statusTotals.churned, fill: "var(--muted-foreground)", share: salesSharePercent(statusTotals.churned, total) },
@@ -333,15 +438,11 @@ export function DashboardPage() {
   const goalProgress = data.totalSalesGoal ? Math.min(100, Math.round((data.totalSales / data.totalSalesGoal) * 100)) : 0;
   const conversion = data.totalKnocks ? Math.round((data.totalSales / data.totalKnocks) * 100) : 0;
   const providerTotal = providerBreakdown.reduce((sum, item) => sum + item.value, 0);
-  const hasTrendData = dayChartData.some((item) => item.sales > 0);
   const hasOrderBreakdown = orderBreakdownData.some((item) => item.value > 0);
   const statusRangeLabel = data.orderStatusRange ? weekRangeLabel(data.orderStatusRange.start, data.orderStatusRange.end) : weekLabel;
-  const freshnessRows = [
-    { label: "ATT", source: data.freshness.att },
-    { label: "T-Fiber", source: data.freshness.tfiber },
-  ];
   const selectedYear = Number(data.week.start.slice(0, 4)) || new Date().getFullYear();
   const canUseOperationalActions = profile?.role === "superAdmin" || profile?.role === "admin";
+  const topRepSales = topReps[0]?.sales || 1;
 
   async function exportYtdWeeklyPivot() {
     setExportingYtdPivot(true);
@@ -370,324 +471,250 @@ export function DashboardPage() {
   }
 
   return (
-    <motion.div initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }} className="space-y-6">
-      <Card className="border-border/70">
-        <CardHeader className="gap-4">
-          <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:flex-wrap">
-            <div>
-              <div className="flex items-center gap-2">
-                <CardTitle className="text-2xl sm:text-3xl">Dashboard</CardTitle>
-                <Badge variant={error ? "warning" : "success"}>{error ? "Stale" : "Live"}</Badge>
-              </div>
-              <CardDescription className="mt-2">Current sales pulse, roster health, provider mix, and follow-up priorities.</CardDescription>
-              <p className="mt-2 text-sm text-muted-foreground">Overview data from salesOrders, uploadRuns, reps, and weekly goals.</p>
-            </div>
-            {canUseOperationalActions ? <div className="-mx-6 flex w-[calc(100%+3rem)] gap-2 overflow-x-auto px-6 pb-1 sm:mx-0 sm:w-auto sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
-              <Button variant="outline" className="shrink-0" onClick={() => void exportYtdWeeklyPivot()} disabled={exportingYtdPivot}>
-                <Download className="h-4 w-4" />
-                {exportingYtdPivot ? "Exporting..." : "Export YTD Pivot"}
-              </Button>
-              <Button variant="outline" className="shrink-0" asChild>
-                <Link href="/performance">
-                  <ArrowRight className="h-4 w-4" />
-                  Open performance
-                </Link>
-              </Button>
-              <Button variant="outline" className="shrink-0" asChild>
-                <Link href="/imports">
-                  <FileUp className="h-4 w-4" />
-                  Upload report
-                </Link>
-              </Button>
-            </div> : null}
+    <motion.div initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }} className="space-y-4 sm:space-y-6">
+      <section className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="flex items-center gap-2">
+            <span className={cn("h-2 w-2 rounded-full", error ? "bg-warning" : "bg-success")} aria-hidden />
+            <span className={microLabel}>{error ? "Stale data" : "Live"}</span>
+          </span>
+          <span className="text-border" aria-hidden>/</span>
+          <span className="text-sm text-muted-foreground">{weekLabel}</span>
+        </div>
+        {canUseOperationalActions ? (
+          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+            <Button variant="outline" size="sm" className="shrink-0" onClick={() => void exportYtdWeeklyPivot()} disabled={exportingYtdPivot}>
+              <Download className="h-4 w-4" />
+              {exportingYtdPivot ? "Exporting..." : "Export YTD Pivot"}
+            </Button>
+            <Button variant="outline" size="sm" className="shrink-0" asChild>
+              <Link href="/performance">
+                <ArrowRight className="h-4 w-4" />
+                Open performance
+              </Link>
+            </Button>
+            <Button variant="outline" size="sm" className="shrink-0" asChild>
+              <Link href="/imports">
+                <FileUp className="h-4 w-4" />
+                Upload report
+              </Link>
+            </Button>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 rounded-2xl border border-border/70 bg-muted/15 p-4 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end">
-            <div className="space-y-2"><Label htmlFor="dashboard-rep-filter">Representative</Label><Select value={repFilter} onValueChange={setRepFilter} disabled={!data.scope.canFilterReps}><SelectTrigger id="dashboard-rep-filter"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{data.scope.restricted ? "Me and my entire team" : "All representatives"}</SelectItem>{data.scope.reps.map((rep) => <SelectItem key={rep.repUid} value={rep.repUid}>{rep.displayName}</SelectItem>)}</SelectContent></Select></div>
-            <div className="space-y-2"><Label htmlFor="dashboard-provider-filter">Provider</Label><Select value={providerFilter} onValueChange={setProviderFilter}><SelectTrigger id="dashboard-provider-filter"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All providers</SelectItem><SelectItem value="att">ATT</SelectItem><SelectItem value="tfiber">T-Fiber</SelectItem><SelectItem value="manual">Manual</SelectItem></SelectContent></Select></div>
-            <div className="space-y-2"><Label htmlFor="dashboard-week-filter">Week starting</Label><Select value={weekStartFilter || currentWeekStart} onValueChange={(value) => setWeekStartFilter(value === currentWeekStart ? "" : value)}><SelectTrigger id="dashboard-week-filter"><SelectValue placeholder="Select a Monday" /></SelectTrigger><SelectContent>{weekOptions.map((week, index) => <SelectItem key={week.value} value={week.value}>{week.label}{index === 0 ? " (Current week)" : ""}</SelectItem>)}</SelectContent></Select></div>
-            <Button variant="outline" onClick={() => { setRepFilter("all"); setProviderFilter("all"); setWeekStartFilter(""); }}>Reset filters</Button>
-          </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3">
-              <p className="text-sm font-medium">{weekLabel}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Current dashboard window</p>
-            </div>
-            <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-medium">Goal progress</p>
-                <span className="text-sm font-semibold">{formatPercent(goalProgress)}</span>
-              </div>
-              <Progress className="mt-3" value={goalProgress} />
-            </div>
-            <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3">
-              <p className="text-sm font-medium">{formatDelta(comparisonDelta)}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {formatNumber(data.comparison.current)} current / {formatNumber(data.comparison.previous)} previous
-              </p>
-            </div>
-          </div>
-          {error ? (
-            <Alert>
-              <TriangleAlert className="h-4 w-4" />
-              <AlertTitle>Refresh warning</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      <section className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4">
-        <KpiCard label="Total sales" value={formatNumber(data.totalSales)} detail={weekLabel} icon={TrendingUp} badgeLabel={formatDelta(comparisonDelta)} badgeVariant={comparisonDelta >= 0 ? "success" : "warning"} href={canUseOperationalActions ? "/sales" : undefined} />
-        <KpiCard label="Goal progress" value={formatPercent(goalProgress)} detail={`${formatNumber(data.totalSales)} of ${formatNumber(data.totalSalesGoal)} goal`} icon={Gauge} badgeLabel="Weekly goal" />
-        <KpiCard label="Total knocks" value={formatNumber(data.totalKnocks)} detail={`${formatCompact(data.activeReps ? data.totalKnocks / data.activeReps : 0)} per active rep`} icon={Target} href={canUseOperationalActions ? "/knocks" : undefined} />
-        <KpiCard label="Conversion" value={formatPercent(conversion)} detail="Sales divided by knocks" icon={BarChart3} />
-        <KpiCard label="Active" value={formatNumber(statusTotals.installed)} detail={`Status range: ${statusRangeLabel}`} icon={CheckCircle2} badgeVariant="success" />
-        <KpiCard label="Pending" value={formatNumber(statusTotals.pending)} detail={`${formatNumber(statusTotals.pastDue)} past due subset`} icon={Clock3} badgeVariant="warning" />
-        <KpiCard label="Past due" value={formatNumber(statusTotals.pastDue)} detail="Pending installs past the report date" icon={TriangleAlert} badgeVariant={statusTotals.pastDue ? "danger" : "success"} />
-        <KpiCard label="Active reps" value={formatNumber(data.activeReps)} detail="Roster members with active status" icon={Users} href={canUseOperationalActions ? "/roster" : undefined} />
-        <KpiCard label="Alerts" value={formatNumber(data.alerts.length)} detail="Pacing, roster, and upload items" icon={TriangleAlert} badgeVariant={data.alerts.length ? "danger" : "success"} />
+        ) : null}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.35fr_.85fr]">
-        <ChartCard title="Sales trend" description="Units sold by day for the current dashboard week." badge={weekLabel}>
-          <div className="h-[260px] sm:h-[360px] lg:h-[420px]">
-            {hasTrendData ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={dayChartData} margin={{ left: 0, right: 0, top: 8, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
-                  <RechartsTooltip formatter={(value) => [formatNumber(Number(value)), "Sales"]} labelFormatter={(value) => String(value)} />
-                  <Line type="monotone" dataKey="sales" stroke="var(--primary)" strokeWidth={3} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : <EmptyState title="No trend data" description="There are no sales in the current dashboard window yet." />}
-          </div>
-        </ChartCard>
+      {error ? (
+        <Alert>
+          <TriangleAlert className="h-4 w-4" />
+          <AlertTitle>Refresh warning</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
 
-        <Card className="border-border/70">
-          <CardHeader className="flex-row items-start justify-between gap-4">
-            <div>
-              <CardTitle>Rep leaderboard</CardTitle>
-              <CardDescription>Top reps by current-week sales.</CardDescription>
-            </div>
-            <Badge variant="outline">{topReps.length} reps</Badge>
-          </CardHeader>
-          <CardContent className="max-h-[520px] overflow-auto p-0">
-            {topReps.length ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Rep</TableHead>
-                    <TableHead>Sales</TableHead>
-                    <TableHead>Share</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {topReps.map((rep) => (
-                    <TableRow key={rep.repUid}>
-                      <TableCell className="font-medium">{rep.displayName}</TableCell>
-                      <TableCell>{formatNumber(rep.sales)}</TableCell>
-                      <TableCell>{formatPercent(rep.share)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <div className="p-6">
-                <EmptyState title="No reps in scope" description="Sales will appear here after imports are matched to reps." />
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      <section className="border border-border bg-card p-4 sm:p-5">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1.2fr_auto] xl:items-end">
+          <div className="space-y-1.5">
+            <Label htmlFor="dashboard-rep-filter" className={microLabel}>Representative</Label>
+            <Select value={repFilter} onValueChange={setRepFilter} disabled={!data.scope.canFilterReps}>
+              <SelectTrigger id="dashboard-rep-filter"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{data.scope.restricted ? "Me and my entire team" : "All representatives"}</SelectItem>
+                {data.scope.reps.map((rep) => <SelectItem key={rep.repUid} value={rep.repUid}>{rep.displayName}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="dashboard-provider-filter" className={microLabel}>Provider</Label>
+            <Select value={providerFilter} onValueChange={setProviderFilter}>
+              <SelectTrigger id="dashboard-provider-filter"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All providers</SelectItem>
+                <SelectItem value="att">ATT</SelectItem>
+                <SelectItem value="tfiber">T-Fiber</SelectItem>
+                <SelectItem value="manual">Manual</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="dashboard-week-filter" className={microLabel}>Week starting</Label>
+            <Select value={weekStartFilter || currentWeekStart} onValueChange={(value) => setWeekStartFilter(value === currentWeekStart ? "" : value)}>
+              <SelectTrigger id="dashboard-week-filter"><SelectValue placeholder="Select a Monday" /></SelectTrigger>
+              <SelectContent>
+                {weekOptions.map((week, index) => <SelectItem key={week.value} value={week.value}>{week.label}{index === 0 ? " (Current week)" : ""}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button variant="ghost" size="sm" className="justify-self-start text-muted-foreground sm:col-span-2 xl:col-span-1 xl:justify-self-auto" onClick={() => { setRepFilter("all"); setProviderFilter("all"); setWeekStartFilter(""); }}>
+            Reset filters
+          </Button>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-2 gap-px border border-border bg-border md:grid-cols-4">
+        <StatTile label="Total sales" value={formatNumber(data.totalSales)} detail={`vs ${formatNumber(data.comparison.previous)} previous week`} icon={TrendingUp} accentColor={accent.blue} delta={formatDelta(comparisonDelta)} deltaPositive={comparisonDelta >= 0} href={canUseOperationalActions ? "/sales" : undefined} />
+        <StatTile label="Goal progress" value={formatPercent(goalProgress)} detail={`${formatNumber(data.totalSales)} of ${formatNumber(data.totalSalesGoal)} weekly goal`} icon={Gauge} accentColor={accent.violet} progress={goalProgress} />
+        <StatTile label="Knocks" value={formatNumber(data.totalKnocks)} detail={`${formatCompact(data.activeReps ? data.totalKnocks / data.activeReps : 0)} per active rep`} icon={Target} accentColor={accent.magenta} href={canUseOperationalActions ? "/knocks" : undefined} />
+        <StatTile label="Conversion" value={formatPercent(conversion)} detail="Sales divided by knocks" icon={BarChart3} accentColor={accent.teal} />
+        <StatTile label="Active installs" value={formatNumber(statusTotals.installed)} detail={`Status range: ${statusRangeLabel}`} icon={CheckCircle2} accentColor={accent.green} />
+        <StatTile label="Pending" value={formatNumber(statusTotals.pending)} detail={`${formatNumber(statusTotals.pastDue)} past due within pending`} icon={Clock3} accentColor={accent.amber} />
+        <StatTile label="Past due" value={formatNumber(statusTotals.pastDue)} detail="Pending installs past the report date" icon={TriangleAlert} accentColor={accent.red} valueColor={statusTotals.pastDue > 0 ? "var(--destructive)" : undefined} />
+        <StatTile label="Active reps" value={formatNumber(data.activeReps)} detail="Roster members with active status" icon={Users} accentColor={accent.sky} href={canUseOperationalActions ? "/roster" : undefined} />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_.9fr]">
-        <ChartCard title="Order status health" description={`Active, pending, past-due subset, canceled, churned, and preorder volume for ${statusRangeLabel}.`}>
-          <div className="h-[240px] sm:h-[320px]">
-            {hasOrderBreakdown ? (
+        <Panel title="Order status health" description={`Order volume by status for ${statusRangeLabel}. Past due is the subset of pending installs past the report date.`} accentColor={accent.green}>
+          {hasOrderBreakdown ? (
+            <div style={{ height: Math.max(180, orderBreakdownData.length * 48 + 36) }}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={orderBreakdownData} margin={{ left: 0, right: 0, top: 12, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
-                  <RechartsTooltip formatter={(value) => [formatNumber(Number(value)), "Orders"]} />
-                  <Bar dataKey="value" radius={[12, 12, 0, 0]}>
+                <BarChart data={orderBreakdownData} layout="vertical" margin={{ left: 0, right: 44, top: 0, bottom: 0 }}>
+                  <CartesianGrid stroke="var(--border)" horizontal={false} />
+                  <XAxis type="number" tickLine={false} axisLine={false} allowDecimals={false} tick={{ fontSize: 12, fill: "var(--muted-foreground)" }} />
+                  <YAxis type="category" dataKey="name" width={82} tickLine={false} axisLine={false} tick={{ fontSize: 13, fill: "var(--foreground)" }} />
+                  <RechartsTooltip content={<ChartTooltip unit="orders" />} cursor={{ fill: "var(--muted)", opacity: 0.4 }} />
+                  <Bar dataKey="value" barSize={20} radius={[0, 4, 4, 0]}>
                     {orderBreakdownData.map((entry) => <Cell key={entry.name} fill={entry.fill} />)}
+                    <LabelList dataKey="value" position="right" formatter={(value) => formatNumber(Number(value))} style={{ fill: "var(--foreground)", fontSize: 12, fontWeight: 600 }} />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
-            ) : <EmptyState title="No order status data" description="Status volume appears here after provider imports are processed." />}
-          </div>
-        </ChartCard>
-
-        <Card className="border-border/70">
-          <CardHeader>
-            <CardTitle>Provider gauge</CardTitle>
-            <CardDescription>Sales volume by provider for the current week.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {providerBreakdown.length ? (
-              <>
-                <div className="relative h-[220px] sm:h-[260px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={providerBreakdown} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={82} outerRadius={116} startAngle={90} endAngle={-270} paddingAngle={3}>
-                        {providerBreakdown.map((entry) => <Cell key={entry.name} fill={entry.fill} />)}
-                      </Pie>
-                      <RechartsTooltip content={<ProviderGaugeTooltip />} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Total</p>
-                    <p className="mt-1 text-3xl font-semibold">{formatNumber(providerTotal)}</p>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  {providerBreakdown.map((item) => (
-                    <div key={item.name} className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: item.fill }} />
-                        <span className="text-sm font-medium">{item.name}</span>
-                      </div>
-                      <span className="text-sm text-muted-foreground">{formatNumber(item.value)} sales</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : <EmptyState title="No provider data" description="Provider totals appear after sales imports are loaded." />}
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className={cn("grid gap-4", canUseOperationalActions && "xl:grid-cols-[1fr_1fr]")}>
-        <Card className="border-border/70">
-          <CardHeader>
-            <CardTitle>Attention needed</CardTitle>
-            <CardDescription>Pacing, roster, and upload items that need review.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {data.alerts.length ? data.alerts.map((alert) => (
-              <div key={`${alert.type}-${alert.title}`} className="rounded-2xl border border-border/70 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium">{alert.title}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{alert.detail}</p>
-                  </div>
-                  <Badge variant={alert.type === "upload" ? "warning" : alert.type === "roster" ? "info" : "danger"}>{alert.type}</Badge>
-                </div>
-              </div>
-            )) : <EmptyState title="No active alerts" description="No dashboard alert requires attention right now." />}
-            {canUseOperationalActions ? <div className="grid gap-2 sm:grid-cols-2">
-              <Button variant="outline" asChild>
-                <Link href="/imports/unmatched">Review unmatched</Link>
-              </Button>
-              <Button variant="outline" asChild>
-                <Link href="/performance">
-                  Performance
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-            </div> : null}
-          </CardContent>
-        </Card>
-
-        {canUseOperationalActions ? <Card className="border-border/70">
-          <CardHeader>
-            <CardTitle>Data freshness</CardTitle>
-            <CardDescription>Most recent source uploads and processed rows.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {freshnessRows.map(({ label, source }) => (
-              <div key={label} className="rounded-2xl border border-border/70 p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="font-medium">{label}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{source?.fileName || "No upload yet"}</p>
-                  </div>
-                  <Badge variant={source?.uploadedAt ? "success" : "warning"}>{source?.uploadedAt ? "Fresh" : "Waiting"}</Badge>
-                </div>
-                <Progress className="mt-4" value={source?.uploadedAt ? 100 : 8} />
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {source?.uploadedAt ? `Uploaded ${formatDateTime(source.uploadedAt)} with ${formatNumber(source.rows)} rows` : "No recent upload has been processed."}
-                </p>
-              </div>
-            ))}
-          </CardContent>
-        </Card> : null}
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-        <Card className="border-border/70">
-          <CardHeader className="flex-row items-start justify-between gap-4">
-            <div>
-              <CardTitle>Goal pacing</CardTitle>
-              <CardDescription>Reps currently behind expected weekly pace.</CardDescription>
             </div>
-            <Badge variant="outline">{data.goalPacing.length} reps</Badge>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {data.goalPacing.length ? data.goalPacing.slice(0, 6).map((rep) => {
-              const percent = rep.goal ? Math.min(100, Math.round((rep.sales / rep.goal) * 100)) : 0;
-              return (
-                <div key={rep.repUid} className="rounded-2xl border border-border/70 p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{rep.displayName}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">{formatNumber(rep.sales)} of {formatNumber(rep.goal)} goal</p>
-                    </div>
-                    <Badge variant={percent >= 100 ? "success" : percent >= 70 ? "warning" : "outline"}>{formatPercent(percent)}</Badge>
-                  </div>
-                  <Progress className="mt-4" value={percent} />
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {rep.remaining > 0 ? `${formatNumber(rep.remaining)} remaining, ${formatCompact(rep.neededPerDay)} needed per day` : "Goal completed"}
-                  </p>
-                </div>
-              );
-            }) : <EmptyState title="No goal pacing issues" description="Active reps are not behind expected weekly goal pace." />}
-          </CardContent>
-        </Card>
+          ) : <EmptyState title="No order status data" description="Status volume appears here after provider imports are processed." />}
+        </Panel>
 
-        <Card className="border-border/70">
-          <CardHeader className="flex-row items-start justify-between gap-4">
-            <div>
-              <CardTitle>Team snapshot</CardTitle>
-              <CardDescription>Sales and goal totals by manager and location.</CardDescription>
-            </div>
-            <Badge variant="outline">{data.teamSnapshot.length} groups</Badge>
-          </CardHeader>
-          <CardContent className="max-h-[520px] overflow-auto p-0">
-            {data.teamSnapshot.length ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Manager</TableHead>
-                    <TableHead>Location</TableHead>
-                    <TableHead>Sales</TableHead>
-                    <TableHead>Goal</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.teamSnapshot.slice(0, 10).map((team) => (
-                    <TableRow key={`${team.manager}-${team.location}`}>
-                      <TableCell className="font-medium">{team.manager}</TableCell>
-                      <TableCell>{team.location}</TableCell>
-                      <TableCell>{formatNumber(team.sales)}</TableCell>
-                      <TableCell>{formatNumber(team.goal)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <div className="p-6">
-                <EmptyState title="No team data" description="Team pacing appears after roster and sales data are available." />
+        <Panel title="Provider mix" description="Sales volume by provider for the selected week." accentColor={accent.magenta} bodyClassName="p-0">
+          {providerBreakdown.length ? (
+            <>
+              <div className="relative h-[200px] p-4 sm:h-[240px] sm:p-5">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={providerBreakdown} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius="68%" outerRadius="96%" startAngle={90} endAngle={-270} paddingAngle={2} stroke="none">
+                      {providerBreakdown.map((entry) => <Cell key={entry.name} fill={entry.fill} />)}
+                    </Pie>
+                    <RechartsTooltip content={<ChartTooltip unit="sales" />} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+                  <p className={microLabel}>Total</p>
+                  <p className="mt-1 text-3xl font-semibold tracking-tight">{formatNumber(providerTotal)}</p>
+                </div>
               </div>
-            )}
-          </CardContent>
-        </Card>
+              <div className="divide-y divide-border border-t border-border">
+                {providerBreakdown.map((item) => (
+                  <div key={item.name} className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <span className="h-3 w-3 shrink-0" style={{ backgroundColor: item.fill }} aria-hidden />
+                      <span className="truncate text-sm font-medium">{item.name}</span>
+                    </div>
+                    <div className="flex shrink-0 items-baseline gap-3">
+                      <span className="text-sm font-semibold tabular-nums">{formatNumber(item.value)}</span>
+                      <span className="w-10 text-right text-[13px] tabular-nums text-muted-foreground">{formatPercent(salesSharePercent(item.value, providerTotal))}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="p-5">
+              <EmptyState title="No provider data" description="Provider totals appear after sales imports are loaded." />
+            </div>
+          )}
+        </Panel>
       </section>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <Panel title="Rep leaderboard" description="Top reps by sales for the selected week." meta={`${topReps.length} reps`} accentColor={accent.blue} bodyClassName="max-h-[480px] overflow-auto p-0">
+          {topReps.length ? (
+            <div className="divide-y divide-border">
+              {topReps.map((rep, index) => (
+                <div key={rep.repUid} className="flex items-center gap-3 px-4 py-3 sm:px-5">
+                  <span className={cn("w-6 shrink-0 text-right text-sm font-semibold tabular-nums", index < 3 ? "text-primary" : "text-muted-foreground")}>
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="truncate text-sm font-medium">{rep.displayName}</p>
+                      <p className="shrink-0 text-sm font-semibold tabular-nums">
+                        {formatNumber(rep.sales)}
+                        <span className="ml-2 text-[13px] font-normal text-muted-foreground">{formatPercent(rep.share)}</span>
+                      </p>
+                    </div>
+                    <div className="mt-1.5 h-1.5 w-full bg-muted">
+                      <div className="h-full bg-primary" style={{ width: `${Math.max(2, (rep.sales / topRepSales) * 100)}%` }} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-5">
+              <EmptyState title="No reps in scope" description="Sales will appear here after imports are matched to reps." />
+            </div>
+          )}
+        </Panel>
+
+        <Panel title="Goal pacing" description="Reps currently behind expected weekly pace." meta={`${data.goalPacing.length} reps`} accentColor={accent.amber} bodyClassName="p-0">
+          {data.goalPacing.length ? (
+            <div className="divide-y divide-border">
+              {data.goalPacing.slice(0, 6).map((rep) => {
+                const percent = rep.goal ? Math.min(100, Math.round((rep.sales / rep.goal) * 100)) : 0;
+                const barColor = percent >= 100 ? "var(--success)" : percent >= 70 ? accent.amber : "var(--destructive)";
+                return (
+                  <div key={rep.repUid} className="px-4 py-3.5 sm:px-5">
+                    <div className="flex items-baseline justify-between gap-4">
+                      <p className="min-w-0 truncate text-sm font-medium">{rep.displayName}</p>
+                      <p className="shrink-0 text-sm tabular-nums text-muted-foreground">
+                        {formatNumber(rep.sales)} / {formatNumber(rep.goal)} · <span className="font-semibold text-foreground">{formatPercent(percent)}</span>
+                      </p>
+                    </div>
+                    <div className="mt-2.5 h-1.5 w-full bg-muted">
+                      <div className="h-full" style={{ width: `${percent}%`, backgroundColor: barColor }} />
+                    </div>
+                    <p className="mt-2 text-[13px] text-muted-foreground">
+                      {rep.remaining > 0 ? `${formatNumber(rep.remaining)} remaining · ${formatCompact(rep.neededPerDay)} needed per day` : "Goal completed"}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="p-5">
+              <EmptyState title="No goal pacing issues" description="Active reps are not behind expected weekly goal pace." />
+            </div>
+          )}
+        </Panel>
+      </section>
+
+      {canSeeKnockHours && (providerFilter === "all" || providerFilter === "tfiber") ? (
+        <Panel
+          title="Knock hours worked"
+          description={`Each rep's first-to-last knock span per day, summed for ${weekLabel}. Based on T-Fiber knock activity.`}
+          meta={`${knockHoursRows.length} reps`}
+          accentColor={accent.violet}
+          bodyClassName="max-h-[560px] overflow-y-auto"
+        >
+          {knockHoursLoading ? (
+            <Skeleton className="h-[280px] rounded-none" />
+          ) : knockHoursError ? (
+            <EmptyState title="Hours unavailable" description={knockHoursError} />
+          ) : knockHoursRows.length ? (
+            <div style={{ height: Math.max(160, knockHoursRows.length * 44 + 36) }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={knockHoursRows} layout="vertical" margin={{ left: 0, right: 64, top: 0, bottom: 0 }}>
+                  <CartesianGrid stroke="var(--border)" horizontal={false} />
+                  <XAxis type="number" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "var(--muted-foreground)" }} tickFormatter={(value) => formatHoursAsDuration(Number(value))} />
+                  <YAxis type="category" dataKey="displayName" width={110} tickLine={false} axisLine={false} tick={{ fontSize: 13, fill: "var(--foreground)" }} />
+                  <RechartsTooltip content={<KnockHoursTooltip />} cursor={{ fill: "var(--muted)", opacity: 0.4 }} />
+                  <Bar dataKey="hoursWorked" barSize={20} radius={[0, 4, 4, 0]} fill={accent.violet}>
+                    <LabelList dataKey="hoursWorked" position="right" formatter={(value) => formatHoursAsDuration(Number(value))} style={{ fill: "var(--foreground)", fontSize: 12, fontWeight: 600 }} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <EmptyState title="No knock hours yet" description="Hours appear after T-Fiber knock exports are processed for this week." />
+          )}
+        </Panel>
+      ) : null}
     </motion.div>
   );
 }

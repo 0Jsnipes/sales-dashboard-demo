@@ -45,27 +45,27 @@ function OperationsShell({ view }: { view: OperationsView }) {
     view === "backfill" ? <BackfillPage /> :
     <SettingsPage />;
 
-  const meta =
-    view === "dashboard" ? { title: "Dashboard", subtitle: "Live sales performance for the current week." } :
-    view === "performance" ? { title: "Performance", subtitle: "Executive analytics for sales, installs, and order status." } :
-    view === "reporting" ? { title: "Reporting", subtitle: "Spreadsheet-style reporting for sales and knocks with full-column filtering." } :
-    view === "sales" ? { title: "Sales", subtitle: "Weekly sales rows, filters, and goal management." } :
-    view === "knocks" ? { title: "Knocks", subtitle: "Knock reporting workspace and intake landing zone." } :
-    view === "roster" ? { title: "Roster", subtitle: "Reps, managers, locations, and identity management." } :
-    view === "teams" ? { title: "Teams", subtitle: "Editable reporting groups independent from manager hierarchy." } :
-    view === "onboarding" ? { title: "Tools", subtitle: "Operational tools, resource links, and recruiting references." } :
-    view === "imports" ? { title: "Imports", subtitle: "Upload, validate, and review incoming operational files." } :
-    view === "unmatched" ? { title: "Unmatched review", subtitle: "Resolve ambiguous import matches safely." } :
-    view === "backfill" ? { title: "Backfill", subtitle: "Create audited historical sales records." } :
-    { title: "Settings", subtitle: "Roles and permission controls for the workspace." };
+  const title =
+    view === "dashboard" ? "Dashboard" :
+    view === "performance" ? "Performance" :
+    view === "reporting" ? "Reporting" :
+    view === "sales" ? "Sales" :
+    view === "knocks" ? "Knocks" :
+    view === "roster" ? "Roster" :
+    view === "teams" ? "Teams" :
+    view === "onboarding" ? "Tools" :
+    view === "imports" ? "Imports" :
+    view === "unmatched" ? "Unmatched review" :
+    view === "backfill" ? "Backfill" :
+    "Settings";
 
   const href = view === "unmatched" ? "/imports" : `/${view}`;
   const navItem = appNav.find((item) => item.href === href);
   const canAccess = navItem ? canAccessNavItem(profile, navItem) : false;
 
   return (
-    <AppShell title={meta.title} subtitle={meta.subtitle}>
-      {canAccess ? screen : <AccessDenied title={meta.title} />}
+    <AppShell title={title}>
+      {canAccess ? screen : <AccessDenied title={title} />}
     </AppShell>
   );
 }
