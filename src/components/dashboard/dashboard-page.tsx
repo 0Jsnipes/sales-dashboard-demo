@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { AlertTriangle, ArrowRight, BarChart3, CheckCircle2, Clock3, Download, FileUp, Gauge, Target, TrendingUp, TriangleAlert, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, BarChart3, CheckCircle2, Clock3, Download, FileUp, Gauge, Target, Timer, TrendingUp, TriangleAlert, Users, Zap } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,9 @@ import { Label } from "@/components/ui/label";
 import { microLabel, StatTile } from "@/components/ui/stat-tile";
 import { Panel, FlatEmptyState as EmptyState } from "@/components/ui/data-panel";
 import { useAuth } from "@/src/components/auth-provider";
+import { OrdersDrilldownSheet } from "@/src/components/performance/orders-drilldown-sheet";
+import type { PerformanceOrder } from "@/src/lib/performance/performance-utils";
+import { exportOrdersWorkbook } from "@/src/lib/reports/sales-export";
 
 type OrderStatusTotals = {
   total: number;
@@ -80,6 +83,8 @@ const providerColors: Record<string, string> = {
   Frontier: "#c98500",
   Manual: "#008300",
 };
+
+const providerTokenMap: Record<string, string> = { att: "ATT", tfiber: "T-Fiber", manual: "Manual" };
 
 const accent = {
   blue: "var(--primary)",
@@ -205,6 +210,8 @@ export function DashboardPage() {
   const [knockHoursError, setKnockHoursError] = useState<string | null>(null);
   const [knockHoursLoadedKey, setKnockHoursLoadedKey] = useState("");
   const [knockHoursForbidden, setKnockHoursForbidden] = useState(false);
+  const [performanceOrders, setPerformanceOrders] = useState<PerformanceOrder[]>([]);
+  const [activeDrilldown, setActiveDrilldown] = useState<"total" | "installed" | "pending" | "pastDue" | null>(null);
   const weekOptions = useMemo(() => weekStartOptions(), []);
   const currentWeekStart = weekOptions[0]?.value ?? "";
   const reducedMotion = useReducedMotion();
@@ -240,6 +247,27 @@ export function DashboardPage() {
       active = false;
     };
   }, [profile?.authUid, providerFilter, repFilter, requestKey, weekStartFilter]);
+
+  const weekStart = data?.week.start;
+  const weekEnd = data?.week.end;
+
+  useEffect(() => {
+    if (!weekStart || !weekEnd) return;
+    let active = true;
+    const params = new URLSearchParams({ range: "custom", from: weekStart, to: weekEnd });
+    void authedJson<{ orders: PerformanceOrder[] }>(`/api/performance?${params.toString()}`)
+      .then((value) => {
+        if (!active) return;
+        setPerformanceOrders(value.orders ?? []);
+      })
+      .catch(() => {
+        if (!active) return;
+        setPerformanceOrders([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [weekStart, weekEnd]);
 
   const canSeeKnockHours = Boolean(
     profile && (profile.role === "superAdmin" || normalizePermissions(profile.permissions ?? {}).canViewKnockHours),
@@ -282,6 +310,29 @@ export function DashboardPage() {
     () => (knockHours?.rows ?? []).filter((row) => repFilter === "all" || row.repUid === repFilter),
     [knockHours, repFilter],
   );
+
+  const totalHoursWorked = useMemo(() => knockHoursRows.reduce((sum, row) => sum + Number(row.hoursWorked || 0), 0), [knockHoursRows]);
+  const avgSalesPerHour = totalHoursWorked > 0 ? (data?.totalSales ?? 0) / totalHoursWorked : 0;
+
+  const scopedPerformanceOrders = useMemo(() => {
+    const providerName = providerFilter === "all" ? null : providerTokenMap[providerFilter];
+    return performanceOrders.filter((order) => {
+      if (providerName && order.provider !== providerName) return false;
+      if (repFilter !== "all" && order.repUid !== repFilter) return false;
+      return true;
+    });
+  }, [performanceOrders, providerFilter, repFilter]);
+
+  const installedOrderRows = useMemo(() => scopedPerformanceOrders.filter((order) => order.outcome === "installed"), [scopedPerformanceOrders]);
+  const pendingOrderRows = useMemo(() => scopedPerformanceOrders.filter((order) => order.outcome === "pending" || order.outcome === "past_due"), [scopedPerformanceOrders]);
+  const pastDueOrderRows = useMemo(() => scopedPerformanceOrders.filter((order) => order.pastDue || order.outcome === "past_due"), [scopedPerformanceOrders]);
+
+  const drilldownConfig: Record<Exclude<typeof activeDrilldown, null>, { title: string; description: string; rows: PerformanceOrder[]; emptyTitle: string; emptyDescription: string; exportPrefix: string }> = {
+    total: { title: "Total sales", description: "All sales in the selected week", rows: scopedPerformanceOrders, emptyTitle: "No sales", emptyDescription: "No sales orders match the current filters.", exportPrefix: "dashboard-total-sales" },
+    installed: { title: "Active installs", description: "Installed orders in the selected week", rows: installedOrderRows, emptyTitle: "No active installs", emptyDescription: "No installed orders match the current filters.", exportPrefix: "dashboard-active-installs" },
+    pending: { title: "Pending", description: "Pending installs, including past due", rows: pendingOrderRows, emptyTitle: "No pending installs", emptyDescription: "No pending orders match the current filters.", exportPrefix: "dashboard-pending-installs" },
+    pastDue: { title: "Past due installs", description: "Pending installs past the ETA", rows: pastDueOrderRows, emptyTitle: "No past due installs", emptyDescription: "No installs are past their estimated install date.", exportPrefix: "dashboard-past-due-installs" },
+  };
 
   const providerBreakdown = useMemo(
     () => Object.entries(data?.byProvider ?? {})
@@ -454,15 +505,30 @@ export function DashboardPage() {
       </section>
 
       <section className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border md:grid-cols-4">
-        <StatTile label="Total sales" value={formatNumber(data.totalSales)} detail={`vs ${formatNumber(data.comparison.previous)} previous week`} icon={TrendingUp} accentColor={accent.blue} delta={formatDelta(comparisonDelta)} deltaPositive={comparisonDelta >= 0} href={canUseOperationalActions ? "/sales" : undefined} />
+        <button type="button" onClick={() => setActiveDrilldown("total")} className="contents text-left">
+          <StatTile label="Total sales" value={formatNumber(data.totalSales)} detail={`vs ${formatNumber(data.comparison.previous)} previous week - click to open the list`} icon={TrendingUp} accentColor={accent.blue} delta={formatDelta(comparisonDelta)} deltaPositive={comparisonDelta >= 0} />
+        </button>
         <StatTile label="Goal progress" value={formatPercent(goalProgress)} detail={`${formatNumber(data.totalSales)} of ${formatNumber(data.totalSalesGoal)} weekly goal`} icon={Gauge} accentColor={accent.violet} progress={goalProgress} />
         <StatTile label="Knocks" value={formatNumber(data.totalKnocks)} detail={`${formatCompact(data.activeReps ? data.totalKnocks / data.activeReps : 0)} per active rep`} icon={Target} accentColor={accent.magenta} href={canUseOperationalActions ? "/knocks" : undefined} />
         <StatTile label="Conversion" value={formatPercent(conversion)} detail="Sales divided by knocks" icon={BarChart3} accentColor={accent.teal} />
-        <StatTile label="Active installs" value={formatNumber(statusTotals.installed)} detail={`Status range: ${statusRangeLabel}`} icon={CheckCircle2} accentColor={accent.green} />
-        <StatTile label="Pending" value={formatNumber(statusTotals.pending)} detail={`${formatNumber(statusTotals.pastDue)} past due within pending`} icon={Clock3} accentColor={accent.amber} />
-        <StatTile label="Past due" value={formatNumber(statusTotals.pastDue)} detail="Pending installs past the report date" icon={TriangleAlert} accentColor={accent.red} valueColor={statusTotals.pastDue > 0 ? "var(--destructive)" : undefined} />
+        <button type="button" onClick={() => setActiveDrilldown("installed")} className="contents text-left">
+          <StatTile label="Active installs" value={formatNumber(statusTotals.installed)} detail={`Status range: ${statusRangeLabel} - click to open the list`} icon={CheckCircle2} accentColor={accent.green} />
+        </button>
+        <button type="button" onClick={() => setActiveDrilldown("pending")} className="contents text-left">
+          <StatTile label="Pending" value={formatNumber(statusTotals.pending)} detail={`${formatNumber(statusTotals.pastDue)} past due within pending - click to open the list`} icon={Clock3} accentColor={accent.amber} />
+        </button>
+        <button type="button" onClick={() => setActiveDrilldown("pastDue")} className="contents text-left">
+          <StatTile label="Past due" value={formatNumber(statusTotals.pastDue)} detail="Pending installs past the report date - click to open the list" icon={TriangleAlert} accentColor={accent.red} valueColor={statusTotals.pastDue > 0 ? "var(--destructive)" : undefined} />
+        </button>
         <StatTile label="Active reps" value={formatNumber(data.activeReps)} detail="Roster members with active status" icon={Users} accentColor={accent.sky} href={canUseOperationalActions ? "/roster" : undefined} />
       </section>
+
+      {canSeeKnockHours && (providerFilter === "all" || providerFilter === "tfiber") ? (
+        <section className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border">
+          <StatTile label="Total hours worked" value={formatHoursAsDuration(totalHoursWorked)} detail="Summed first-to-last knock span, current scope" icon={Timer} accentColor={accent.violet} />
+          <StatTile label="Avg sales per hour" value={avgSalesPerHour.toFixed(1)} detail="Total sales divided by total hours worked" icon={Zap} accentColor={accent.teal} />
+        </section>
+      ) : null}
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_.9fr]">
         <Panel title="Order status health" description={`Order volume by status for ${statusRangeLabel}. Past due is the subset of pending installs past the report date.`} accentColor={accent.green}>
@@ -617,6 +683,19 @@ export function DashboardPage() {
             <EmptyState title="No knock hours yet" description="Hours appear after T-Fiber knock exports are processed for this week." />
           )}
         </Panel>
+      ) : null}
+
+      {activeDrilldown ? (
+        <OrdersDrilldownSheet
+          open={Boolean(activeDrilldown)}
+          onOpenChange={(open) => { if (!open) setActiveDrilldown(null); }}
+          title={drilldownConfig[activeDrilldown].title}
+          description={drilldownConfig[activeDrilldown].description}
+          emptyTitle={drilldownConfig[activeDrilldown].emptyTitle}
+          emptyDescription={drilldownConfig[activeDrilldown].emptyDescription}
+          rows={drilldownConfig[activeDrilldown].rows}
+          onExport={() => void exportOrdersWorkbook(drilldownConfig[activeDrilldown].rows, drilldownConfig[activeDrilldown].exportPrefix)}
+        />
       ) : null}
     </motion.div>
   );

@@ -1,3 +1,5 @@
+import { enableWorksheetFilters } from "@/src/lib/exports/worksheet";
+
 type SourceExportProvider = "ATT" | "T-Fiber";
 
 type SourceExportOrder = {
@@ -187,4 +189,36 @@ export function buildSalesExportRows(orders: ExportOrder[]) {
 export function buildWorksheetData(rows: Record<string, unknown>[]) {
   if (rows.length === 0) return { headers: ["Message"], rows: [{ Message: "No matching source rows for the selected range and filters." }] };
   return { headers: [...new Set(rows.flatMap((row) => Object.keys(row)))], rows };
+}
+
+export async function downloadWorkbook(filename: string, sheets: Array<{ name: string; rows: Record<string, unknown>[] }>) {
+  const XLSX = await import("xlsx");
+  const workbook = XLSX.utils.book_new();
+  for (const sheet of sheets) {
+    const data = buildWorksheetData(sheet.rows);
+    const worksheet = enableWorksheetFilters(XLSX.utils.json_to_sheet(data.rows, { header: data.headers, dateNF: EXCEL_DATE_FORMAT }));
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name.slice(0, 31) || "Sheet1");
+  }
+  const output = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+  const blob = new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+export function exportOrdersWorkbook(orders: Parameters<typeof buildSalesExportRows>[0], prefix: string) {
+  const grouped = new Map<string, typeof orders>();
+  for (const order of orders) {
+    const provider = order.provider === "ATT" || order.provider === "T-Fiber" ? order.provider : "Other";
+    const current = grouped.get(provider) ?? [];
+    current.push(order);
+    grouped.set(provider, current);
+  }
+  return downloadWorkbook(
+    `${prefix}-${new Date().toISOString().slice(0, 10)}.xlsx`,
+    [...grouped.entries()].map(([name, providerOrders]) => ({ name, rows: buildSalesExportRows(providerOrders) })),
+  );
 }

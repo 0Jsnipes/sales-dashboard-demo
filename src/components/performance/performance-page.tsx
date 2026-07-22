@@ -4,17 +4,20 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useQueryState, parseAsString } from "nuqs";
 import { motion, useReducedMotion } from "motion/react";
-import { differenceInCalendarDays, format, parseISO } from "date-fns";
-import { BarChart3, CalendarRange, CheckCircle2, ChevronDown, Download, Filter, Search, TrendingUp, TriangleAlert, Users, Clock3 } from "lucide-react";
+import { format, parseISO } from "date-fns";
+import { BarChart3, CalendarRange, CheckCircle2, ChevronDown, Clock3, Download, Filter, Gauge, Search, Timer, TrendingUp, TriangleAlert, Users } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { authedFetch, authedJson } from "@/src/lib/api/client";
 import { useAuth } from "@/src/components/auth-provider";
+import { normalizePermissions } from "@/src/lib/access";
 import { endOfWeek, startOfWeek, toDateId, weekRangeLabel } from "@/src/lib/date/week";
-import { enableWorksheetFilters } from "@/src/lib/exports/worksheet";
 import { formatDate } from "@/src/lib/formatters/date";
+import { formatHoursAsDuration } from "@/src/lib/formatters/duration";
 import { formatNumber, formatPercent } from "@/src/lib/formatters/number";
-import { calculateCancellationRate, calculateInstallRate, outcomeBadgeVariant, type PerformanceOrder } from "@/src/lib/performance/performance-utils";
+import { calculateCancellationRate, calculateInstallRate, etaDateId, etaValue, outcomeBadgeVariant, unitsFor, type PerformanceOrder } from "@/src/lib/performance/performance-utils";
+import { exportOrdersWorkbook } from "@/src/lib/reports/sales-export";
+import { OrdersDrilldownSheet } from "@/src/components/performance/orders-drilldown-sheet";
 import { buildSalesExportRows, buildWorksheetData, EXCEL_DATE_FORMAT } from "@/src/lib/reports/sales-export";
 import { saleOutcomeLabel, sanitizeOrderId } from "@/src/lib/sales/outcomes";
 import { cn } from "@/lib/utils";
@@ -25,7 +28,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { StatTile } from "@/components/ui/stat-tile";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -95,6 +97,23 @@ type PerformanceResponse = {
 
 type PerformanceRep = PerformanceResponse["reps"][number];
 
+type KnockHoursRow = {
+  repUid: string;
+  displayName: string;
+  managerName: string;
+  teamId: string | null;
+  locationName: string;
+  vendorType: string;
+  knocks: number;
+  sales: number;
+  hoursWorked: number;
+  daysWorked: number;
+  firstKnockAt: string;
+  lastKnockAt: string;
+};
+
+type KnockHoursResponse = { period: string; range: { start: string; end: string }; rows: KnockHoursRow[] };
+
 type OrderFilterState = {
   search: string;
   manager: string;
@@ -139,10 +158,6 @@ function normalize(value: unknown) {
   return text(value).toLowerCase();
 }
 
-function unitsFor(order: PerformanceOrder) {
-  return Number(order.saleCount ?? 1) || 1;
-}
-
 function statusLabel(order: PerformanceOrder) {
   if (order.pastDue) return "Past due";
   const value = text(order.status);
@@ -151,29 +166,6 @@ function statusLabel(order: PerformanceOrder) {
     return "Unknown";
   }
   return value;
-}
-
-function etaDateId(order: PerformanceOrder) {
-  return text(order.estimatedInstallationDateId);
-}
-
-function daysPastDue(order: PerformanceOrder) {
-  const eta = etaDateId(order);
-  if (!order.pastDue || !eta) return null;
-  try {
-    return Math.max(0, differenceInCalendarDays(new Date(), parseISO(`${eta}T12:00:00`)));
-  } catch {
-    return null;
-  }
-}
-
-function etaValue(order: PerformanceOrder) {
-  const eta = etaDateId(order);
-  if (!eta) return "";
-  const label = formatDate(eta);
-  const pastDue = daysPastDue(order);
-  if (!order.pastDue || pastDue == null || pastDue <= 0) return label;
-  return `${label} (${pastDue} ${pastDue === 1 ? "day" : "days"})`;
 }
 
 function etaLabel(order: PerformanceOrder) {
@@ -265,24 +257,6 @@ function groupTeamRows(rows: Array<{ managerName: string; locationName: string; 
       conversion: row.knocks ? Math.round((row.sales / row.knocks) * 100) : 0,
     }))
     .sort((a, b) => b.sales - a.sales || a.name.localeCompare(b.name));
-}
-
-async function downloadWorkbook(filename: string, sheets: Array<{ name: string; rows: Record<string, unknown>[] }>) {
-  const XLSX = await import("xlsx");
-  const workbook = XLSX.utils.book_new();
-  for (const sheet of sheets) {
-    const data = buildWorksheetData(sheet.rows);
-    const worksheet = enableWorksheetFilters(XLSX.utils.json_to_sheet(data.rows, { header: data.headers, dateNF: EXCEL_DATE_FORMAT }));
-    XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name.slice(0, 31) || "Sheet1");
-  }
-  const output = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
-  const blob = new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function rangeLabel(mode: RangeMode) {
@@ -494,7 +468,9 @@ export function PerformancePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [ordersOpen, setOrdersOpen] = useState(true);
-  const [pastDueOpen, setPastDueOpen] = useState(false);
+  const [activeDrilldown, setActiveDrilldown] = useState<"total" | "installed" | "pending" | "canceled" | "churned" | "pastDue" | null>(null);
+  const [knockHours, setKnockHours] = useState<KnockHoursRow[]>([]);
+  const [knockHoursForbidden, setKnockHoursForbidden] = useState(false);
   const [reassignOrder, setReassignOrder] = useState<PerformanceOrder | null>(null);
   const [reassignRepUid, setReassignRepUid] = useState("");
   const [reassigning, setReassigning] = useState(false);
@@ -511,6 +487,9 @@ export function PerformancePage() {
 
   const mode = (range as RangeMode) || "lastWeek";
   const canReassignOrders = profile?.role === "superAdmin" || (profile?.role === "admin" && profile.permissions.canReassignSales);
+  const canSeeKnockHours = Boolean(
+    profile && (profile.role === "superAdmin" || normalizePermissions(profile.permissions ?? {}).canViewKnockHours),
+  ) && !knockHoursForbidden;
 
   useEffect(() => {
     let active = true;
@@ -558,6 +537,25 @@ export function PerformancePage() {
   const currentRange = data?.range ?? { start, end, mode };
   const currentRangeLabel = rangeLabel(mode);
   const currentRangeDates = data ? weekRangeLabel(data.range.start, data.range.end) : weekRangeLabel(start, end);
+
+  useEffect(() => {
+    if (!canSeeKnockHours) return;
+    let active = true;
+    const params = new URLSearchParams({ period: "custom", anchor: currentRange.start, end: currentRange.end, lcp: "all" });
+    void authedJson<KnockHoursResponse>(`/api/performance/knock-hours?${params.toString()}`)
+      .then((value) => {
+        if (!active) return;
+        setKnockHours(value.rows ?? []);
+      })
+      .catch((cause) => {
+        if (!active) return;
+        const message = cause instanceof Error ? cause.message : "";
+        if (/forbidden/i.test(message)) setKnockHoursForbidden(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [canSeeKnockHours, currentRange.end, currentRange.start]);
   const scopedOrders = useMemo(() => {
     if (!data) return [];
     return data.orders.filter((order) => {
@@ -686,7 +684,23 @@ export function PerformancePage() {
     [scopedOrders],
   );
 
-  const pastDueUnits = useMemo(() => pastDueRows.reduce((sum, order) => sum + unitsFor(order), 0), [pastDueRows]);
+
+  const installedRows = useMemo(() => scopedOrders.filter((order) => order.outcome === "installed"), [scopedOrders]);
+  const pendingRows = useMemo(() => scopedOrders.filter((order) => order.outcome === "pending" || order.outcome === "past_due"), [scopedOrders]);
+  const canceledRows = useMemo(() => scopedOrders.filter((order) => order.outcome === "canceled"), [scopedOrders]);
+  const churnedRows = useMemo(() => scopedOrders.filter((order) => order.outcome === "churned"), [scopedOrders]);
+
+  const totalHoursWorked = useMemo(() => knockHours.reduce((sum, row) => sum + Number(row.hoursWorked || 0), 0), [knockHours]);
+  const avgSalesPerHour = totalHoursWorked > 0 ? scopedTotals.sales / totalHoursWorked : 0;
+
+  const drilldownConfig: Record<Exclude<typeof activeDrilldown, null>, { title: string; description: string; rows: PerformanceOrder[]; emptyTitle: string; emptyDescription: string; exportPrefix: string; reassign?: boolean }> = {
+    total: { title: "Total sales", description: "All sales in the current scope", rows: scopedOrders, emptyTitle: "No sales", emptyDescription: "No sales orders match the current scope.", exportPrefix: "total-sales" },
+    installed: { title: "Active installs", description: "Installed orders in the current scope", rows: installedRows, emptyTitle: "No active installs", emptyDescription: "No installed orders match the current scope.", exportPrefix: "active-installs" },
+    pending: { title: "Pending", description: "Pending installs, including past due", rows: pendingRows, emptyTitle: "No pending installs", emptyDescription: "No pending orders match the current scope.", exportPrefix: "pending-installs" },
+    canceled: { title: "Canceled", description: "Canceled orders in the current scope", rows: canceledRows, emptyTitle: "No canceled orders", emptyDescription: "No canceled orders match the current scope.", exportPrefix: "canceled-orders" },
+    churned: { title: "Churned", description: "Churned orders in the current scope", rows: churnedRows, emptyTitle: "No churned orders", emptyDescription: "No churned orders match the current scope.", exportPrefix: "churned-orders" },
+    pastDue: { title: "Past due installs", description: "Pending installs past the ETA", rows: pastDueRows, emptyTitle: "No past due installs", emptyDescription: "The current scope has no installs past their estimated install date.", exportPrefix: "past-due-installs", reassign: true },
+  };
   const displayOrders = useMemo(() => {
     const term = orderFilters.search.trim().toLowerCase();
     return scopedOrders.filter((order) => {
@@ -803,17 +817,7 @@ export function PerformancePage() {
   };
 
   const exportOrders = async (orders: PerformanceOrder[], prefix: string) => {
-    const grouped = new Map<string, PerformanceOrder[]>();
-    for (const order of orders) {
-      const provider = order.provider === "ATT" || order.provider === "T-Fiber" ? order.provider : "Other";
-      const current = grouped.get(provider) ?? [];
-      current.push(order);
-      grouped.set(provider, current);
-    }
-    await downloadWorkbook(
-      `${prefix}-${toDateId(new Date())}.xlsx`,
-      [...grouped.entries()].map(([name, providerOrders]) => ({ name, rows: buildSalesExportRows(providerOrders) })),
-    );
+    await exportOrdersWorkbook(orders, prefix);
     toast.message("Downloaded the report workbook.");
   };
 
@@ -990,7 +994,9 @@ export function PerformancePage() {
       </Card>
 
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-3 xl:grid-cols-4">
-        <StatTile label="Total sales" value={formatNumber(scopedTotals.sales)} detail="Units sold in the current scope" icon={TrendingUp} accentColor="var(--primary)" />
+        <button type="button" onClick={() => setActiveDrilldown("total")} className="contents text-left">
+          <StatTile label="Total sales" value={formatNumber(scopedTotals.sales)} detail="Units sold in the current scope - click to open the list" icon={TrendingUp} accentColor="var(--primary)" />
+        </button>
         <StatTile
           label="Total knocks"
           value={formatNumber(scopedTotals.knocks)}
@@ -999,9 +1005,13 @@ export function PerformancePage() {
           accentColor="var(--info)"
         />
         <StatTile label="Conversion" value={`${scopedTotals.conversion}%`} detail="Sales divided by knocks" icon={TrendingUp} accentColor="#1baf7a" />
-        <StatTile label="Installed" value={formatNumber(scopedTotals.installed)} detail={`Install rate ${installRate}%`} icon={CheckCircle2} accentColor="var(--success)" />
-        <StatTile label="Pending" value={formatNumber(scopedTotals.pending)} detail="Needs follow-up" icon={Clock3} accentColor="#c98500" />
-        <button type="button" onClick={() => setPastDueOpen(true)} className="contents text-left">
+        <button type="button" onClick={() => setActiveDrilldown("installed")} className="contents text-left">
+          <StatTile label="Installed" value={formatNumber(scopedTotals.installed)} detail={`Install rate ${installRate}% - click to open the list`} icon={CheckCircle2} accentColor="var(--success)" />
+        </button>
+        <button type="button" onClick={() => setActiveDrilldown("pending")} className="contents text-left">
+          <StatTile label="Pending" value={formatNumber(scopedTotals.pending)} detail="Needs follow-up - click to open the list" icon={Clock3} accentColor="#c98500" />
+        </button>
+        <button type="button" onClick={() => setActiveDrilldown("pastDue")} className="contents text-left">
           <StatTile
             label="Past due"
             value={formatNumber(scopedTotals.pastDue)}
@@ -1010,10 +1020,21 @@ export function PerformancePage() {
             accentColor="var(--warning)"
           />
         </button>
-        <StatTile label="Canceled" value={formatNumber(scopedTotals.canceled)} detail={`Cancellation rate ${cancellationRate}%`} icon={TriangleAlert} accentColor="var(--destructive)" />
-        <StatTile label="Churned" value={formatNumber(scopedTotals.churned)} detail="Separated from cancellations" icon={TriangleAlert} accentColor="#b76e8f" />
+        <button type="button" onClick={() => setActiveDrilldown("canceled")} className="contents text-left">
+          <StatTile label="Canceled" value={formatNumber(scopedTotals.canceled)} detail={`Cancellation rate ${cancellationRate}% - click to open the list`} icon={TriangleAlert} accentColor="var(--destructive)" />
+        </button>
+        <button type="button" onClick={() => setActiveDrilldown("churned")} className="contents text-left">
+          <StatTile label="Churned" value={formatNumber(scopedTotals.churned)} detail="Separated from cancellations - click to open the list" icon={TriangleAlert} accentColor="#b76e8f" />
+        </button>
         <StatTile label="Active reps" value={formatNumber(scopedTotals.activeReps)} detail="Roster members in the current scope" icon={Users} accentColor="#8d7cd8" />
       </div>
+
+      {canSeeKnockHours ? (
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border">
+          <StatTile label="Total hours worked" value={formatHoursAsDuration(totalHoursWorked)} detail="Summed first-to-last knock span, current scope" icon={Timer} accentColor="#8d7cd8" />
+          <StatTile label="Avg sales per hour" value={avgSalesPerHour.toFixed(1)} detail="Total sales divided by total hours worked" icon={Gauge} accentColor="#1baf7a" />
+        </div>
+      ) : null}
 
       <Alert>
         <TriangleAlert className="h-4 w-4" />
@@ -1504,82 +1525,19 @@ export function PerformancePage() {
         </DialogContent>
       </Dialog>
 
-      <Sheet open={pastDueOpen} onOpenChange={setPastDueOpen}>
-        <SheetContent side="right" className="w-[min(100vw,1200px)] sm:max-w-[1200px] overflow-y-auto">
-          <SheetHeader className="pr-10">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <SheetTitle>Past due installs</SheetTitle>
-                <SheetDescription>
-                  {formatNumber(pastDueRows.length)} rows - {formatNumber(pastDueUnits)} units in the current scope.
-                </SheetDescription>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => exportOrders(pastDueRows, "past-due-installs")}>
-                <Download className="h-4 w-4" />
-                Export CSV
-              </Button>
-            </div>
-          </SheetHeader>
-
-          <div className="mt-6 space-y-4">
-            {pastDueRows.length ? (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Sale date</TableHead>
-                      <TableHead>ETA</TableHead>
-                      <TableHead>Rep</TableHead>
-                      <TableHead>Manager</TableHead>
-                      <TableHead>Location</TableHead>
-                      <TableHead>Provider</TableHead>
-                      <TableHead>Customer / order</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Units</TableHead>
-                      {canReassignOrders ? <TableHead className="text-right">Actions</TableHead> : null}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pastDueRows.map((order) => {
-                      return (
-                        <TableRow key={order.id}>
-                          <TableCell>{formatDate(order.orderDateId)}</TableCell>
-                          <TableCell>{etaValue(order) || " - "}</TableCell>
-                          <TableCell>{order.repName}</TableCell>
-                          <TableCell>{order.managerName || "No manager"}</TableCell>
-                          <TableCell>{order.locationName || "Not assigned"}</TableCell>
-                          <TableCell>{order.provider}</TableCell>
-                          <TableCell>
-                            <div>
-                              <p className="font-medium">{order.customer}</p>
-                              <p className="text-xs text-muted-foreground">{order.orderId}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="space-y-1">
-                              <Badge variant={outcomeBadgeVariant(order.outcome ?? "unknown")}>{saleOutcomeLabel(order.outcome ?? "unknown")}</Badge>
-                            </div>
-                          </TableCell>
-                          <TableCell>{unitsFor(order)}</TableCell>
-                          {canReassignOrders ? (
-                            <TableCell className="text-right">
-                              <Button size="sm" variant="outline" onClick={() => openReassign(order)}>
-                                Reassign
-                              </Button>
-                            </TableCell>
-                          ) : null}
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            ) : (
-              <EmptyState title="No past due installs" description="The current scope has no installs past their estimated install date." />
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
+      {activeDrilldown ? (
+        <OrdersDrilldownSheet
+          open={Boolean(activeDrilldown)}
+          onOpenChange={(open) => { if (!open) setActiveDrilldown(null); }}
+          title={drilldownConfig[activeDrilldown].title}
+          description={drilldownConfig[activeDrilldown].description}
+          emptyTitle={drilldownConfig[activeDrilldown].emptyTitle}
+          emptyDescription={drilldownConfig[activeDrilldown].emptyDescription}
+          rows={drilldownConfig[activeDrilldown].rows}
+          onExport={() => exportOrders(drilldownConfig[activeDrilldown].rows, drilldownConfig[activeDrilldown].exportPrefix)}
+          onReassign={canReassignOrders && drilldownConfig[activeDrilldown].reassign ? openReassign : undefined}
+        />
+      ) : null}
     </motion.div>
   );
 }

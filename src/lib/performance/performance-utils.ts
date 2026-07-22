@@ -1,5 +1,7 @@
+import { differenceInCalendarDays, parseISO } from "date-fns";
 import type { SaleOutcome, SaleOutcomeOptions, SalesOrderRecord } from "@/src/lib/sales/outcomes";
 import { isPastDue, isPastDueOlderThan, normalizeSaleOutcome, saleOutcomeLabel } from "@/src/lib/sales/outcomes";
+import { formatDate } from "@/src/lib/formatters/date";
 
 export type PerformanceOrder = SalesOrderRecord & {
   orderUid: string;
@@ -50,6 +52,33 @@ export function normalizePerformanceOutcome(order: SalesOrderRecord, options?: S
   if (isPastDueOlderThan(order, 31, options)) return "canceled" as const;
   if (isPastDue(order, options)) return "past_due" as const;
   return normalizeSaleOutcome(order, options);
+}
+
+export function unitsFor(order: PerformanceOrder) {
+  return Number(order.saleCount ?? 1) || 1;
+}
+
+export function etaDateId(order: PerformanceOrder) {
+  return String(order.estimatedInstallationDateId ?? "").trim();
+}
+
+export function daysPastDue(order: PerformanceOrder) {
+  const eta = etaDateId(order);
+  if (!order.pastDue || !eta) return null;
+  try {
+    return Math.max(0, differenceInCalendarDays(new Date(), parseISO(`${eta}T12:00:00`)));
+  } catch {
+    return null;
+  }
+}
+
+export function etaValue(order: PerformanceOrder) {
+  const eta = etaDateId(order);
+  if (!eta) return "";
+  const label = formatDate(eta);
+  const pastDue = daysPastDue(order);
+  if (!order.pastDue || pastDue == null || pastDue <= 0) return label;
+  return `${label} (${pastDue} ${pastDue === 1 ? "day" : "days"})`;
 }
 
 export { isPastDue, isPastDueOlderThan, normalizeSaleOutcome };
