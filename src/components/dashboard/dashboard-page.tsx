@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ComponentType } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { AlertTriangle, ArrowRight, BarChart3, CheckCircle2, Clock3, Download, FileUp, Gauge, Target, TrendingUp, TriangleAlert, Users } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
@@ -17,6 +17,8 @@ import { formatHoursAsDuration } from "@/src/lib/formatters/duration";
 import { formatCompact, formatDelta, formatNumber } from "@/src/lib/formatters/number";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { microLabel, StatTile } from "@/components/ui/stat-tile";
+import { Panel, FlatEmptyState as EmptyState } from "@/components/ui/data-panel";
 import { useAuth } from "@/src/components/auth-provider";
 
 type OrderStatusTotals = {
@@ -90,8 +92,6 @@ const accent = {
   violet: "#8d7cd8",
 };
 
-const microLabel = "text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground";
-
 function formatPercent(value: number) {
   return `${Math.round(value)}%`;
 }
@@ -130,118 +130,21 @@ function weekStartOptions(reference = new Date(), count = 53) {
 function LoadingState() {
   return (
     <div className="space-y-4 sm:space-y-6">
-      <Skeleton className="h-9 w-full rounded-none sm:w-96" />
-      <Skeleton className="h-28 w-full rounded-none sm:h-20" />
-      <div className="grid grid-cols-2 gap-px border border-border bg-border md:grid-cols-4">
+      <Skeleton className="h-9 w-full sm:w-96" />
+      <Skeleton className="h-28 w-full sm:h-20" />
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border md:grid-cols-4">
         {Array.from({ length: 8 }).map((_, index) => <Skeleton key={index} className="h-32 rounded-none" />)}
       </div>
       <div className="grid gap-4 xl:grid-cols-[1.2fr_.9fr]">
-        <Skeleton className="h-[320px] rounded-none" />
-        <Skeleton className="h-[320px] rounded-none" />
+        <Skeleton className="h-[320px]" />
+        <Skeleton className="h-[320px]" />
       </div>
       <div className="grid gap-4 xl:grid-cols-2">
-        <Skeleton className="h-[280px] rounded-none" />
-        <Skeleton className="h-[280px] rounded-none" />
+        <Skeleton className="h-[280px]" />
+        <Skeleton className="h-[280px]" />
       </div>
     </div>
   );
-}
-
-function EmptyState({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="border border-dashed border-border bg-muted/20 p-6 text-center">
-      <h3 className="text-sm font-semibold">{title}</h3>
-      <p className="mt-2 text-sm text-muted-foreground">{description}</p>
-    </div>
-  );
-}
-
-function Panel({
-  title,
-  description,
-  meta,
-  accentColor,
-  className,
-  bodyClassName,
-  children,
-}: {
-  title: string;
-  description?: string;
-  meta?: string;
-  accentColor?: string;
-  className?: string;
-  bodyClassName?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className={cn("flex flex-col border border-border bg-card", className)}>
-      {accentColor ? <div className="h-[3px] w-full" style={{ background: accentColor }} aria-hidden /> : null}
-      <header className="flex items-start justify-between gap-4 border-b border-border px-4 py-4 sm:px-5">
-        <div className="min-w-0">
-          <h3 className="text-[15px] font-semibold tracking-tight">{title}</h3>
-          {description ? <p className="mt-1 text-[13px] text-muted-foreground">{description}</p> : null}
-        </div>
-        {meta ? <p className={cn("shrink-0 pt-1 text-right", microLabel)}>{meta}</p> : null}
-      </header>
-      <div className={cn("flex-1 p-4 sm:p-5", bodyClassName)}>{children}</div>
-    </section>
-  );
-}
-
-function StatTile({
-  label,
-  value,
-  detail,
-  icon: Icon,
-  accentColor,
-  delta,
-  deltaPositive,
-  progress,
-  valueColor,
-  href,
-}: {
-  label: string;
-  value: string | number;
-  detail: string;
-  icon: ComponentType<{ className?: string }>;
-  accentColor: string;
-  delta?: string;
-  deltaPositive?: boolean;
-  progress?: number;
-  valueColor?: string;
-  href?: string;
-}) {
-  const body = (
-    <>
-      <div className="h-[3px] w-full" style={{ background: accentColor }} aria-hidden />
-      <div className="flex flex-1 flex-col p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-2">
-          <p className={cn("truncate", microLabel)}>{label}</p>
-          <span
-            className="flex h-7 w-7 shrink-0 items-center justify-center"
-            style={{ background: `color-mix(in oklab, ${accentColor} 14%, transparent)`, color: accentColor }}
-            aria-hidden
-          >
-            <Icon className="h-4 w-4" />
-          </span>
-        </div>
-        <p className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl" style={valueColor ? { color: valueColor } : undefined}>
-          {value}
-          {delta ? (
-            <span className={cn("ml-2 align-middle text-[13px] font-semibold", deltaPositive ? "text-success" : "text-destructive")}>{delta}</span>
-          ) : null}
-        </p>
-        {typeof progress === "number" ? (
-          <div className="mt-2.5 h-1.5 w-full bg-muted">
-            <div className="h-full" style={{ width: `${Math.min(100, Math.max(0, progress))}%`, background: accentColor }} />
-          </div>
-        ) : null}
-        <p className="mt-2 line-clamp-2 text-[13px] leading-snug text-muted-foreground">{detail}</p>
-      </div>
-    </>
-  );
-  const className = cn("flex h-full w-full flex-col bg-card text-left", href && "transition-colors hover:bg-muted/40");
-  return href ? <Link href={href} className={className}>{body}</Link> : <div className={className}>{body}</div>;
 }
 
 function ChartTooltip({
@@ -259,7 +162,7 @@ function ChartTooltip({
   const row = payload[0];
   const heading = label ?? row?.payload?.label ?? row?.payload?.name ?? row?.name;
   return (
-    <div className="border border-border bg-popover px-3 py-2 text-popover-foreground shadow-md">
+    <div className="rounded-xl border border-border bg-popover px-3 py-2 text-popover-foreground shadow-md">
       <p className="text-xs text-muted-foreground">{String(heading ?? "")}</p>
       <p className="mt-0.5 text-sm font-semibold tabular-nums">{formatNumber(Number(row?.value ?? 0))} <span className="font-normal text-muted-foreground">{unit}</span></p>
     </div>
@@ -277,7 +180,7 @@ function KnockHoursTooltip({
   const row = payload[0]?.payload;
   if (!row) return null;
   return (
-    <div className="border border-border bg-popover px-3 py-2 text-popover-foreground shadow-md">
+    <div className="rounded-xl border border-border bg-popover px-3 py-2 text-popover-foreground shadow-md">
       <p className="text-sm font-medium">{row.displayName}</p>
       <div className="mt-1 space-y-0.5 text-[13px] tabular-nums">
         <p><span className="text-muted-foreground">Hours worked:</span> <span className="font-semibold">{formatHoursAsDuration(row.hoursWorked)}</span></p>
@@ -511,7 +414,7 @@ export function DashboardPage() {
         </Alert>
       ) : null}
 
-      <section className="border border-border bg-card p-4 sm:p-5">
+      <section className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1.2fr_auto] xl:items-end">
           <div className="space-y-1.5">
             <Label htmlFor="dashboard-rep-filter" className={microLabel}>Representative</Label>
@@ -550,7 +453,7 @@ export function DashboardPage() {
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-px border border-border bg-border md:grid-cols-4">
+      <section className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border md:grid-cols-4">
         <StatTile label="Total sales" value={formatNumber(data.totalSales)} detail={`vs ${formatNumber(data.comparison.previous)} previous week`} icon={TrendingUp} accentColor={accent.blue} delta={formatDelta(comparisonDelta)} deltaPositive={comparisonDelta >= 0} href={canUseOperationalActions ? "/sales" : undefined} />
         <StatTile label="Goal progress" value={formatPercent(goalProgress)} detail={`${formatNumber(data.totalSales)} of ${formatNumber(data.totalSalesGoal)} weekly goal`} icon={Gauge} accentColor={accent.violet} progress={goalProgress} />
         <StatTile label="Knocks" value={formatNumber(data.totalKnocks)} detail={`${formatCompact(data.activeReps ? data.totalKnocks / data.activeReps : 0)} per active rep`} icon={Target} accentColor={accent.magenta} href={canUseOperationalActions ? "/knocks" : undefined} />

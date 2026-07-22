@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { DataRainBackground } from "@/components/ui/data-rain-background";
 
 const features = [
   { icon: Users, title: "Roster", text: "Maintain a single source of truth for reps, managers, and locations." },
@@ -21,8 +22,10 @@ export function LandingPage() {
 
   return (
     <main className="relative overflow-hidden">
+      <div className="relative overflow-hidden">
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,.14),transparent_35%),radial-gradient(circle_at_right_20%_top_20%,rgba(14,165,233,.12),transparent_30%),linear-gradient(180deg,var(--background),color-mix(in_oklch,var(--background)_90%,white))]" />
       <div className="absolute inset-x-0 top-0 -z-10 h-96 bg-[linear-gradient(135deg,rgba(37,99,235,.08),transparent_55%)]" />
+      <DataRainBackground className="-z-10 [mask-image:linear-gradient(180deg,black,transparent_85%)]" />
       <header className="mx-auto flex w-full max-w-[1440px] items-center justify-between px-4 py-5 sm:px-6 lg:px-8">
         <Link href="/" className="inline-flex items-center gap-3 text-sm font-semibold tracking-wide">
           <Image src="/legacy-assets/ab-logo.png" alt="AB Marketing" width={42} height={42} className="rounded-xl" />
@@ -72,8 +75,8 @@ export function LandingPage() {
         </motion.div>
 
         <motion.div initial={reducedMotion ? false : { opacity: 0, y: 20 }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }} transition={{ delay: 0.08 }} className="relative">
-          <div className="absolute inset-0 -z-10 rounded-[2rem] bg-[radial-gradient(circle_at_top,rgba(37,99,235,.22),transparent_48%)] blur-2xl" />
-          <Card className="relative overflow-hidden border-border/70 shadow-2xl">
+          <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(37,99,235,.22),transparent_48%)] blur-2xl" />
+          <Card className="relative overflow-hidden border-border/70">
             <CardHeader>
               <CardTitle>Command center preview</CardTitle>
               <CardDescription>Overview cards, validation status, and team alerts in a single glance.</CardDescription>
@@ -112,6 +115,7 @@ export function LandingPage() {
           </Card>
         </motion.div>
       </section>
+      </div>
 
       <section className="mx-auto w-full max-w-[1440px] px-4 pb-20 sm:px-6 lg:px-8">
         <div className="mb-6 max-w-2xl">

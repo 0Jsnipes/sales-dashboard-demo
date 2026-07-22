@@ -127,11 +127,6 @@ textarea {
     var(--background);
 }
 
-.glass-panel {
-  background: color-mix(in oklab, var(--card) 92%, transparent);
-  backdrop-filter: blur(18px);
-}
-
 .skeleton-shimmer {
   background: linear-gradient(90deg, color-mix(in oklab, var(--muted) 85%, transparent), color-mix(in oklab, var(--muted) 65%, transparent), color-mix(in oklab, var(--muted) 85%, transparent));
   background-size: 200% 100%;

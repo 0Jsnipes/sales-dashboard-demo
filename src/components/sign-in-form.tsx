@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getFirebaseAuth } from "@/src/lib/firebase/client";
+import { DataRainBackground } from "@/components/ui/data-rain-background";
 
 function friendlyError(error: unknown) {
   const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code) : "";
@@ -72,6 +73,7 @@ export function SignInForm() {
   return (
     <main className="relative min-h-screen overflow-hidden bg-background">
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,.16),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(14,165,233,.12),transparent_28%)]" />
+      <DataRainBackground className="-z-10" />
       <div className="mx-auto grid min-h-screen w-full max-w-[1440px] lg:grid-cols-[1.02fr_.98fr]">
         <section className="flex items-center justify-center px-6 py-10 sm:px-10 lg:px-12">
           <motion.div initial={reducedMotion ? false : { opacity: 0, y: 16 }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }} className="w-full max-w-md">
@@ -79,7 +81,7 @@ export function SignInForm() {
               <Image src="/legacy-assets/ab-logo.png" alt="AB Marketing" width={40} height={40} className="rounded-xl" />
               AB Marketing
             </Link>
-            <Card className="border-border/70 shadow-2xl backdrop-blur-sm">
+            <Card className="border-border/70">
               <CardHeader className="space-y-4 border-b border-border/60 bg-card/60">
                 <div className="inline-flex w-fit rounded-full bg-primary/10 p-3 text-primary">
                   <LockKeyhole className="h-5 w-5" />
@@ -163,7 +165,7 @@ export function SignInForm() {
               ["Import guardrails", "Every upload is validated before it reaches reporting."],
               ["Role-based access", "Permissions are enforced server-side and reflected in the UI."],
             ].map(([title, description]) => (
-              <div key={title} className="rounded-2xl border border-border/70 bg-card/70 p-4 shadow-sm backdrop-blur">
+              <div key={title} className="rounded-2xl border border-border/70 bg-card/70 p-4">
                 <p className="font-medium">{title}</p>
                 <p className="mt-1 text-sm text-muted-foreground">{description}</p>
               </div>

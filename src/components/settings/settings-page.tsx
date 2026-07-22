@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { AlertTriangle, Monitor, MoonStar, Search, Shield, SunMedium, Trash2, UserCog, UserPlus } from "lucide-react";
+import { AlertTriangle, Monitor, MoonStar, Search, Shield, SunMedium, Trash2, UserCog, UserPlus, Users, Wifi, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatTile } from "@/components/ui/stat-tile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -259,10 +260,10 @@ export function SettingsPage() {
   }, [query, roleFilter, users]);
 
   const summaryCards = [
-    { label: "Users", value: users.length, note: "All workspace accounts" },
-    { label: "Admins", value: users.filter((user) => user.role === "admin").length, note: "Operational admins" },
-    { label: "Fiber", value: users.filter((user) => user.businessUnit !== "energy").length, note: "Fiber-side accounts" },
-    { label: "Energy", value: users.filter((user) => user.businessUnit === "energy").length, note: "Energy-side accounts" },
+    { label: "Users", value: users.length, detail: "All workspace accounts", icon: Users, accentColor: "var(--primary)" },
+    { label: "Admins", value: users.filter((user) => user.role === "admin").length, detail: "Operational admins", icon: UserCog, accentColor: "var(--info)" },
+    { label: "Fiber", value: users.filter((user) => user.businessUnit !== "energy").length, detail: "Fiber-side accounts", icon: Wifi, accentColor: "#1baf7a" },
+    { label: "Energy", value: users.filter((user) => user.businessUnit === "energy").length, detail: "Energy-side accounts", icon: Zap, accentColor: "#c98500" },
   ];
 
   async function save(user: UserRow, next: Partial<UserRow>) {
@@ -404,17 +405,11 @@ export function SettingsPage() {
         </Card>
 
         {canManageAccess ? (
-          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border md:grid-cols-4">
             {summaryCards.map((item) => (
-              <Card key={item.label} className="border-border/70">
-                <CardHeader className="pb-2">
-                  <CardDescription>{item.label}</CardDescription>
-                  <CardTitle className="text-3xl">{item.value}</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0 text-sm text-muted-foreground">{item.note}</CardContent>
-              </Card>
+              <StatTile key={item.label} label={item.label} value={item.value} detail={item.detail} icon={item.icon} accentColor={item.accentColor} />
             ))}
-          </section>
+          </div>
         ) : null}
 
         <Tabs value={selectedTab} onValueChange={setActiveTab} className="space-y-4">

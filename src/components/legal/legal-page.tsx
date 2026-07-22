@@ -35,7 +35,7 @@ export function LegalPage({ eyebrow, title, introduction, sections }: LegalPageP
       </header>
 
       <article className="mx-auto w-full max-w-5xl px-4 pb-20 pt-6 sm:px-6 lg:px-8 lg:pt-12">
-        <div className="rounded-[2rem] border border-border/70 bg-card/80 p-6 shadow-xl backdrop-blur-xl sm:p-10 lg:p-14">
+        <div className="border border-border/70 bg-card/80 p-6 sm:p-10 lg:p-14">
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">{eyebrow}</p>
           <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">{title}</h1>
           <p className="mt-3 text-sm text-muted-foreground">Last updated: July 15, 2026</p>

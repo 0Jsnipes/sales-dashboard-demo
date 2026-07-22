@@ -12,9 +12,10 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { AlertTriangle, BadgeCheck, CircleAlert, Link2, MapPin, Pencil, Plus, RotateCcw, Search, ShieldAlert, UserMinus, UserRoundX, Users } from "lucide-react";
+import { AlertTriangle, BadgeCheck, CircleAlert, Download, Link2, MapPin, Pencil, Plus, RotateCcw, Search, ShieldAlert, UserMinus, UserRoundX, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatTile } from "@/components/ui/stat-tile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -249,6 +250,7 @@ export function RosterPage() {
   const [locationFilter, setLocationFilter] = useState("all");
   const [vendorFilter, setVendorFilter] = useState("all");
   const [qualityFilter, setQualityFilter] = useState<string>("all");
+  const [exportingRoster, setExportingRoster] = useState(false);
 
   const permissions = normalizePermissions(profile?.permissions);
   const canEdit = profile?.role === "superAdmin" || (profile?.role === "admin" && permissions.canEditRoster);
@@ -442,6 +444,40 @@ export function RosterPage() {
         || (normalizedName && (teamName === normalizedName || teamName === `${normalizedName} team`));
     });
     return matches.length === 1 ? matches[0] : null;
+  }
+
+  async function downloadRoster() {
+    setExportingRoster(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("status", status);
+      params.set("quality", qualityFilter);
+      if (managerFilter !== "all") params.set("manager", managerFilter);
+      if (locationFilter !== "all") params.set("location", locationFilter);
+      if (vendorFilter !== "all") params.set("vendor", vendorFilter);
+      if (query.trim()) params.set("search", query.trim());
+      const response = await request(`/api/reps/export?${params.toString()}`);
+      if (!response.ok) {
+        const result = await response.json().catch(() => null) as { error?: unknown } | null;
+        throw new Error(result?.error ? String(result.error) : "Unable to export roster.");
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("content-disposition") ?? "";
+      const fileName = disposition.match(/filename="([^"]+)"/)?.[1] ?? `roster-export-${status}.xlsx`;
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = href;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(href);
+      toast.success("Roster export downloaded.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to export roster.");
+    } finally {
+      setExportingRoster(false);
+    }
   }
 
   async function saveRep(event: React.FormEvent<HTMLFormElement>) {
@@ -649,13 +685,13 @@ export function RosterPage() {
   }), [reps]);
 
   const kpis = [
-    { label: "Active reps", value: activeCount, icon: Users, iconClass: "bg-emerald-500/15 text-emerald-600", borderClass: "border-emerald-500/20" },
-    { label: "Purgatory", value: inactiveCount, icon: UserMinus, iconClass: "bg-amber-500/15 text-amber-600", borderClass: "border-amber-500/20" },
-    { label: "Terminated reps", value: terminatedCount, icon: UserRoundX, iconClass: "bg-rose-500/15 text-rose-600", borderClass: "border-rose-500/20" },
-    { label: "Missing sales ID/alias", value: missingSalesIdCount, icon: CircleAlert, iconClass: "bg-amber-500/15 text-amber-600", borderClass: "border-amber-500/20" },
-    { label: "Missing location", value: missingLocationCount, icon: MapPin, iconClass: "bg-sky-500/15 text-sky-600", borderClass: "border-sky-500/20" },
-    { label: "Missing manager", value: missingManagerCount, icon: ShieldAlert, iconClass: "bg-violet-500/15 text-violet-600", borderClass: "border-violet-500/20" },
-    { label: "Ready for account", value: readyCount, icon: BadgeCheck, iconClass: "bg-teal-500/15 text-teal-600", borderClass: "border-teal-500/20" },
+    { label: "Active reps", value: activeCount, detail: "Roster members currently active", icon: Users, accentColor: "var(--success)" },
+    { label: "Purgatory", value: inactiveCount, detail: "Temporarily removed from active roster", icon: UserMinus, accentColor: "var(--warning)" },
+    { label: "Terminated reps", value: terminatedCount, detail: "No longer with the organization", icon: UserRoundX, accentColor: "var(--destructive)" },
+    { label: "Missing sales ID/alias", value: missingSalesIdCount, detail: "Needs a sales ID or alias to match imports", icon: CircleAlert, accentColor: "var(--warning)" },
+    { label: "Missing location", value: missingLocationCount, detail: "No assigned location on file", icon: MapPin, accentColor: "var(--info)" },
+    { label: "Missing manager", value: missingManagerCount, detail: "No assigned manager on file", icon: ShieldAlert, accentColor: "#8d7cd8" },
+    { label: "Ready for account", value: readyCount, detail: "Meets all requirements for account creation", icon: BadgeCheck, accentColor: "#1baf7a" },
   ];
 
   if (loading && reps.length === 0) return <LoadingState />;
@@ -674,22 +710,20 @@ export function RosterPage() {
               <CardTitle className="text-xl sm:text-2xl">Roster Command Center</CardTitle>
               <CardDescription>Clean identity records for reps, aliases, readiness, and assignment workflows.</CardDescription>
             </div>
-            <Button size="sm" onClick={() => { setEditing(null); setForm(blankForm); setEditorOpen(true); }} disabled={!canEdit}>
-              <Plus className="h-4 w-4" />
-              Add rep
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={downloadRoster} disabled={exportingRoster}>
+                <Download className="h-4 w-4" />
+                {exportingRoster ? "Exporting..." : "Download roster"}
+              </Button>
+              <Button size="sm" onClick={() => { setEditing(null); setForm(blankForm); setEditorOpen(true); }} disabled={!canEdit}>
+                <Plus className="h-4 w-4" />
+                Add rep
+              </Button>
+            </div>
           </div>
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border md:grid-cols-3 xl:grid-cols-4">
             {kpis.map((kpi) => (
-              <div key={kpi.label} className={`rounded-2xl border p-3 ${kpi.borderClass}`}>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">{kpi.label}</p>
-                    <p className="mt-1 text-2xl font-semibold">{kpi.value}</p>
-                  </div>
-                  <div className={`rounded-2xl p-2.5 ${kpi.iconClass}`}><kpi.icon className="h-4 w-4" /></div>
-                </div>
-              </div>
+              <StatTile key={kpi.label} label={kpi.label} value={kpi.value} detail={kpi.detail} icon={kpi.icon} accentColor={kpi.accentColor} />
             ))}
           </div>
           <div className="grid gap-2 lg:grid-cols-[1.4fr_.6fr_.6fr_.6fr]">

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ComponentType } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryState, parseAsString } from "nuqs";
 import { motion, useReducedMotion } from "motion/react";
 import { differenceInCalendarDays, format, parseISO } from "date-fns";
@@ -26,6 +26,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { StatTile } from "@/components/ui/stat-tile";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -390,57 +391,6 @@ function EmptyState({ title, description }: { title: string; description: string
       <p className="mt-2 text-sm text-muted-foreground">{description}</p>
     </div>
   );
-}
-
-function KpiCard({
-  label,
-  value,
-  detail,
-  icon: Icon,
-  badgeLabel = "Live",
-  badgeVariant = "outline" as const,
-  onClick,
-}: {
-  label: string;
-  value: string | number;
-  detail: string;
-  icon: ComponentType<{ className?: string }>;
-  badgeLabel?: string;
-  badgeVariant?: "default" | "secondary" | "outline" | "success" | "warning" | "danger" | "info";
-  onClick?: () => void;
-}) {
-  const body = (
-    <>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm text-muted-foreground">{label}</p>
-          <p className="mt-2 text-3xl font-semibold tracking-tight">{value}</p>
-        </div>
-        <div className="rounded-2xl bg-muted/35 p-3">
-          <Icon className="h-5 w-5" />
-        </div>
-      </div>
-      <p className="mt-3 text-sm text-muted-foreground">{detail}</p>
-      <Badge variant={badgeVariant} className="mt-5 w-fit">
-        {badgeLabel}
-      </Badge>
-    </>
-  );
-
-  const className = cn(
-    "group flex h-full w-full flex-col rounded-2xl border border-border/70 bg-card p-5 text-left shadow-sm transition",
-    onClick ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50" : "",
-  );
-
-  if (onClick) {
-    return (
-      <button type="button" onClick={onClick} className={className}>
-        {body}
-      </button>
-    );
-  }
-
-  return <div className={className}>{body}</div>;
 }
 
 function TeamSummaryCard({
@@ -1039,30 +989,31 @@ export function PerformancePage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-        <KpiCard label="Total sales" value={formatNumber(scopedTotals.sales)} detail="Units sold in the current scope" icon={TrendingUp} />
-        <KpiCard
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-3 xl:grid-cols-4">
+        <StatTile label="Total sales" value={formatNumber(scopedTotals.sales)} detail="Units sold in the current scope" icon={TrendingUp} accentColor="var(--primary)" />
+        <StatTile
           label="Total knocks"
           value={formatNumber(scopedTotals.knocks)}
           detail={`ATT ${formatNumber(scopedTotals.attKnocks)} / T-Fiber ${formatNumber(scopedTotals.tfiberKnocks)}`}
           icon={BarChart3}
+          accentColor="var(--info)"
         />
-        <KpiCard label="Conversion" value={`${scopedTotals.conversion}%`} detail="Sales divided by knocks" icon={TrendingUp} />
-        <KpiCard label="Installed" value={formatNumber(scopedTotals.installed)} detail={`Install rate ${installRate}%`} icon={CheckCircle2} badgeVariant="success" />
-        <KpiCard label="Pending" value={formatNumber(scopedTotals.pending)} detail="Needs follow-up" icon={Clock3} />
-        <KpiCard
-          label="Past due"
-          value={formatNumber(scopedTotals.pastDue)}
-          detail="Pending installs past the ETA"
-          icon={CalendarRange}
-          badgeVariant="warning"
-          badgeLabel="Open list"
-          onClick={() => setPastDueOpen(true)}
-        />
-        <KpiCard label="Canceled" value={formatNumber(scopedTotals.canceled)} detail={`Cancellation rate ${cancellationRate}%`} icon={TriangleAlert} badgeVariant="danger" />
-        <KpiCard label="Churned" value={formatNumber(scopedTotals.churned)} detail="Separated from cancellations" icon={TriangleAlert} badgeVariant="secondary" />
-        <KpiCard label="Active reps" value={formatNumber(scopedTotals.activeReps)} detail="Roster members in the current scope" icon={Users} />
-      </section>
+        <StatTile label="Conversion" value={`${scopedTotals.conversion}%`} detail="Sales divided by knocks" icon={TrendingUp} accentColor="#1baf7a" />
+        <StatTile label="Installed" value={formatNumber(scopedTotals.installed)} detail={`Install rate ${installRate}%`} icon={CheckCircle2} accentColor="var(--success)" />
+        <StatTile label="Pending" value={formatNumber(scopedTotals.pending)} detail="Needs follow-up" icon={Clock3} accentColor="#c98500" />
+        <button type="button" onClick={() => setPastDueOpen(true)} className="contents text-left">
+          <StatTile
+            label="Past due"
+            value={formatNumber(scopedTotals.pastDue)}
+            detail="Pending installs past the ETA - click to open the list"
+            icon={CalendarRange}
+            accentColor="var(--warning)"
+          />
+        </button>
+        <StatTile label="Canceled" value={formatNumber(scopedTotals.canceled)} detail={`Cancellation rate ${cancellationRate}%`} icon={TriangleAlert} accentColor="var(--destructive)" />
+        <StatTile label="Churned" value={formatNumber(scopedTotals.churned)} detail="Separated from cancellations" icon={TriangleAlert} accentColor="#b76e8f" />
+        <StatTile label="Active reps" value={formatNumber(scopedTotals.activeReps)} detail="Roster members in the current scope" icon={Users} accentColor="#8d7cd8" />
+      </div>
 
       <Alert>
         <TriangleAlert className="h-4 w-4" />

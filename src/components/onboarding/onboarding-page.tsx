@@ -2,9 +2,10 @@
 
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { CheckCircle2, Search } from "lucide-react";
+import { BookOpen, CheckCircle2, Clock, Link2, ListChecks, Search, Users, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatTile } from "@/components/ui/stat-tile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -175,21 +176,16 @@ export function OnboardingPage() {
   return (
     <TooltipProvider>
       <motion.div initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }} className="space-y-6">
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border md:grid-cols-4">
           {[
-            { label: "Programs", value: allResources.filter((resource) => resource.category === "Programs").length },
-            { label: "Tools", value: allResources.filter((resource) => resource.category === "Tools").length },
-            { label: "UID links", value: allResources.filter((resource) => resource.category === "UID").length },
-            { label: "Checklist items", value: checklistTemplate.total },
-          ].map((item) => (
-            <Card key={item.label} className="border-border/70">
-              <CardHeader className="pb-2">
-                <CardDescription>{item.label}</CardDescription>
-                <CardTitle className="text-3xl">{item.value}</CardTitle>
-              </CardHeader>
-            </Card>
+            { label: "Programs", value: allResources.filter((resource) => resource.category === "Programs").length, detail: "Program entry points and workflows", icon: BookOpen, accentColor: "#8d7cd8" },
+            { label: "Tools", value: allResources.filter((resource) => resource.category === "Tools").length, detail: "Operational and support tools", icon: Wrench, accentColor: "#1baf7a" },
+            { label: "UID links", value: allResources.filter((resource) => resource.category === "UID").length, detail: "Quick UID reference links", icon: Link2, accentColor: "var(--primary)" },
+            { label: "Checklist items", value: checklistTemplate.total, detail: "Steps in the onboarding template", icon: ListChecks, accentColor: "#c98500" },
+          ].map((kpi) => (
+            <StatTile key={kpi.label} label={kpi.label} value={kpi.value} detail={kpi.detail} icon={kpi.icon} accentColor={kpi.accentColor} />
           ))}
-        </section>
+        </div>
 
         <Card className="border-border/70">
           <CardHeader className="flex-row items-start justify-between gap-4">
@@ -237,7 +233,7 @@ export function OnboardingPage() {
                 const status = statusMeta[resource.status];
                 return (
                   <motion.div key={resource.id} whileHover={reducedMotion ? undefined : { y: -2 }} whileTap={reducedMotion ? undefined : { scale: 0.99 }}>
-                    <Card className="h-full border-border/70 bg-gradient-to-br from-background to-muted/30 shadow-sm transition-shadow hover:shadow-md">
+                    <Card className="h-full border-border/70 bg-gradient-to-br from-background to-muted/30">
                       <CardContent className="flex h-full flex-col gap-4 p-5">
                         <div className="flex items-start justify-between gap-3">
                           <div className={`flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br ${accentClasses(resource.accent)}`}>
@@ -311,25 +307,10 @@ export function OnboardingPage() {
               <CardDescription>The current save behavior is preserved and still edits the existing onboarding endpoint.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="grid gap-3 md:grid-cols-3">
-                <Card>
-                  <CardContent className="p-4">
-                    <p className="text-sm text-muted-foreground">Active reps</p>
-                    <p className="mt-1 text-2xl font-semibold">{reps.length}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-4">
-                    <p className="text-sm text-muted-foreground">Completed</p>
-                    <p className="mt-1 text-2xl font-semibold">{completeCount}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-4">
-                    <p className="text-sm text-muted-foreground">In progress</p>
-                    <p className="mt-1 text-2xl font-semibold">{reps.length - completeCount}</p>
-                  </CardContent>
-                </Card>
+              <div className="grid grid-cols-3 gap-px overflow-hidden rounded-2xl border border-border bg-border">
+                <StatTile label="Active reps" value={reps.length} detail="Currently active roster members" icon={Users} accentColor="var(--info)" />
+                <StatTile label="Completed" value={completeCount} detail="Fully onboarded reps" icon={CheckCircle2} accentColor="var(--success)" />
+                <StatTile label="In progress" value={reps.length - completeCount} detail="Still finishing onboarding steps" icon={Clock} accentColor="var(--warning)" />
               </div>
               <Separator />
               <Button disabled={!allowed} onClick={() => setSelected(reps[0] ?? null)} className="w-full">Open first rep checklist</Button>

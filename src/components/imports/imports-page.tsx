@@ -4,12 +4,13 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { motion, useReducedMotion } from "motion/react";
-import { AlertCircle, FileSpreadsheet, FileUp, PackageSearch, RefreshCcw, ShieldAlert, Trash2, UploadCloud } from "lucide-react";
+import { AlertCircle, Database, FileSpreadsheet, FileUp, PackageSearch, RefreshCcw, ShieldAlert, Trash2, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatTile } from "@/components/ui/stat-tile";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
@@ -319,24 +320,20 @@ export function ImportsPage() {
     }
   }, [deleteTarget, loadUploads]);
 
+  const summaryTiles = [
+    { label: "Sources available", value: sourcesAvailable, detail: "ATT, T-Fiber, and future intake workflows.", icon: Database, accentColor: "var(--primary)" },
+    { label: "Last successful import", value: lastSuccessful ? lastSuccessful.fileName : "None yet", detail: lastSuccessful ? lastSuccessful.createdAt : "Upload a file to seed the queue.", icon: FileSpreadsheet, accentColor: "var(--success)" },
+    { label: "Unmatched rows", value: totalUnmatched, detail: "Review before trusting reporting.", icon: AlertCircle, accentColor: "var(--warning)" },
+    { label: "Warnings", value: warnings, detail: "Failed uploads and parsing issues.", icon: ShieldAlert, accentColor: "var(--destructive)" },
+  ];
+
   return (
     <motion.div initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }} className="space-y-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {[
-          { label: "Sources available", value: sourcesAvailable, note: "ATT, T-Fiber, and future intake workflows." },
-          { label: "Last successful import", value: lastSuccessful ? lastSuccessful.fileName : "None yet", note: lastSuccessful ? lastSuccessful.createdAt : "Upload a file to seed the queue." },
-          { label: "Unmatched rows", value: totalUnmatched, note: "Review before trusting reporting." },
-          { label: "Warnings", value: warnings, note: "Failed uploads and parsing issues." },
-        ].map((item) => (
-          <Card key={item.label} className="border-border/70">
-            <CardHeader className="pb-2">
-              <CardDescription>{item.label}</CardDescription>
-              <CardTitle className="text-3xl">{item.value}</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0 text-sm text-muted-foreground">{item.note}</CardContent>
-          </Card>
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border md:grid-cols-4">
+        {summaryTiles.map((item) => (
+          <StatTile key={item.label} label={item.label} value={item.value} detail={item.detail} icon={item.icon} accentColor={item.accentColor} />
         ))}
-      </section>
+      </div>
 
       <Card className="border-border/70">
         <CardHeader className="flex-row items-start justify-between gap-4">

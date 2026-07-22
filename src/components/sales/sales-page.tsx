@@ -7,6 +7,7 @@ import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, Download, Pencil, R
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatTile } from "@/components/ui/stat-tile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -167,7 +168,7 @@ function formatApiError(error: unknown, fallback: string) {
 function LoadingState() {
   return (
     <div className="space-y-6 overflow-x-hidden">
-      <Card className="overflow-hidden border-border/60 bg-card/80 shadow-sm">
+      <Card className="overflow-hidden border-border/60 bg-card/80">
         <CardHeader className="space-y-4 p-5 sm:p-6 lg:p-7">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="space-y-3">
@@ -176,21 +177,21 @@ function LoadingState() {
               <Skeleton className="h-4 w-[min(100%,22rem)]" />
             </div>
             <div className="flex flex-wrap gap-2">
-              <Skeleton className="h-9 w-24 rounded-full" />
-              <Skeleton className="h-9 w-24 rounded-full" />
-              <Skeleton className="h-9 w-24 rounded-full" />
-              <Skeleton className="h-9 w-24 rounded-full" />
+              <Skeleton className="h-9 w-24" />
+              <Skeleton className="h-9 w-24" />
+              <Skeleton className="h-9 w-24" />
+              <Skeleton className="h-9 w-24" />
             </div>
           </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-11 rounded-full" />)}
+            {Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-11" />)}
           </div>
         </CardHeader>
         <CardContent className="space-y-4 p-5 pt-0 sm:p-6 sm:pt-0 lg:p-7 lg:pt-0">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-24 rounded-[24px]" />)}
+            {Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-24" />)}
           </div>
-          <Skeleton className="h-[360px] rounded-[28px]" />
+          <Skeleton className="h-[360px]" />
         </CardContent>
       </Card>
     </div>
@@ -199,27 +200,10 @@ function LoadingState() {
 
 function EmptyState({ title, description }: { title: string; description: string }) {
   return (
-    <div className="rounded-[28px] border border-dashed border-border/70 bg-gradient-to-b from-muted/30 to-background p-8 text-center shadow-sm">
+    <div className="border border-dashed border-border/70 bg-gradient-to-b from-muted/30 to-background p-8 text-center">
       <h3 className="text-base font-semibold tracking-tight">{title}</h3>
       <p className="mt-2 text-sm text-muted-foreground">{description}</p>
     </div>
-  );
-}
-
-function Metric({ label, value, icon: Icon }: { label: string; value: string | number; icon: React.ComponentType<{ className?: string }> }) {
-  return (
-    <Card className="overflow-hidden border-border/60 bg-card/85 shadow-sm transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-md">
-      <CardContent className="relative flex items-start justify-between gap-4 p-4">
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-primary/40 via-border to-transparent" />
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">{label}</p>
-          <p className="mt-1 text-2xl font-semibold tracking-tight">{value}</p>
-        </div>
-        <div className="rounded-2xl border border-border/60 bg-muted/40 p-3 text-primary shadow-sm">
-          <Icon className="h-4 w-4" />
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 
@@ -993,12 +977,12 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
       animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
       className="-mx-4 space-y-6 overflow-x-hidden px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
     >
-      <Card className="overflow-hidden border-border/60 bg-card/85 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)]">
+      <Card className="overflow-hidden border-border/60 bg-card/85">
         <CardHeader className="gap-5 p-5 sm:p-6 lg:p-7">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="rounded-full px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                <Badge variant="outline" className="px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
                   Weekly {workspaceNameLower}
                 </Badge>
                 <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">AB Marketing</span>
@@ -1017,7 +1001,6 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
               <Button
                 variant="outline"
                 size="icon-sm"
-                className="rounded-full"
                 onClick={() => (rangeMode === "mtd" ? setMonthId(shiftMonthId(monthId, -1)) : setWeekStart(shiftWeekStart(weekStart, -7)))}
                 aria-label={rangeMode === "mtd" ? "Previous month" : "Previous week"}
               >
@@ -1025,7 +1008,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
               </Button>
               {rangeMode === "mtd" ? (
                 <Select value={monthId} onValueChange={setMonthId}>
-                  <SelectTrigger className="h-12 w-[min(100%,280px)] gap-2 rounded-full border-border/60 bg-background/80 px-5 shadow-sm sm:w-[280px] md:w-[320px] xl:w-[300px]">
+                  <SelectTrigger className="h-12 w-[min(100%,280px)] gap-2 border-border/60 bg-background/80 px-5 sm:w-[280px] md:w-[320px] xl:w-[300px]">
                     <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <SelectValue placeholder="Select month" className="min-w-0 flex-1 truncate text-center text-sm" />
                   </SelectTrigger>
@@ -1039,7 +1022,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                 </Select>
               ) : (
                 <Select value={weekStart} onValueChange={setWeekStart}>
-                  <SelectTrigger className="h-12 w-[min(100%,280px)] gap-2 rounded-full border-border/60 bg-background/80 px-5 shadow-sm sm:w-[280px] md:w-[320px] xl:w-[300px]">
+                  <SelectTrigger className="h-12 w-[min(100%,280px)] gap-2 border-border/60 bg-background/80 px-5 sm:w-[280px] md:w-[320px] xl:w-[300px]">
                     <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <SelectValue placeholder="Select week" className="min-w-0 flex-1 truncate text-center text-sm" />
                   </SelectTrigger>
@@ -1055,24 +1038,23 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
               <Button
                 variant="outline"
                 size="icon-sm"
-                className="rounded-full"
                 onClick={() => (rangeMode === "mtd" ? setMonthId(shiftMonthId(monthId, 1)) : setWeekStart(shiftWeekStart(weekStart, 7)))}
                 aria-label={rangeMode === "mtd" ? "Next month" : "Next week"}
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
-              <div className="flex items-center rounded-full border border-border/60 bg-background/80 p-1 shadow-sm">
-                <Button size="sm" variant={rangeMode === "wtd" ? "default" : "ghost"} className="h-8 rounded-full px-3" onClick={() => setRangeMode("wtd")}>WTD</Button>
-                <Button size="sm" variant={rangeMode === "mtd" ? "default" : "ghost"} className="h-8 rounded-full px-3" onClick={() => setRangeMode("mtd")}>MTD</Button>
+              <div className="flex items-center border border-border/60 bg-background/80 p-1">
+                <Button size="sm" variant={rangeMode === "wtd" ? "default" : "ghost"} className="h-8 px-3" onClick={() => setRangeMode("wtd")}>WTD</Button>
+                <Button size="sm" variant={rangeMode === "mtd" ? "default" : "ghost"} className="h-8 px-3" onClick={() => setRangeMode("mtd")}>MTD</Button>
               </div>
-              <Button variant="outline" size="sm" className="rounded-full whitespace-nowrap" onClick={() => void loadSales()}>
+              <Button variant="outline" size="sm" className="whitespace-nowrap" onClick={() => void loadSales()}>
                 <RefreshCcw className="h-4 w-4" />
                 Refresh
               </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="rounded-full whitespace-nowrap"
+                  className="whitespace-nowrap"
                   onClick={() => void exportCurrentWorkbook()}
                   disabled={exporting}
                 >
@@ -1082,7 +1064,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="rounded-full whitespace-nowrap"
+                  className="whitespace-nowrap"
                   onClick={() => void exportYtdWorkbook()}
                   disabled={exporting}
                 >
@@ -1093,52 +1075,52 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
           </div>
 
           <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as ViewMode)}>
-            <TabsList className="inline-flex rounded-full bg-muted/60 p-1">
+            <TabsList className="inline-flex bg-muted/60 p-1">
               <TabsTrigger value="rep">Rep grid</TabsTrigger>
               <TabsTrigger value="team">Team chart</TabsTrigger>
             </TabsList>
           </Tabs>
 
-          <div className="grid gap-3 rounded-[24px] border border-border/60 bg-muted/20 p-4 shadow-sm md:grid-cols-2 xl:grid-cols-9">
+          <div className="grid gap-3 border border-border/60 bg-muted/20 p-4 md:grid-cols-2 xl:grid-cols-9">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                className="h-11 rounded-full border-border/60 bg-background/80 pl-9 shadow-sm"
+                className="h-11 border-border/60 bg-background/80 pl-9"
                 placeholder={isKnocks ? "Search rep, manager, location" : "Search rep, manager, location, order, customer"}
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
               />
             </div>
             <Select value={managerFilter} onValueChange={setManagerFilter}>
-              <SelectTrigger className="h-11 rounded-full border-border/60 bg-background/80 shadow-sm"><SelectValue placeholder="Manager" /></SelectTrigger>
+              <SelectTrigger className="h-11 border-border/60 bg-background/80"><SelectValue placeholder="Manager" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All managers</SelectItem>
                 {Array.from(new Set(rows.map((row) => row.managerName).filter((value) => value && value !== "—"))).map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={teamFilter} onValueChange={setTeamFilter}>
-              <SelectTrigger className="h-11 rounded-full border-border/60 bg-background/80 shadow-sm"><SelectValue placeholder="Team" /></SelectTrigger>
+              <SelectTrigger className="h-11 border-border/60 bg-background/80"><SelectValue placeholder="Team" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All teams</SelectItem>
                 {teamOptions.filter((team) => team.active || team.teamId === teamFilter).map((team) => <SelectItem key={team.teamId} value={team.teamId}>{team.name}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={repFilter} onValueChange={setRepFilter}>
-              <SelectTrigger className="h-11 rounded-full border-border/60 bg-background/80 shadow-sm"><SelectValue placeholder="Rep" /></SelectTrigger>
+              <SelectTrigger className="h-11 border-border/60 bg-background/80"><SelectValue placeholder="Rep" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All reps</SelectItem>
                 {rosterOptions.map((item) => <SelectItem key={item.repUid} value={item.displayName}>{item.displayName}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={locationFilter} onValueChange={setLocationFilter}>
-              <SelectTrigger className="h-11 rounded-full border-border/60 bg-background/80 shadow-sm"><SelectValue placeholder="Location" /></SelectTrigger>
+              <SelectTrigger className="h-11 border-border/60 bg-background/80"><SelectValue placeholder="Location" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All locations</SelectItem>
                 {Array.from(new Set(rows.map((row) => row.locationName).filter((value) => value && value !== "—"))).map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={vendorFilter} onValueChange={setVendorFilter}>
-              <SelectTrigger className="h-11 rounded-full border-border/60 bg-background/80 shadow-sm"><SelectValue placeholder="Vendor type" /></SelectTrigger>
+              <SelectTrigger className="h-11 border-border/60 bg-background/80"><SelectValue placeholder="Vendor type" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All vendor types</SelectItem>
                 <SelectItem value="organic">Organic</SelectItem>
@@ -1146,7 +1128,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
               </SelectContent>
             </Select>
             <Select value={providerFilter} onValueChange={setProviderFilter}>
-              <SelectTrigger className="h-11 rounded-full border-border/60 bg-background/80 shadow-sm"><SelectValue placeholder="Provider" /></SelectTrigger>
+              <SelectTrigger className="h-11 border-border/60 bg-background/80"><SelectValue placeholder="Provider" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All providers</SelectItem>
                 <SelectItem value="att">ATT</SelectItem>
@@ -1155,7 +1137,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
             </Select>
             {isKnocks ? (
               <Select value={lcpFilter} onValueChange={setLcpFilter}>
-                <SelectTrigger className="h-11 rounded-full border-border/60 bg-background/80 shadow-sm"><SelectValue placeholder="LCP" /></SelectTrigger>
+                <SelectTrigger className="h-11 border-border/60 bg-background/80"><SelectValue placeholder="LCP" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All LCPs</SelectItem>
                   {Array.from(new Set(rows.flatMap((row) => row.orders.flatMap((order) => {
@@ -1169,7 +1151,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
               </Select>
             ) : null}
             {canUseOnlyZeroSalesFilter ? (
-              <div className="flex h-11 items-center justify-between gap-3 rounded-full border border-border/60 bg-background/80 px-4 shadow-sm">
+              <div className="flex h-11 items-center justify-between gap-3 border border-border/60 bg-background/80 px-4">
                 <div className="min-w-0">
                   <p className="text-sm font-medium leading-none">Exit Hold</p>
                 </div>
@@ -1184,14 +1166,14 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
               </div>
             ) : null}
             {!isKnocks ? (
-              <div className="flex h-11 items-center justify-between gap-3 rounded-full border border-border/60 bg-background/80 px-4 shadow-sm">
+              <div className="flex h-11 items-center justify-between gap-3 border border-border/60 bg-background/80 px-4">
                 <div className="min-w-0">
                   <p className="text-sm font-medium leading-none">New rep window</p>
                 </div>
                 <Switch checked={showNewRepHighlights !== "0"} onCheckedChange={(checked) => void setShowNewRepHighlights(checked ? "1" : "0")} aria-label="Show new rep window" />
               </div>
             ) : null}
-            <div className="flex h-11 items-center justify-between gap-3 rounded-full border border-border/60 bg-background/80 px-4 shadow-sm">
+            <div className="flex h-11 items-center justify-between gap-3 border border-border/60 bg-background/80 px-4">
               <div className="min-w-0">
                 <p className="text-sm font-medium leading-none">Show zero {workspaceNameLower}</p>
               </div>
@@ -1201,15 +1183,39 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
         </CardHeader>
       </Card>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Metric label={isKnocks ? "Total knocks" : "Total sales"} value={formatNumber(totals.total)} icon={Users} />
-        <Metric label={goalLabel} value={formatNumber(totals.goal)} icon={CalendarDays} />
-        <Metric label="Visible reps" value={formatNumber(visibleRows.length)} icon={UserPlus} />
-        <Metric label={rangeMode === "mtd" ? "Weeks in range" : "Days in range"} value={reportSegments.length} icon={BarChart3} />
-      </section>
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border md:grid-cols-4">
+        <StatTile
+          label={isKnocks ? "Total knocks" : "Total sales"}
+          value={formatNumber(totals.total)}
+          detail={isKnocks ? `Total knocks logged for ${currentLabel}` : `Total sales recorded for ${currentLabel}`}
+          icon={Users}
+          accentColor="var(--info)"
+        />
+        <StatTile
+          label={goalLabel}
+          value={formatNumber(totals.goal)}
+          detail={isKnocks ? "Combined weekly knock goal across visible reps" : "Combined weekly sales goal across visible reps"}
+          icon={CalendarDays}
+          accentColor="var(--primary)"
+        />
+        <StatTile
+          label="Visible reps"
+          value={formatNumber(visibleRows.length)}
+          detail="Reps matching the current filters"
+          icon={UserPlus}
+          accentColor="var(--success)"
+        />
+        <StatTile
+          label={rangeMode === "mtd" ? "Weeks in range" : "Days in range"}
+          value={reportSegments.length}
+          detail={rangeMode === "mtd" ? "Weekly segments in the selected month" : "Daily segments in the selected week"}
+          icon={BarChart3}
+          accentColor="var(--warning)"
+        />
+      </div>
 
       <section className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)]">
-        <Card className="overflow-hidden border-border/60 bg-card/85 shadow-[0_16px_40px_-24px_rgba(15,23,42,0.28)]">
+        <Card className="overflow-hidden border-border/60 bg-card/85">
           <CardHeader className={cn("gap-2 p-5 sm:p-6 lg:p-7", viewMode === "team" ? "pb-3" : undefined)}>
             <CardTitle>{isKnockHoursView ? "Knock hours worked" : isTeamView ? "Team totals" : `Rep weekly grid`}</CardTitle>
             <CardDescription>
@@ -1254,7 +1260,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
             {isTeamView ? (
               isKnockHoursView ? (
                 knockHoursLoading ? (
-                  <Skeleton className="h-[420px] rounded-[28px]" />
+                  <Skeleton className="h-[420px]" />
                 ) : knockHoursError ? (
                   <EmptyState title="Hours unavailable" description={knockHoursError} />
                 ) : knockHoursChart.length ? (
@@ -1294,7 +1300,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
             ) : hasNoData ? (
               <EmptyState title={`No ${workspaceNameLower} found`} description="Try clearing filters or switching week." />
             ) : (
-              <div className="overflow-x-auto overflow-y-hidden rounded-[28px] border border-border/60 bg-background/80 shadow-sm">
+              <div className="overflow-x-auto overflow-y-hidden border border-border/60 bg-background/80">
                 <Table className="min-w-max table-fixed">
                   <TableHeader>
                     <TableRow className="border-border/60 bg-muted/20 hover:bg-muted/20">
@@ -1333,7 +1339,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="mx-auto h-9 w-full max-w-[170px] rounded-full border-border/60 bg-background/80 px-3 shadow-sm"
+                              className="mx-auto h-9 w-full max-w-[170px] border-border/60 bg-background/80 px-3"
                               onClick={() => setLocationDialogRep(rep)}
                             >
                               <span className="truncate">{rep.locationName || "Unassigned"}</span>
@@ -1362,7 +1368,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                             <Input
                               type="number"
                               min={0}
-                              className="mx-auto h-9 w-24 rounded-full border-border/60 bg-background/80 px-2 text-center shadow-sm"
+                              className="mx-auto h-9 w-24 border-border/60 bg-background/80 px-2 text-center"
                               value={Number(rep[goalField] || 0)}
                               onChange={(event) => {
                                 const nextGoal = Number(event.target.value || 0);
@@ -1379,20 +1385,20 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                         <TableCell className="text-right">
                           <div className="flex flex-wrap justify-end gap-2">
                             {canAddAlias ? (
-                              <Button size="sm" variant="outline" className="h-9 rounded-full gap-1.5 px-3 shadow-sm" onClick={() => openAction(rep, "alias")}>
+                              <Button size="sm" variant="outline" className="h-9 gap-1.5 px-3" onClick={() => openAction(rep, "alias")}>
                                 <Pencil className="h-4 w-4" />
                                 Add alias
                               </Button>
                             ) : null}
                             {rep.repUid && !rep.inActiveRoster ? (
-                              <Button size="sm" variant="outline" className="h-9 rounded-full gap-1.5 px-3 shadow-sm" onClick={() => openAction(rep, "restore")}>
+                              <Button size="sm" variant="outline" className="h-9 gap-1.5 px-3" onClick={() => openAction(rep, "restore")}>
                                 <UserPlus className="h-4 w-4" />
                                 Restore to roster
                               </Button>
                             ) : null}
                             {!rep.repUid && (
                               <>
-                                <Button size="sm" variant="outline" className="h-9 rounded-full gap-1.5 px-3 shadow-sm" onClick={() => openAction(rep, "roster")}>
+                                <Button size="sm" variant="outline" className="h-9 gap-1.5 px-3" onClick={() => openAction(rep, "roster")}>
                                   <UserPlus className="h-4 w-4" />
                                   Add to roster
                                 </Button>
@@ -1435,7 +1441,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
           {actionTarget?.type === "goal" && (
             <div className="space-y-2">
               <Label htmlFor={goalField}>{goalLabel}</Label>
-              <Input id={goalField} type="number" min={0} className="h-11 rounded-full border-border/60 bg-background/80 shadow-sm" value={goalDraft} onChange={(event) => setGoalDraft(event.target.value)} />
+              <Input id={goalField} type="number" min={0} className="h-11 border-border/60 bg-background/80" value={goalDraft} onChange={(event) => setGoalDraft(event.target.value)} />
             </div>
           )}
 
@@ -1444,7 +1450,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
               <Label>Target rep</Label>
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" className="h-11 w-full justify-between rounded-full border-border/60 bg-background/80 shadow-sm">
+                  <Button variant="outline" className="h-11 w-full justify-between border-border/60 bg-background/80">
                     {aliasTargetRepUid ? rosterOptions.find((item) => item.repUid === aliasTargetRepUid)?.displayName ?? "Choose rep" : "Choose rep"}
                     <Search className="h-4 w-4" />
                   </Button>
