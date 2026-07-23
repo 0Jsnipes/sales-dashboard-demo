@@ -446,8 +446,8 @@ export function ImportsPage() {
         </Card>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]">
-        <Card className="border-border/70">
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_.8fr]">
+        <Card className="overflow-hidden border-border/70">
           <CardHeader className="flex-row items-center justify-between gap-4">
             <div className="space-y-1">
               <CardTitle>Sales uploads</CardTitle>
@@ -466,6 +466,7 @@ export function ImportsPage() {
           </CardHeader>
           <CardContent className="p-0">
             <ScrollArea className="max-h-[420px]">
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -531,10 +532,11 @@ export function ImportsPage() {
                   )}
                 </TableBody>
               </Table>
+              </div>
             </ScrollArea>
           </CardContent>
         </Card>
-        <Card className="border-border/70">
+        <Card className="overflow-hidden border-border/70">
           <CardHeader>
             <CardTitle>Delete behavior</CardTitle>
             <CardDescription>What happens when you remove a sales upload.</CardDescription>
@@ -547,8 +549,8 @@ export function ImportsPage() {
         </Card>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_.9fr]">
-        <Card>
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_.9fr]">
+        <Card className="overflow-hidden">
           <CardHeader className="flex-row items-center justify-between gap-4">
             <div>
               <CardTitle>Validation results</CardTitle>
@@ -565,7 +567,7 @@ export function ImportsPage() {
             ))}
           </CardContent>
         </Card>
-        <Card>
+        <Card className="overflow-hidden">
           <CardHeader>
             <CardTitle>Workflow rules</CardTitle>
             <CardDescription>Why the import center is structured this way.</CardDescription>
@@ -578,8 +580,8 @@ export function ImportsPage() {
         </Card>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_.9fr]">
-        <Card>
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_.9fr]">
+        <Card className="overflow-hidden">
           <CardHeader className="flex-row items-center justify-between gap-4">
             <div>
               <CardTitle>Upload history</CardTitle>
@@ -588,6 +590,7 @@ export function ImportsPage() {
             <Badge variant="outline">{history.length} entries</Badge>
           </CardHeader>
           <CardContent className="p-0">
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -623,9 +626,10 @@ export function ImportsPage() {
                 )}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="overflow-hidden">
           <CardHeader>
             <CardTitle>Unmatched review</CardTitle>
             <CardDescription>Move into the review queue when imports need a human decision.</CardDescription>

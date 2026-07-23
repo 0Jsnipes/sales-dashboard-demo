@@ -18,7 +18,6 @@ import { formatNumber, formatPercent } from "@/src/lib/formatters/number";
 import { calculateCancellationRate, calculateInstallRate, etaDateId, etaValue, outcomeBadgeVariant, unitsFor, type PerformanceOrder } from "@/src/lib/performance/performance-utils";
 import { exportOrdersWorkbook } from "@/src/lib/reports/sales-export";
 import { OrdersDrilldownSheet } from "@/src/components/performance/orders-drilldown-sheet";
-import { buildSalesExportRows, buildWorksheetData, EXCEL_DATE_FORMAT } from "@/src/lib/reports/sales-export";
 import { saleOutcomeLabel, sanitizeOrderId } from "@/src/lib/sales/outcomes";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -379,7 +378,7 @@ function TeamSummaryCard({
   totalSales: number;
 }) {
   return (
-    <Card className="border-border/70">
+    <Card className="overflow-hidden border-border/70">
       <CardHeader className="flex-row items-start justify-between gap-4">
         <div>
           <CardTitle>{title}</CardTitle>
@@ -474,7 +473,6 @@ export function PerformancePage() {
   const [reassignOrder, setReassignOrder] = useState<PerformanceOrder | null>(null);
   const [reassignRepUid, setReassignRepUid] = useState("");
   const [reassigning, setReassigning] = useState(false);
-  const [exportingReport, setExportingReport] = useState(false);
   const [orderFilters, setOrderFilters] = useState<OrderFilterState>({
     search: "",
     manager: "all",
@@ -779,43 +777,6 @@ export function PerformancePage() {
   const installRate = calculateInstallRate(scopedTotals.sales, scopedTotals.installed);
   const cancellationRate = calculateCancellationRate(scopedTotals.sales, scopedTotals.canceled);
 
-  const exportSummary = async () => {
-    setExportingReport(true);
-    try {
-      const params = new URLSearchParams({
-        range: mode,
-        manager: managerFilter,
-        location: locationFilter,
-        rep: repFilter,
-        provider: providerFilter,
-        vendor: vendorFilter,
-      });
-      if (mode === "custom") {
-        params.set("from", start);
-        params.set("to", end);
-      }
-      const response = await authedFetch(`/api/performance/export?${params.toString()}`);
-      if (!response.ok) {
-        const result = await response.json().catch(() => ({ error: "Unable to export the performance report." })) as { error?: string };
-        throw new Error(result.error || "Unable to export the performance report.");
-      }
-      const blob = await response.blob();
-      const match = response.headers.get("content-disposition")?.match(/filename="?(.*?)"?$/i);
-      const fileName = match?.[1] || `performance-report-${toDateId(new Date())}.xlsx`;
-      const downloadUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = downloadUrl;
-      link.download = fileName;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
-      toast.message("Downloaded the performance report workbook.");
-    } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : "Unable to export the performance report.");
-    } finally {
-      setExportingReport(false);
-    }
-  };
-
   const exportOrders = async (orders: PerformanceOrder[], prefix: string) => {
     await exportOrdersWorkbook(orders, prefix);
     toast.message("Downloaded the report workbook.");
@@ -879,10 +840,6 @@ export function PerformancePage() {
               <p className="mt-2 text-sm text-muted-foreground">Live Firestore data from salesOrders, knockDaily, and reps.</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={exportSummary} disabled={exportingReport}>
-                <Download className="h-4 w-4" />
-                {exportingReport ? "Exporting..." : "Export / report"}
-              </Button>
               <Button variant="outline" asChild>
                 <Link href="/imports/unmatched">Review unmatched</Link>
               </Button>
@@ -892,16 +849,16 @@ export function PerformancePage() {
 
         <CardContent className="space-y-4">
           <Tabs value={mode} onValueChange={(value) => void setRange(value)}>
-            <TabsList className="grid w-full max-w-2xl grid-cols-5">
-              <TabsTrigger value="lastWeek">Last week</TabsTrigger>
-              <TabsTrigger value="wtd">WTD</TabsTrigger>
-              <TabsTrigger value="mtd">MTD</TabsTrigger>
-              <TabsTrigger value="last30">Last 30 days</TabsTrigger>
-              <TabsTrigger value="custom">Custom</TabsTrigger>
+            <TabsList className="flex w-full max-w-2xl gap-1 overflow-x-auto sm:grid sm:grid-cols-5 sm:overflow-visible">
+              <TabsTrigger value="lastWeek" className="shrink-0">Last week</TabsTrigger>
+              <TabsTrigger value="wtd" className="shrink-0">WTD</TabsTrigger>
+              <TabsTrigger value="mtd" className="shrink-0">MTD</TabsTrigger>
+              <TabsTrigger value="last30" className="shrink-0">Last 30 days</TabsTrigger>
+              <TabsTrigger value="custom" className="shrink-0">Custom</TabsTrigger>
             </TabsList>
           </Tabs>
 
-          <div className="grid gap-3 xl:grid-cols-[1fr_1fr_1fr_1fr_1fr_1.5fr]">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_1fr_1.5fr]">
             <Select value={managerFilter} onValueChange={setManagerFilter}>
               <SelectTrigger>
                 <SelectValue placeholder="Manager" />
@@ -1042,8 +999,8 @@ export function PerformancePage() {
         <AlertDescription>Pending installs stay pending until the estimated install date passes. After that they are counted as past due and appear in the drilldown sheet.</AlertDescription>
       </Alert>
 
-      <section className="grid gap-4 xl:grid-cols-[1.35fr_.85fr]">
-        <Card className="border-border/70">
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.35fr_.85fr]">
+        <Card className="overflow-hidden border-border/70">
           <CardHeader>
             <CardTitle>Sales trend</CardTitle>
             <CardDescription>Units sold by day for the current scope.</CardDescription>
@@ -1075,7 +1032,7 @@ export function PerformancePage() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70">
+        <Card className="overflow-hidden border-border/70">
           <CardHeader className="flex-row items-start justify-between gap-4">
             <div>
               <CardTitle>Rep leaderboard</CardTitle>
@@ -1085,42 +1042,68 @@ export function PerformancePage() {
           </CardHeader>
           <CardContent className="max-h-[580px] overflow-auto p-0">
             {leaderboardRows.length ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Rep</TableHead>
-                    <TableHead>Sales</TableHead>
-                    <TableHead>Knocks</TableHead>
-                    <TableHead>Installed</TableHead>
-                    <TableHead>Pending</TableHead>
-                    <TableHead>Past due</TableHead>
-                    <TableHead>Sales share</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {leaderboardRows.map((row) => (
-                    <TableRow key={row.repUid ?? row.displayName}>
-                      <TableCell>
-                        <div className="space-y-1">
+              <>
+                <div className="hidden overflow-x-auto md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Rep</TableHead>
+                        <TableHead>Sales</TableHead>
+                        <TableHead>Knocks</TableHead>
+                        <TableHead>Installed</TableHead>
+                        <TableHead>Pending</TableHead>
+                        <TableHead>Past due</TableHead>
+                        <TableHead>Sales share</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {leaderboardRows.map((row) => (
+                        <TableRow key={row.repUid ?? row.displayName}>
+                          <TableCell>
+                            <div className="space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-medium">{row.displayName}</p>
+                                {row.matchStatus === "unmatched" ? <Badge variant="outline">Unmatched</Badge> : null}
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                {row.managerName || "No manager"} - {row.locationName || "Not assigned"}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell>{formatNumber(row.sales)}</TableCell>
+                          <TableCell>{formatNumber(row.knocks)}</TableCell>
+                          <TableCell>{formatNumber(row.installed)}</TableCell>
+                          <TableCell>{formatNumber(row.pending)}</TableCell>
+                          <TableCell>{formatNumber(row.pastDue)}</TableCell>
+                          <TableCell>{formatPercent(salesSharePercent(row.sales, scopedTotals.sales), 0)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                <div className="divide-y divide-border md:hidden">
+                  {leaderboardRows.map((row, index) => {
+                    const share = salesSharePercent(row.sales, scopedTotals.sales);
+                    return (
+                      <div key={row.repUid ?? row.displayName} className="flex items-center gap-3 px-4 py-3">
+                        <span className={cn("w-5 shrink-0 text-right text-sm font-semibold tabular-nums", index < 3 ? "text-primary" : "text-muted-foreground")}>
+                          {index + 1}
+                        </span>
+                        <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <p className="font-medium">{row.displayName}</p>
+                            <p className="truncate text-sm font-medium">{row.displayName}</p>
                             {row.matchStatus === "unmatched" ? <Badge variant="outline">Unmatched</Badge> : null}
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            {row.managerName || "No manager"} - {row.locationName || "Not assigned"}
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {formatNumber(row.sales)} sales - {formatNumber(row.knocks)} knocks - {formatPercent(share, 0)} of total
                           </p>
                         </div>
-                      </TableCell>
-                      <TableCell>{formatNumber(row.sales)}</TableCell>
-                      <TableCell>{formatNumber(row.knocks)}</TableCell>
-                      <TableCell>{formatNumber(row.installed)}</TableCell>
-                      <TableCell>{formatNumber(row.pending)}</TableCell>
-                      <TableCell>{formatNumber(row.pastDue)}</TableCell>
-                      <TableCell>{formatPercent(salesSharePercent(row.sales, scopedTotals.sales), 0)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             ) : (
               <div className="p-6">
                 <EmptyState title="No reps in scope" description="Change the scope filters to surface rep performance." />
@@ -1130,7 +1113,7 @@ export function PerformancePage() {
         </Card>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.2fr_.9fr]">
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_.9fr]">
         <Card className="overflow-hidden border-border/70">
           <CardHeader>
             <CardTitle>Order breakdown</CardTitle>
@@ -1163,7 +1146,7 @@ export function PerformancePage() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70">
+        <Card className="overflow-hidden border-border/70">
           <CardHeader>
             <CardTitle>Provider gauge</CardTitle>
             <CardDescription>Sales volume by provider in the current scope.</CardDescription>
@@ -1231,7 +1214,7 @@ export function PerformancePage() {
         </Card>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-2">
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <TeamSummaryCard title="Manager performance" description="Sales and knocks by manager within the current scope." rows={managerRows} totalSales={scopedTotals.sales} />
         <TeamSummaryCard title="Location performance" description="Sales and knocks by location within the current scope." rows={locationRows} totalSales={scopedTotals.sales} />
       </section>

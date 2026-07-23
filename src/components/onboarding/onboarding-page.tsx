@@ -282,8 +282,8 @@ export function OnboardingPage() {
           </Card>
         ))}
 
-        <section className="grid gap-4 xl:grid-cols-[1.1fr_.9fr]">
-          <Card className="border-border/70">
+        <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_.9fr]">
+          <Card className="overflow-hidden border-border/70">
             <CardHeader>
               <CardTitle>Rep onboarding checklist</CardTitle>
               <CardDescription>Static template until checklist persistence is expanded beyond the existing rep onboarding endpoint.</CardDescription>
@@ -301,7 +301,7 @@ export function OnboardingPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/70">
+          <Card className="overflow-hidden border-border/70">
             <CardHeader>
               <CardTitle>Existing rep checklist workflow</CardTitle>
               <CardDescription>The current save behavior is preserved and still edits the existing onboarding endpoint.</CardDescription>

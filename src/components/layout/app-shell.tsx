@@ -124,7 +124,7 @@ function MobileBottomNav({ onMore }: { onMore: () => void }) {
   const pathname = usePathname();
   const { profile } = useAuth();
   const navItems = visibleMobileNav(profile);
-  const primary = navItems.slice(0, 4);
+  const primary = navItems.slice(0, 3);
   const hasOverflow = navItems.length > primary.length;
 
   return (

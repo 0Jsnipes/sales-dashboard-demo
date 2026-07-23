@@ -195,6 +195,7 @@ export function KnockImportPreview() {
                 <CardDescription>Rows shown here need roster review before import later.</CardDescription>
               </CardHeader>
               <CardContent className="p-0">
+                <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -221,6 +222,7 @@ export function KnockImportPreview() {
                     )}
                   </TableBody>
                 </Table>
+                </div>
               </CardContent>
             </Card>
           </>

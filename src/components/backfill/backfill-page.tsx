@@ -271,8 +271,8 @@ export function BackfillPage() {
         ))}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_.9fr]">
-        <Card className="border-border/70">
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_.9fr]">
+        <Card className="overflow-hidden border-border/70">
           <CardHeader>
             <CardTitle>Manual sale form</CardTitle>
             <CardDescription>Rep & organization, sale details, install / outcome, reporting date, and notes.</CardDescription>
@@ -434,7 +434,7 @@ export function BackfillPage() {
           </CardContent>
         </Card>
 
-        <div className="space-y-4">
+        <div className="space-y-4 overflow-hidden">
           <Card className="border-border/70">
             <CardHeader>
               <CardTitle>Knock LCP pull</CardTitle>

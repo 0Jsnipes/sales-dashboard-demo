@@ -262,14 +262,14 @@ export function ImportsUnmatchedPage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-4 xl:grid-cols-[1.25fr_.75fr]">
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.25fr_.75fr]">
         <Card className="overflow-hidden">
           <CardHeader>
             <CardTitle>Review table</CardTitle>
             <CardDescription>Confidence, suggested rep selector, and resolve actions.</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="hidden md:block">
+            <div className="hidden overflow-x-auto md:block">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -373,7 +373,7 @@ export function ImportsUnmatchedPage() {
           </CardContent>
         </Card>
 
-        <div className="space-y-4">
+        <div className="space-y-4 overflow-hidden">
           <Card>
             <CardHeader>
               <CardTitle>Safety note</CardTitle>

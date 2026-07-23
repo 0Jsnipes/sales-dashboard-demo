@@ -494,7 +494,7 @@ export function DashboardPage() {
           <span className="text-sm text-muted-foreground">{weekLabel}</span>
         </div>
         {canUseOperationalActions ? (
-          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+          <div className="hidden gap-2 sm:flex sm:flex-wrap">
             <Button variant="outline" size="sm" className="shrink-0" onClick={() => void exportYtdWeeklyPivot()} disabled={exportingYtdPivot}>
               <Download className="h-4 w-4" />
               {exportingYtdPivot ? "Exporting..." : "Export YTD Pivot"}
