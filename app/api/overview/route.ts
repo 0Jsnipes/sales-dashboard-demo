@@ -156,8 +156,8 @@ export async function GET(request: Request) {
     const weekday = today.getDay();
     const monday = range.from ? new Date(`${range.from}T12:00:00`) : addDays(today, weekday === 0 ? -6 : 1 - weekday);
     const lastDay = range.to ? new Date(`${range.to}T12:00:00`) : today;
-    const statusStart = range.from ? monday : new Date(today.getFullYear(), today.getMonth(), 1);
-    const statusEnd = range.to ? lastDay : today;
+    const statusStart = monday;
+    const statusEnd = lastDay;
     const elapsedDays = Math.max(1, weekday === 0 ? 7 : weekday);
     const hasExplicitRange = Boolean(range.from || range.to);
     let comparisonCurrentStart: Date;
@@ -253,13 +253,14 @@ export async function GET(request: Request) {
       .sort((a, b) => b.sales - a.sales)
       .slice(0, 10);
 
-    const byDay = Array.from({ length: 7 }, () => 0);
-    const byDayTeams = Array.from({ length: 7 }, () => new Map<string, number>());
+    const rangeDayCount = Math.max(1, Math.round((lastDay.valueOf() - monday.valueOf()) / 86400000) + 1);
+    const byDay = Array.from({ length: rangeDayCount }, () => 0);
+    const byDayTeams = Array.from({ length: rangeDayCount }, () => new Map<string, number>());
     const byProvider: Record<string, number> = { ATT: 0, "T-Fiber": 0, Frontier: 0, Manual: 0 };
     for (const order of filteredCurrentOrders) {
       const day = Math.round((Date.parse(String(order.orderDateId) + "T00:00:00Z") - Date.parse(dateId(monday) + "T00:00:00Z")) / 86400000);
       const count = Number(order.saleCount || 1);
-      if (day >= 0 && day < 7) {
+      if (day >= 0 && day < rangeDayCount) {
         byDay[day] += count;
         const manager = order.matchedRepUid ? String(repMap.get(String(order.matchedRepUid))?.managerName || "No manager") : "Not on roster";
         byDayTeams[day].set(manager, (byDayTeams[day].get(manager) || 0) + count);
@@ -368,7 +369,7 @@ export async function GET(request: Request) {
       .slice(0, 10);
 
     return NextResponse.json({
-      week: { start: dateId(monday), end: dateId(addDays(monday, 6)) },
+      week: { start: dateId(monday), end: dateId(hasExplicitRange ? lastDay : addDays(monday, 6)) },
       orderStatusRange: { start: dateId(statusStart), end: dateId(statusEnd) },
       totalSales: salesTotal(filteredCurrentOrders),
       totalSalesGoal,

@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { authedFetch, authedJson } from "@/src/lib/api/client";
 import { normalizePermissions } from "@/src/lib/access";
@@ -17,6 +18,7 @@ import { formatHoursAsDuration } from "@/src/lib/formatters/duration";
 import { formatCompact, formatDelta, formatNumber } from "@/src/lib/formatters/number";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { microLabel, StatTile } from "@/components/ui/stat-tile";
 import { Panel, FlatEmptyState as EmptyState } from "@/components/ui/data-panel";
 import { useAuth } from "@/src/components/auth-provider";
@@ -73,6 +75,7 @@ type KnockHoursRow = {
 };
 
 type KnockHoursResponse = { period: string; range: { start: string; end: string }; rows: KnockHoursRow[] };
+type DashboardRangeMode = "week" | "mtd" | "ytd" | "custom";
 
 const emptyOrderStatusTotals = (): OrderStatusTotals => ({ total: 0, installed: 0, pending: 0, pastDue: 0, preorder: 0, canceled: 0, churned: 0, unknown: 0 });
 
@@ -113,6 +116,51 @@ function addDays(start: string, days: number) {
   const date = new Date(`${start}T12:00:00`);
   date.setDate(date.getDate() + days);
   return date;
+}
+
+function isDateId(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function monthEndDateId(monthId: string) {
+  const [year, month] = monthId.split("-").map(Number);
+  if (!year || !month) return "";
+  return toDateId(new Date(year, month, 0));
+}
+
+function dashboardRange(options: {
+  mode: DashboardRangeMode;
+  weekStart: string;
+  currentWeekStart: string;
+  month: string;
+  year: string;
+  customFrom: string;
+  customTo: string;
+  todayId: string;
+}) {
+  const clampToToday = (dateId: string) => dateId && dateId > options.todayId ? options.todayId : dateId;
+  if (options.mode === "mtd" && /^\d{4}-\d{2}$/.test(options.month)) {
+    const from = `${options.month}-01`;
+    return { from, to: clampToToday(monthEndDateId(options.month)), key: `mtd:${options.month}` };
+  }
+  if (options.mode === "ytd" && /^\d{4}$/.test(options.year)) {
+    const from = `${options.year}-01-01`;
+    return { from, to: clampToToday(`${options.year}-12-31`), key: `ytd:${options.year}` };
+  }
+  if (options.mode === "custom" && isDateId(options.customFrom) && isDateId(options.customTo) && options.customFrom <= options.customTo) {
+    return { from: options.customFrom, to: options.customTo, key: `custom:${options.customFrom}:${options.customTo}` };
+  }
+  if (options.weekStart && options.weekStart !== options.currentWeekStart) {
+    return { from: options.weekStart, to: toDateId(addDays(options.weekStart, 6)), key: `week:${options.weekStart}` };
+  }
+  return { from: "", to: "", key: `week:${options.currentWeekStart || "current"}` };
+}
+
+function inclusiveDays(start: string, end: string) {
+  const first = new Date(`${start}T12:00:00`);
+  const last = new Date(`${end}T12:00:00`);
+  if (Number.isNaN(first.valueOf()) || Number.isNaN(last.valueOf()) || first > last) return 1;
+  return Math.max(1, Math.round((last.valueOf() - first.valueOf()) / 86400000) + 1);
 }
 
 function weekStartOptions(reference = new Date(), count = 53) {
@@ -199,13 +247,21 @@ function KnockHoursTooltip({
 
 export function DashboardPage() {
   const { profile } = useAuth();
+  const todayId = useMemo(() => toDateId(new Date()), []);
+  const currentMonth = todayId.slice(0, 7);
+  const currentYear = todayId.slice(0, 4);
   const [data, setData] = useState<OverviewResponse | null>(null);
   const [loadedRequestKey, setLoadedRequestKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [exportingYtdPivot, setExportingYtdPivot] = useState(false);
   const [providerFilter, setProviderFilter] = useState("all");
   const [repFilter, setRepFilter] = useState("all");
+  const [rangeMode, setRangeMode] = useState<DashboardRangeMode>("week");
   const [weekStartFilter, setWeekStartFilter] = useState("");
+  const [monthFilter, setMonthFilter] = useState(currentMonth);
+  const [yearFilter, setYearFilter] = useState(currentYear);
+  const [customFrom, setCustomFrom] = useState(todayId);
+  const [customTo, setCustomTo] = useState(todayId);
   const [knockHours, setKnockHours] = useState<KnockHoursResponse | null>(null);
   const [knockHoursError, setKnockHoursError] = useState<string | null>(null);
   const [knockHoursLoadedKey, setKnockHoursLoadedKey] = useState("");
@@ -215,7 +271,8 @@ export function DashboardPage() {
   const weekOptions = useMemo(() => weekStartOptions(), []);
   const currentWeekStart = weekOptions[0]?.value ?? "";
   const reducedMotion = useReducedMotion();
-  const requestKey = `${profile?.authUid ?? "loading"}|${providerFilter}|${repFilter}|${weekStartFilter}`;
+  const selectedRange = useMemo(() => dashboardRange({ mode: rangeMode, weekStart: weekStartFilter, currentWeekStart, month: monthFilter, year: yearFilter, customFrom, customTo, todayId }), [currentWeekStart, customFrom, customTo, monthFilter, rangeMode, todayId, weekStartFilter, yearFilter]);
+  const requestKey = `${profile?.authUid ?? "loading"}|${providerFilter}|${repFilter}|${selectedRange.key}`;
   const loading = loadedRequestKey !== requestKey;
 
   useEffect(() => {
@@ -223,9 +280,9 @@ export function DashboardPage() {
     const params = new URLSearchParams();
     if (providerFilter !== "all") params.set("provider", providerFilter);
     if (repFilter !== "all") params.set("repId", repFilter);
-    if (weekStartFilter) {
-      params.set("from", weekStartFilter);
-      params.set("to", toDateId(addDays(weekStartFilter, 6)));
+    if (selectedRange.from && selectedRange.to) {
+      params.set("from", selectedRange.from);
+      params.set("to", selectedRange.to);
     }
     void authedJson<OverviewResponse>(`/api/overview${params.size ? `?${params.toString()}` : ""}`)
       .then((value) => {
@@ -246,15 +303,15 @@ export function DashboardPage() {
     return () => {
       active = false;
     };
-  }, [profile?.authUid, providerFilter, repFilter, requestKey, weekStartFilter]);
+  }, [profile?.authUid, providerFilter, repFilter, requestKey, selectedRange.from, selectedRange.to]);
 
-  const weekStart = data?.week.start;
-  const weekEnd = data?.week.end;
+  const performanceStart = data?.orderStatusRange?.start ?? data?.week.start;
+  const performanceEnd = data?.orderStatusRange?.end ?? data?.week.end;
 
   useEffect(() => {
-    if (!weekStart || !weekEnd) return;
+    if (!performanceStart || !performanceEnd) return;
     let active = true;
-    const params = new URLSearchParams({ range: "custom", from: weekStart, to: weekEnd });
+    const params = new URLSearchParams({ range: "custom", from: performanceStart, to: performanceEnd });
     void authedJson<{ orders: PerformanceOrder[] }>(`/api/performance?${params.toString()}`)
       .then((value) => {
         if (!active) return;
@@ -267,20 +324,19 @@ export function DashboardPage() {
     return () => {
       active = false;
     };
-  }, [weekStart, weekEnd]);
+  }, [performanceStart, performanceEnd]);
 
   const canSeeKnockHours = Boolean(
     profile && (profile.role === "superAdmin" || normalizePermissions(profile.permissions ?? {}).canViewKnockHours),
   ) && !knockHoursForbidden;
 
-  const knockHoursRequestKey = `${profile?.authUid ?? "loading"}|${weekStartFilter || currentWeekStart}`;
+  const knockHoursRequestKey = `${profile?.authUid ?? "loading"}|${performanceStart ?? ""}|${performanceEnd ?? ""}`;
   const knockHoursLoading = canSeeKnockHours && knockHoursLoadedKey !== knockHoursRequestKey;
 
   useEffect(() => {
-    if (!canSeeKnockHours) return;
+    if (!canSeeKnockHours || !performanceStart || !performanceEnd) return;
     let active = true;
-    const anchor = toDateId(addDays(weekStartFilter || currentWeekStart, 6));
-    const params = new URLSearchParams({ period: "weekly", anchor, lcp: "all" });
+    const params = new URLSearchParams({ period: "custom", anchor: performanceStart, end: performanceEnd, lcp: "all" });
     void authedJson<KnockHoursResponse>(`/api/performance/knock-hours?${params.toString()}`)
       .then((value) => {
         if (!active) return;
@@ -302,7 +358,7 @@ export function DashboardPage() {
     return () => {
       active = false;
     };
-  }, [canSeeKnockHours, currentWeekStart, knockHoursRequestKey, profile?.authUid, weekStartFilter]);
+  }, [canSeeKnockHours, knockHoursRequestKey, performanceEnd, performanceStart, profile?.authUid]);
 
   const weekLabel = data ? weekRangeLabel(data.week.start, data.week.end) : "Current week";
 
@@ -328,8 +384,8 @@ export function DashboardPage() {
   const pastDueOrderRows = useMemo(() => scopedPerformanceOrders.filter((order) => order.pastDue || order.outcome === "past_due"), [scopedPerformanceOrders]);
 
   const drilldownConfig: Record<Exclude<typeof activeDrilldown, null>, { title: string; description: string; rows: PerformanceOrder[]; emptyTitle: string; emptyDescription: string; exportPrefix: string }> = {
-    total: { title: "Total sales", description: "All sales in the selected week", rows: scopedPerformanceOrders, emptyTitle: "No sales", emptyDescription: "No sales orders match the current filters.", exportPrefix: "dashboard-total-sales" },
-    installed: { title: "Active installs", description: "Installed orders in the selected week", rows: installedOrderRows, emptyTitle: "No active installs", emptyDescription: "No installed orders match the current filters.", exportPrefix: "dashboard-active-installs" },
+    total: { title: "Total sales", description: "All sales in the selected range", rows: scopedPerformanceOrders, emptyTitle: "No sales", emptyDescription: "No sales orders match the current filters.", exportPrefix: "dashboard-total-sales" },
+    installed: { title: "Active installs", description: "Installed orders in the selected range", rows: installedOrderRows, emptyTitle: "No active installs", emptyDescription: "No installed orders match the current filters.", exportPrefix: "dashboard-active-installs" },
     pending: { title: "Pending", description: "Pending installs, including past due", rows: pendingOrderRows, emptyTitle: "No pending installs", emptyDescription: "No pending orders match the current filters.", exportPrefix: "dashboard-pending-installs" },
     pastDue: { title: "Past due installs", description: "Pending installs past the ETA", rows: pastDueOrderRows, emptyTitle: "No past due installs", emptyDescription: "No installs are past their estimated install date.", exportPrefix: "dashboard-past-due-installs" },
   };
@@ -389,12 +445,14 @@ export function DashboardPage() {
   if (!data) return null;
 
   const comparisonDelta = data.comparison.previous ? ((data.comparison.current - data.comparison.previous) / data.comparison.previous) * 100 : 0;
-  const goalProgress = data.totalSalesGoal ? Math.min(100, Math.round((data.totalSales / data.totalSalesGoal) * 100)) : 0;
+  const rangeDays = inclusiveDays(data.week.start, data.week.end);
+  const rangeSalesGoal = Math.round((data.totalSalesGoal * rangeDays) / 7);
+  const goalProgress = rangeSalesGoal ? Math.min(100, Math.round((data.totalSales / rangeSalesGoal) * 100)) : 0;
   const conversion = data.totalKnocks ? Math.round((data.totalSales / data.totalKnocks) * 100) : 0;
   const providerTotal = providerBreakdown.reduce((sum, item) => sum + item.value, 0);
   const hasOrderBreakdown = orderBreakdownData.some((item) => item.value > 0);
   const statusRangeLabel = data.orderStatusRange ? weekRangeLabel(data.orderStatusRange.start, data.orderStatusRange.end) : weekLabel;
-  const selectedYear = Number(data.week.start.slice(0, 4)) || new Date().getFullYear();
+  const selectedYear = Number(rangeMode === "ytd" ? yearFilter : data.week.start.slice(0, 4)) || new Date().getFullYear();
   const canUseOperationalActions = profile?.role === "superAdmin" || profile?.role === "admin";
   const topRepSales = topReps[0]?.sales || 1;
 
@@ -466,7 +524,17 @@ export function DashboardPage() {
       ) : null}
 
       <section className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1.2fr_auto] xl:items-end">
+        <div className="space-y-3">
+          <Tabs value={rangeMode} onValueChange={(value) => setRangeMode(value as DashboardRangeMode)}>
+            <TabsList className="grid h-auto w-full grid-cols-4">
+              <TabsTrigger value="week">Week</TabsTrigger>
+              <TabsTrigger value="mtd">MTD</TabsTrigger>
+              <TabsTrigger value="ytd">YTD</TabsTrigger>
+              <TabsTrigger value="custom">Custom</TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1.2fr_auto] xl:items-end">
           <div className="space-y-1.5">
             <Label htmlFor="dashboard-rep-filter" className={microLabel}>Representative</Label>
             <Select value={repFilter} onValueChange={setRepFilter} disabled={!data.scope.canFilterReps}>
@@ -489,18 +557,45 @@ export function DashboardPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="dashboard-week-filter" className={microLabel}>Week starting</Label>
-            <Select value={weekStartFilter || currentWeekStart} onValueChange={(value) => setWeekStartFilter(value === currentWeekStart ? "" : value)}>
-              <SelectTrigger id="dashboard-week-filter"><SelectValue placeholder="Select a Monday" /></SelectTrigger>
-              <SelectContent>
-                {weekOptions.map((week, index) => <SelectItem key={week.value} value={week.value}>{week.label}{index === 0 ? " (Current week)" : ""}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <Button variant="ghost" size="sm" className="justify-self-start text-muted-foreground sm:col-span-2 xl:col-span-1 xl:justify-self-auto" onClick={() => { setRepFilter("all"); setProviderFilter("all"); setWeekStartFilter(""); }}>
+          {rangeMode === "week" ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="dashboard-week-filter" className={microLabel}>Week starting</Label>
+              <Select value={weekStartFilter || currentWeekStart} onValueChange={(value) => setWeekStartFilter(value === currentWeekStart ? "" : value)}>
+                <SelectTrigger id="dashboard-week-filter"><SelectValue placeholder="Select a Monday" /></SelectTrigger>
+                <SelectContent>
+                  {weekOptions.map((week, index) => <SelectItem key={week.value} value={week.value}>{week.label}{index === 0 ? " (Current week)" : ""}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+          {rangeMode === "mtd" ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="dashboard-month-filter" className={microLabel}>Month</Label>
+              <Input id="dashboard-month-filter" type="month" value={monthFilter} max={currentMonth} onChange={(event) => setMonthFilter(event.target.value)} />
+            </div>
+          ) : null}
+          {rangeMode === "ytd" ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="dashboard-year-filter" className={microLabel}>Year</Label>
+              <Input id="dashboard-year-filter" type="number" min="2020" max={currentYear} value={yearFilter} onChange={(event) => setYearFilter(event.target.value)} />
+            </div>
+          ) : null}
+          {rangeMode === "custom" ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="dashboard-custom-from" className={microLabel}>From</Label>
+                <Input id="dashboard-custom-from" type="date" value={customFrom} max={customTo || todayId} onChange={(event) => setCustomFrom(event.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="dashboard-custom-to" className={microLabel}>To</Label>
+                <Input id="dashboard-custom-to" type="date" value={customTo} min={customFrom} max={todayId} onChange={(event) => setCustomTo(event.target.value)} />
+              </div>
+            </div>
+          ) : null}
+          <Button variant="ghost" size="sm" className="justify-self-start text-muted-foreground sm:col-span-2 xl:col-span-1 xl:justify-self-auto" onClick={() => { setRepFilter("all"); setProviderFilter("all"); setRangeMode("week"); setWeekStartFilter(""); setMonthFilter(currentMonth); setYearFilter(currentYear); setCustomFrom(todayId); setCustomTo(todayId); }}>
             Reset filters
           </Button>
+          </div>
         </div>
       </section>
 
@@ -508,7 +603,7 @@ export function DashboardPage() {
         <button type="button" onClick={() => setActiveDrilldown("total")} className="contents text-left">
           <StatTile label="Total sales" value={formatNumber(data.totalSales)} detail={`vs ${formatNumber(data.comparison.previous)} previous week - click to open the list`} icon={TrendingUp} accentColor={accent.blue} delta={formatDelta(comparisonDelta)} deltaPositive={comparisonDelta >= 0} />
         </button>
-        <StatTile label="Goal progress" value={formatPercent(goalProgress)} detail={`${formatNumber(data.totalSales)} of ${formatNumber(data.totalSalesGoal)} weekly goal`} icon={Gauge} accentColor={accent.violet} progress={goalProgress} />
+        <StatTile label="Goal progress" value={formatPercent(goalProgress)} detail={`${formatNumber(data.totalSales)} of ${formatNumber(rangeSalesGoal)} range goal`} icon={Gauge} accentColor={accent.violet} progress={goalProgress} />
         <StatTile label="Knocks" value={formatNumber(data.totalKnocks)} detail={`${formatCompact(data.activeReps ? data.totalKnocks / data.activeReps : 0)} per active rep`} icon={Target} accentColor={accent.magenta} href={canUseOperationalActions ? "/knocks" : undefined} />
         <StatTile label="Conversion" value={formatPercent(conversion)} detail="Sales divided by knocks" icon={BarChart3} accentColor={accent.teal} />
         <button type="button" onClick={() => setActiveDrilldown("installed")} className="contents text-left">
@@ -550,7 +645,7 @@ export function DashboardPage() {
           ) : <EmptyState title="No order status data" description="Status volume appears here after provider imports are processed." />}
         </Panel>
 
-        <Panel title="Provider mix" description="Sales volume by provider for the selected week." accentColor={accent.magenta} bodyClassName="p-0">
+        <Panel title="Provider mix" description="Sales volume by provider for the selected range." accentColor={accent.magenta} bodyClassName="p-0">
           {providerBreakdown.length ? (
             <>
               <div className="relative h-[200px] p-4 sm:h-[240px] sm:p-5">
@@ -591,7 +686,7 @@ export function DashboardPage() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
-        <Panel title="Rep leaderboard" description="Top reps by sales for the selected week." meta={`${topReps.length} reps`} accentColor={accent.blue} bodyClassName="max-h-[480px] overflow-auto p-0">
+        <Panel title="Rep leaderboard" description="Top reps by sales for the selected range." meta={`${topReps.length} reps`} accentColor={accent.blue} bodyClassName="max-h-[480px] overflow-auto p-0">
           {topReps.length ? (
             <div className="divide-y divide-border">
               {topReps.map((rep, index) => (
@@ -680,7 +775,7 @@ export function DashboardPage() {
               </ResponsiveContainer>
             </div>
           ) : (
-            <EmptyState title="No knock hours yet" description="Hours appear after T-Fiber knock exports are processed for this week." />
+            <EmptyState title="No knock hours yet" description="Hours appear after T-Fiber knock exports are processed for this range." />
           )}
         </Panel>
       ) : null}
