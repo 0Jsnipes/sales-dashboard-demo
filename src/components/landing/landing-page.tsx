@@ -117,8 +117,8 @@ export function LandingPage() {
       </section>
       </div>
 
-      <section className="mx-auto w-full max-w-[1440px] px-4 pb-20 sm:px-6 lg:px-8">
-        <div className="mb-6 max-w-2xl">
+      <section className="mx-auto w-full max-w-[1440px] px-4 pb-20 pt-8 sm:px-6 sm:pt-10 lg:px-8">
+        <div className="mb-6 max-w-2xl rounded-lg border border-border/70 bg-background/85 p-4 shadow-sm shadow-black/20 backdrop-blur-md sm:p-5">
           <h2 className="text-2xl font-semibold tracking-tight">What AB Marketing does</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">The application brings core sales operations into one secure workspace for authorized AB Marketing personnel.</p>
         </div>
