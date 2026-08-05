@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { getStorage } from "firebase-admin/storage";
 import { canImportSales, requireActor } from "@/src/lib/firebase/server-auth";
-import { getAdminApp, getAdminDb } from "@/src/lib/firebase/admin";
+import { getAdminDb } from "@/src/lib/firebase/admin";
 import { importATTRows, parseATTReport } from "@/src/lib/imports/att";
 import { expectedImportFileLabel, validateImportFileName } from "@/src/lib/imports/file-conventions";
 import { errorResponse } from "@/src/lib/api/error-response";
@@ -22,7 +21,6 @@ export async function POST(request: Request) {
     if (file.size > 20 * 1024 * 1024) return NextResponse.json({ error: "File exceeds the 20 MB upload limit." }, { status: 400 });
     const uploadId = randomUUID(); const buffer = Buffer.from(await file.arrayBuffer());
     const storagePath = `imports/att/${uploadId}/${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-    await getStorage(getAdminApp()).bucket().file(storagePath).save(buffer, { contentType: file.type || "text/csv", metadata: { metadata: { uploadId, uploadedBy: actor.token.uid } } });
     await getAdminDb().collection("uploadRuns").doc(uploadId).set({ uploadId, type: "attSales", fileName: file.name, storagePath, uploadedBy: actor.token.uid, uploadedAt: new Date(), status: "pending" });
     const summary = await importATTRows({ rows: parseATTReport(buffer), uploadId, actorUid: actor.token.uid, fileName: file.name, storagePath });
     const autoEmails = await safelyQueueAutomaticTeamReports({ trigger: "att-sales", uploadId, actorUid: actor.token.uid });

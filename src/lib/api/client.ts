@@ -1,11 +1,11 @@
-import { getFirebaseAuth } from "@/src/lib/firebase/client";
+import { DEMO_SESSION_BEARER } from "@/src/lib/demo/config";
+import { getSession } from "@/src/lib/demo/session";
 import { getViewAsAuthUid } from "@/src/lib/auth/view-as-client";
 import { VIEW_AS_HEADER } from "@/src/lib/auth/view-as";
 
 export async function authHeaders(init?: HeadersInit, includeViewAs = true) {
-  const token = await getFirebaseAuth().currentUser?.getIdToken();
   const headers = new Headers(init);
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (getSession()) headers.set("Authorization", `Bearer ${DEMO_SESSION_BEARER}`);
   const viewAsAuthUid = includeViewAs ? getViewAsAuthUid() : null;
   if (viewAsAuthUid) headers.set(VIEW_AS_HEADER, viewAsAuthUid);
   else headers.delete(VIEW_AS_HEADER);

@@ -1,11 +1,8 @@
 import "server-only";
 
 import { FieldValue, type DocumentData, type Firestore, type QuerySnapshot } from "firebase-admin/firestore";
-import { getStorage } from "firebase-admin/storage";
-import { getAdminApp, getAdminDb } from "@/src/lib/firebase/admin";
-import { parseKnockWorkbook } from "@/src/lib/knocks/parse";
+import { getAdminDb } from "@/src/lib/firebase/admin";
 import type { NormalizedKnockRow } from "@/src/lib/knocks/types";
-import type { Rep } from "@/src/types/rep";
 
 const chunks = <T,>(values: T[], size: number) => Array.from({ length: Math.ceil(values.length / size) }, (_, index) => values.slice(index * size, (index + 1) * size));
 const cacheDayId = (source: string, dateId: string) => `${source}__${dateId}`;
@@ -35,15 +32,6 @@ function buildCacheChunks(rows: Array<{ row: NormalizedKnockRow; rowIndex: numbe
   });
   if (current.length) output.push(current);
   return output;
-}
-
-function uploadTime(value: unknown) {
-  if (value && typeof value === "object" && "toMillis" in value && typeof (value as { toMillis?: unknown }).toMillis === "function") {
-    return (value as { toMillis: () => number }).toMillis();
-  }
-  if (value instanceof Date) return value.valueOf();
-  const parsed = new Date(String(value ?? ""));
-  return Number.isNaN(parsed.valueOf()) ? 0 : parsed.valueOf();
 }
 
 export async function replaceKnockExportCacheRows(rows: NormalizedKnockRow[], uploadId: string, db: Firestore = getAdminDb()) {
@@ -98,71 +86,13 @@ export async function replaceKnockExportCacheRows(rows: NormalizedKnockRow[], up
 export async function rebuildKnockExportCache() {
   const db = getAdminDb();
   const metadataRef = db.collection("system").doc("knockExportCache");
-  await metadataRef.set({ status: "building", schemaVersion: 3, startedAt: FieldValue.serverTimestamp() }, { merge: true });
-  try {
-    const [runsSnapshot, repsSnapshot] = await Promise.all([
-      db.collection("uploadRuns").where("type", "==", "knockImport").get(),
-      db.collection("reps").get(),
-    ]);
-    const reps = repsSnapshot.docs.map((document) => ({ repUid: document.id, ...document.data() }) as Rep);
-    const runs = runsSnapshot.docs
-      .map((document) => {
-        const data = document.data();
-        return { uploadId: document.id, status: String(data.status || ""), storagePath: String(data.storagePath || ""), uploadedAt: data.uploadedAt };
-      })
-      .filter((run) => run.status === "complete" && run.storagePath)
-      .sort((left, right) => uploadTime(left.uploadedAt) - uploadTime(right.uploadedAt) || left.uploadId.localeCompare(right.uploadId));
-    const bucket = getStorage(getAdminApp()).bucket();
-    const currentBySourceDate = new Map<string, { uploadId: string; rows: NormalizedKnockRow[] }>();
-    let uploadsProcessed = 0;
-    let uploadsSkipped = 0;
-
-    for (const runGroup of chunks(runs, 5)) {
-      const parsedGroup = await Promise.all(runGroup.map(async (run) => {
-        try {
-          const [buffer] = await bucket.file(run.storagePath).download();
-          return { run, parsed: parseKnockWorkbook(buffer, reps) };
-        } catch {
-          return { run, parsed: null };
-        }
-      }));
-      for (const { run, parsed } of parsedGroup) {
-        if (!parsed) {
-          uploadsSkipped += 1;
-          continue;
-        }
-        const byDate = new Map<string, NormalizedKnockRow[]>();
-        for (const row of parsed.rows) {
-          const values = byDate.get(row.activityDateKey) ?? [];
-          values.push(row);
-          byDate.set(row.activityDateKey, values);
-        }
-        for (const [dateId, rows] of byDate) currentBySourceDate.set(cacheDayId(rows[0]!.source, dateId), { uploadId: run.uploadId, rows });
-        uploadsProcessed += 1;
-      }
-    }
-
-    const rowsByUpload = new Map<string, NormalizedKnockRow[]>();
-    for (const current of currentBySourceDate.values()) {
-      const rows = rowsByUpload.get(current.uploadId) ?? [];
-      rows.push(...current.rows);
-      rowsByUpload.set(current.uploadId, rows);
-    }
-    let daysWritten = 0;
-    let rowsWritten = 0;
-    for (const [uploadId, rows] of rowsByUpload) {
-      const result = await replaceKnockExportCacheRows(rows, uploadId, db);
-      daysWritten += result.daysWritten;
-      rowsWritten += result.rowsWritten;
-    }
-    const chunkCount = (await db.collection("knockExportChunks").count().get()).data().count;
-    const result = { uploadsProcessed, uploadsSkipped, daysWritten, rowsWritten, chunkCount };
-    await metadataRef.set({ status: "complete", schemaVersion: 3, ...result, completedAt: FieldValue.serverTimestamp() }, { merge: true });
-    return result;
-  } catch (error) {
-    await metadataRef.set({ status: "failed", failedAt: FieldValue.serverTimestamp(), error: error instanceof Error ? error.message : String(error) }, { merge: true });
-    throw error;
-  }
+  // Demo mode has no uploaded knock workbooks to re-parse from storage (knock
+  // imports are seeded straight into `knockDaily`, not sourced from files), so
+  // there is nothing to cache — report an immediate, empty "complete" result
+  // rather than reaching into real Cloud Storage.
+  const result = { uploadsProcessed: 0, uploadsSkipped: 0, daysWritten: 0, rowsWritten: 0, chunkCount: 0 };
+  await metadataRef.set({ status: "complete", schemaVersion: 3, ...result, completedAt: FieldValue.serverTimestamp() }, { merge: true });
+  return result;
 }
 
 export async function readKnockExportCacheRows(start: string, end: string, repUids: string[]) {

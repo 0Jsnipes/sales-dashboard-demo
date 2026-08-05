@@ -837,7 +837,7 @@ export function PerformancePage() {
                 <Badge variant={loading ? "outline" : "success"}>{loading ? "Refreshing" : "Live"}</Badge>
               </div>
               <CardDescription className="mt-2">Sales outcomes, install tracking, provider mix, and rep performance.</CardDescription>
-              <p className="mt-2 text-sm text-muted-foreground">Live Firestore data from salesOrders, knockDaily, and reps.</p>
+              <p className="mt-2 text-sm text-muted-foreground">Live demo data across sales, knocks, and reps.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" asChild>

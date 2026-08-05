@@ -597,6 +597,7 @@ export function RosterPage() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Unable to update status.");
       toast.success(action === "remove" ? "Representative moved to purgatory." : action === "terminate" ? "Representative terminated." : "Representative restored.");
+      if (action === "terminate" && sendTerminationEmail) toast.info("Demo Mode", { description: "Email not sent" });
       setRemoveRep(null);
       setTerminateRep(null);
       setRestoreRep(null);

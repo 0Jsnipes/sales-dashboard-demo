@@ -3,8 +3,8 @@ import Link from "next/link";
 import { LegalPage } from "@/src/components/legal/legal-page";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | AB Marketing",
-  description: "Privacy Policy for the AB Marketing Sales Operations application.",
+  title: "Privacy Policy | Snipes Systems",
+  description: "Privacy Policy for the Snipes Systems Sales Operations application (portfolio demo).",
 };
 
 export default function PrivacyPage() {
@@ -12,7 +12,7 @@ export default function PrivacyPage() {
     <LegalPage
       eyebrow="Legal"
       title="Privacy Policy"
-      introduction="AB Marketing respects your privacy. This policy explains what information the AB Marketing Sales Operations application collects, why we use it, and the choices available to you. We do not sell your personal information."
+      introduction="This is a portfolio demo. All data shown is synthetic and generated for demonstration purposes — nothing you enter is stored beyond your browser session. The policy below reflects how the underlying application is designed to handle information in a production deployment."
       sections={[
         {
           title: "Information we collect",
@@ -40,7 +40,7 @@ export default function PrivacyPage() {
           content: (
             <>
               <p>We do not sell or rent personal information. We do not share personal information with third parties for their advertising or marketing.</p>
-              <p>Information may be shared with authorized AB Marketing personnel, your organization, and service providers that help host, secure, or operate the application, such as Firebase, Mailgun, and deployment providers. These providers receive information only as needed to perform services for us and are expected to protect it.</p>
+              <p>Information may be shared with authorized Snipes Systems personnel, your organization, and service providers that help host, secure, or operate the application. These providers receive information only as needed to perform services for us and are expected to protect it.</p>
               <p>We may disclose information when required by law, to protect rights or safety, or as part of a business transaction where appropriate safeguards apply.</p>
             </>
           ),

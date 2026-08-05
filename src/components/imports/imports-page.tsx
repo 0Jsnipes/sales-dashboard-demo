@@ -341,7 +341,7 @@ export function ImportsPage() {
             <CardTitle>Import center</CardTitle>
             <CardDescription>Upload source files, validate the payload, and keep low-confidence matches out of reporting.</CardDescription>
           </div>
-          <Badge variant="outline">AB Marketing</Badge>
+          <Badge variant="outline">Snipes Systems</Badge>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-5">
           {steps.map((step, index) => (

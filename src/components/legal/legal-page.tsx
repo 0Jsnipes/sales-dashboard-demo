@@ -23,8 +23,8 @@ export function LegalPage({ eyebrow, title, introduction, sections }: LegalPageP
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,.14),transparent_35%),radial-gradient(circle_at_right_20%_top_20%,rgba(14,165,233,.12),transparent_30%)]" />
       <header className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-8">
         <Link href="/" className="inline-flex items-center gap-3 text-sm font-semibold tracking-wide">
-          <Image src="/legacy-assets/ab-logo.png" alt="AB Marketing" width={42} height={42} className="rounded-xl" priority />
-          AB Marketing
+          <Image src="/legacy-assets/SS_Logo.png" alt="Snipes Systems" width={42} height={42} className="rounded-xl" priority />
+          Snipes Systems
         </Link>
         <Button asChild variant="outline">
           <Link href="/">
@@ -62,7 +62,7 @@ export function LegalPage({ eyebrow, title, introduction, sections }: LegalPageP
                     </a>.
                   </p>
                 ) : (
-                  <p>Questions, privacy requests, and account concerns may be submitted to your AB Marketing administrator.</p>
+                  <p>Questions, privacy requests, and account concerns may be submitted to your Snipes Systems administrator.</p>
                 )}
               </div>
             </section>

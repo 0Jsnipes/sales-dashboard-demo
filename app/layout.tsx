@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils";
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
-  title: "AB Marketing",
-  description: "AB Marketing's internal sales operations application for roster management, authorized report imports, sales and knock reporting, teams, and onboarding.",
+  title: "Snipes Systems",
+  description: "Snipes Systems' sales operations application for roster management, report imports, sales and knock reporting, teams, and onboarding. Portfolio demo — all data is synthetic.",
 };
 
 export default function RootLayout({

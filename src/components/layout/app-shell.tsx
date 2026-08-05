@@ -6,7 +6,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { Bell, ChevronDown, Eye, LogOut, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Search, X } from "lucide-react";
-import { signOut } from "firebase/auth";
 import { useAuth } from "@/src/components/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -28,7 +27,8 @@ import { CommandPalette } from "@/src/components/layout/command-palette";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { getFirebaseAuth } from "@/src/lib/firebase/client";
+import { signOut as signOutDemo } from "@/src/lib/demo/session";
+import { DEMO_BRAND_NAME } from "@/src/lib/demo/config";
 import { visibleAppNav, visibleMobileNav } from "@/src/components/layout/navigation";
 import { businessUnitLabel } from "@/src/lib/access";
 import { authedJsonAsActualUser } from "@/src/lib/api/client";
@@ -274,9 +274,9 @@ function ShellUtilities({ collapsed, onSearch, onNavigate }: { collapsed: boolea
 function UserFooterCard({ collapsed = false }: { collapsed?: boolean }) {
   const { user, profile, isViewingAs } = useAuth();
   const router = useRouter();
-  const displayName = isViewingAs ? profile?.email?.split("@")[0] || "Preview user" : user?.displayName?.trim() || profile?.email?.split("@")[0] || "Workspace user";
-  const avatarText = initialsFrom(user?.displayName || profile?.email || "AB");
-  const avatarImage = user?.photoURL ?? undefined;
+  const displayName = isViewingAs ? profile?.email?.split("@")[0] || "Preview user" : profile?.email?.split("@")[0] || "Workspace user";
+  const avatarText = initialsFrom(profile?.email || "SS");
+  const avatarImage = undefined;
 
   return (
     <DropdownMenu>
@@ -292,7 +292,7 @@ function UserFooterCard({ collapsed = false }: { collapsed?: boolean }) {
           <span className={cn("flex items-center gap-3", collapsed && "justify-center")}>
             <Avatar className="h-9 w-9">
               <AvatarImage src={avatarImage} alt={displayName} />
-              <AvatarFallback>{avatarText || "AB"}</AvatarFallback>
+              <AvatarFallback>{avatarText || "SS"}</AvatarFallback>
             </Avatar>
             {!collapsed ? (
               <span className="min-w-0 flex-1">
@@ -315,8 +315,8 @@ function UserFooterCard({ collapsed = false }: { collapsed?: boolean }) {
         <DropdownMenuItem onClick={() => router.push("/settings")}>Workspace settings</DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onClick={async () => {
-            await signOut(getFirebaseAuth());
+          onClick={() => {
+            signOutDemo();
             router.replace("/sign-in");
           }}
         >
@@ -354,8 +354,8 @@ export function AppShell({ title, actions, children }: AppShellProps) {
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="left" className="flex w-[88vw] flex-col gap-0 p-0 sm:w-[330px]">
           <div className="flex items-center gap-3 border-b border-border/70 px-4 py-4">
-            <Image src="/legacy-assets/ab-logo.png" alt="AB Marketing" width={40} height={40} className="rounded-xl" />
-            <p className="text-sm font-semibold leading-none">AB Marketing</p>
+            <Image src="/legacy-assets/SS_Logo.png" alt={DEMO_BRAND_NAME} width={40} height={40} className="rounded-xl" />
+            <p className="text-sm font-semibold leading-none">{DEMO_BRAND_NAME}</p>
           </div>
           <ScrollArea className="flex-1">
             <div className="flex flex-col p-2">
@@ -378,8 +378,8 @@ export function AppShell({ title, actions, children }: AppShellProps) {
           )}
         >
           <div className={cn("flex items-center gap-3 border-b border-border/70 px-4 py-4", collapsed && "justify-center px-3")}>
-            <Image src="/legacy-assets/ab-logo.png" alt="AB Marketing" width={40} height={40} className="rounded-xl" />
-            {!collapsed ? <p className="text-sm font-semibold leading-none">AB Marketing</p> : null}
+            <Image src="/legacy-assets/SS_Logo.png" alt={DEMO_BRAND_NAME} width={40} height={40} className="rounded-xl" />
+            {!collapsed ? <p className="text-sm font-semibold leading-none">{DEMO_BRAND_NAME}</p> : null}
           </div>
           <ScrollArea className="flex-1">
             <div className="px-2 py-1">

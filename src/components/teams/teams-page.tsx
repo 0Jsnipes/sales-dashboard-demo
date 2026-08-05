@@ -416,7 +416,7 @@ export function TeamsPage() {
     if (hasKnocks && (!knocksRange.start || !knocksRange.end || knocksRange.start > knocksRange.end)) return toast.error("Choose a valid knocks date range.");
     setSendingEmail(true);
     try {
-      const result = await authedJson<{ recipient: string; queued: boolean }>(`/api/teams/${emailTeam.teamId}/email`, {
+      await authedJson<{ recipient: string; queued: boolean }>(`/api/teams/${emailTeam.teamId}/email`, {
         method: "POST",
         body: JSON.stringify({
           recipient: emailRecipient.trim(),
@@ -428,7 +428,7 @@ export function TeamsPage() {
           knocksRange,
         }),
       });
-      toast.success(`Team reports queued for ${result.recipient}.`);
+      toast.info("Demo Mode", { description: "Email not sent" });
       setEmailTeam(null);
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to email team data.");

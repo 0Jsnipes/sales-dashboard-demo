@@ -28,8 +28,8 @@ export function LandingPage() {
       <DataRainBackground className="-z-10 [mask-image:linear-gradient(180deg,black,transparent_85%)]" />
       <header className="mx-auto flex w-full max-w-[1440px] items-center justify-between px-4 py-5 sm:px-6 lg:px-8">
         <Link href="/" className="inline-flex items-center gap-3 text-sm font-semibold tracking-wide">
-          <Image src="/legacy-assets/ab-logo.png" alt="AB Marketing" width={42} height={42} className="rounded-xl" />
-          AB Marketing
+          <Image src="/legacy-assets/SS_Logo.png" alt="Snipes Systems" width={42} height={42} className="rounded-xl" />
+          Snipes Systems
         </Link>
         <Button asChild variant="outline">
           <Link href="/sign-in">
@@ -41,10 +41,10 @@ export function LandingPage() {
 
       <section className="mx-auto grid w-full max-w-[1440px] gap-10 px-4 pb-16 pt-6 sm:px-6 lg:grid-cols-[1.05fr_.95fr] lg:px-8 lg:pb-24 lg:pt-14">
         <motion.div initial={reducedMotion ? false : { opacity: 0, y: 20 }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }} className="max-w-2xl">
-          <Badge variant="outline" className="mb-5 w-fit">Internal sales operations application</Badge>
-          <h1 className="text-5xl font-semibold tracking-tight sm:text-6xl">AB Marketing</h1>
+          <Badge variant="outline" className="mb-5 w-fit">Portfolio demo — sales operations application</Badge>
+          <h1 className="text-5xl font-semibold tracking-tight sm:text-6xl">Snipes Systems</h1>
           <p className="mt-6 max-w-xl text-lg text-muted-foreground">
-            AB Marketing is an internal sales operations application used by authorized team members to manage representatives, teams, managers, and locations; import sales and knock reports; review performance; and support onboarding workflows.
+            Snipes Systems is a sales operations application for managing representatives, teams, managers, and locations; importing sales and knock reports; reviewing performance; and supporting onboarding workflows. This is a live demo — sign in with the demo credentials to explore, all data is synthetic.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <Button asChild size="lg">
@@ -119,8 +119,8 @@ export function LandingPage() {
 
       <section className="mx-auto w-full max-w-[1440px] px-4 pb-20 pt-8 sm:px-6 sm:pt-10 lg:px-8">
         <div className="mb-6 max-w-2xl rounded-lg border border-border/70 bg-background/85 p-4 shadow-sm shadow-black/20 backdrop-blur-md sm:p-5">
-          <h2 className="text-2xl font-semibold tracking-tight">What AB Marketing does</h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">The application brings core sales operations into one secure workspace for authorized AB Marketing personnel.</p>
+          <h2 className="text-2xl font-semibold tracking-tight">What Snipes Systems does</h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">The application brings core sales operations into one secure workspace for authorized Snipes Systems personnel.</p>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {features.map((feature, index) => {
@@ -144,7 +144,7 @@ export function LandingPage() {
 
       <footer className="border-t border-border/70 bg-card/30">
         <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-4 py-6 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-          <p>© 2026 AB Marketing. All rights reserved.</p>
+          <p>© 2026 Snipes Systems. Portfolio demo — all rights reserved.</p>
           <nav aria-label="Legal" className="flex items-center gap-5">
             <Link className="transition-colors hover:text-foreground" href="/privacy">Privacy Policy</Link>
             <Link className="transition-colors hover:text-foreground" href="/terms">Terms of Service</Link>

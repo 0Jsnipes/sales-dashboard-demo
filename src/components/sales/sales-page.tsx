@@ -985,7 +985,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                 <Badge variant="outline" className="px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
                   Weekly {workspaceNameLower}
                 </Badge>
-                <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">AB Marketing</span>
+                <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Snipes Systems</span>
               </div>
               <div className="space-y-1">
                 <CardTitle className="text-3xl tracking-tight sm:text-4xl">{workspaceName} command center</CardTitle>

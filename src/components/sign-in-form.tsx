@@ -5,25 +5,14 @@ import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { ArrowRight, CheckCircle2, LockKeyhole } from "lucide-react";
-import { sendPasswordResetEmail, signInWithEmailAndPassword } from "firebase/auth";
+import { ArrowRight, LockKeyhole, Sparkles } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { getFirebaseAuth } from "@/src/lib/firebase/client";
+import { DEMO_BRAND_NAME, DEMO_EMAIL, DEMO_PASSWORD } from "@/src/lib/demo/config";
+import { signIn as signInDemo } from "@/src/lib/demo/session";
 import { DataRainBackground } from "@/components/ui/data-rain-background";
-
-function friendlyError(error: unknown) {
-  const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code) : "";
-  if (code.includes("invalid-credential")) return "The email address or password is incorrect.";
-  if (code.includes("invalid-email")) return "Enter a valid email address.";
-  if (code.includes("user-not-found")) return "No account exists for that email address.";
-  if (code.includes("unauthorized-continue-uri")) return "This website domain is not authorized in Firebase Authentication settings.";
-  if (code.includes("missing-continue-uri")) return "Password reset is missing a return URL.";
-  if (code.includes("too-many-requests")) return "Too many attempts. Wait a moment and try again.";
-  return "Unable to complete the request. Check your connection and try again.";
-}
 
 export function SignInForm() {
   const router = useRouter();
@@ -32,42 +21,25 @@ export function SignInForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const [pending, setPending] = useState(false);
-  const [resetPending, setResetPending] = useState(false);
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    setNotice("");
     setPending(true);
-    try {
-      await signInWithEmailAndPassword(getFirebaseAuth(), email.trim(), password);
-      router.replace(params.get("next") || "/dashboard");
-    } catch (cause) {
-      setError(friendlyError(cause));
-    } finally {
+    if (email.trim().toLowerCase() !== DEMO_EMAIL.toLowerCase() || password !== DEMO_PASSWORD) {
+      setError(`Use the demo credentials: ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
       setPending(false);
-    }
-  }
-
-  async function resetPassword() {
-    if (!email.trim()) {
-      setError("Enter your email address first, then select password reset.");
       return;
     }
+    signInDemo();
+    router.replace(params.get("next") || "/dashboard");
+  }
+
+  function fillDemoCredentials() {
+    setEmail(DEMO_EMAIL);
+    setPassword(DEMO_PASSWORD);
     setError("");
-    setNotice("");
-    setResetPending(true);
-    try {
-      const url = typeof window === "undefined" ? undefined : `${window.location.origin}/sign-in`;
-      await sendPasswordResetEmail(getFirebaseAuth(), email.trim(), url ? { url, handleCodeInApp: false } : undefined);
-      setNotice("Password reset email sent. Check your inbox.");
-    } catch (cause) {
-      setError(friendlyError(cause));
-    } finally {
-      setResetPending(false);
-    }
   }
 
   return (
@@ -78,8 +50,8 @@ export function SignInForm() {
         <section className="flex items-center justify-center px-6 py-10 sm:px-10 lg:px-12">
           <motion.div initial={reducedMotion ? false : { opacity: 0, y: 16 }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }} className="w-full max-w-md">
             <Link href="/" className="mb-6 inline-flex items-center gap-3 text-sm font-semibold tracking-wide">
-              <Image src="/legacy-assets/ab-logo.png" alt="AB Marketing" width={40} height={40} className="rounded-xl" />
-              AB Marketing
+              <Image src="/legacy-assets/SS_Logo.png" alt={DEMO_BRAND_NAME} width={40} height={40} className="rounded-xl" />
+              {DEMO_BRAND_NAME}
             </Link>
             <Card className="border-border/70">
               <CardHeader className="space-y-4 border-b border-border/60 bg-card/60">
@@ -88,7 +60,7 @@ export function SignInForm() {
                 </div>
                 <div className="space-y-2">
                   <CardTitle className="text-2xl">Welcome back</CardTitle>
-                  <CardDescription>Sign in to access the AB Marketing sales operations workspace.</CardDescription>
+                  <CardDescription>Sign in to access the {DEMO_BRAND_NAME} sales operations workspace.</CardDescription>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4 p-6">
@@ -121,10 +93,7 @@ export function SignInForm() {
                       required
                     />
                   </div>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <Button type="button" variant="ghost" className="justify-start px-0 text-primary hover:text-primary" onClick={() => void resetPassword()} disabled={resetPending}>
-                      {resetPending ? "Sending reset..." : "Forgot password?"}
-                    </Button>
+                  <div className="flex items-center justify-end">
                     <Button type="submit" disabled={pending} className="sm:min-w-32">
                       {pending ? "Signing in..." : "Sign in"}
                       <ArrowRight className="h-4 w-4" />
@@ -137,16 +106,23 @@ export function SignInForm() {
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
                 )}
-                {notice && (
-                  <Alert>
-                    <AlertTitle>Password reset sent</AlertTitle>
-                    <AlertDescription className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4" />
-                      {notice}
-                    </AlertDescription>
-                  </Alert>
-                )}
-                <p className="text-center text-sm text-muted-foreground">Need access? Contact your administrator.</p>
+                <Alert className="border-primary/30 bg-primary/5">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <AlertTitle>Portfolio demo</AlertTitle>
+                  <AlertDescription className="space-y-2">
+                    <div className="text-sm">
+                      <div>
+                        Email: <span className="font-mono">{DEMO_EMAIL}</span>
+                      </div>
+                      <div>
+                        Password: <span className="font-mono">{DEMO_PASSWORD}</span>
+                      </div>
+                    </div>
+                    <Button type="button" size="sm" variant="secondary" onClick={fillDemoCredentials}>
+                      Fill demo credentials
+                    </Button>
+                  </AlertDescription>
+                </Alert>
               </CardContent>
             </Card>
           </motion.div>
@@ -155,7 +131,7 @@ export function SignInForm() {
           <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,.18),transparent_35%),linear-gradient(180deg,color-mix(in_oklab,var(--background)_88%,white),var(--background))]" />
           <div className="absolute inset-0 -z-10 bg-[linear-gradient(rgba(255,255,255,.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.06)_1px,transparent_1px)] bg-[size:40px_40px] opacity-30" />
           <div className="relative z-10">
-            <p className="text-sm uppercase tracking-[0.3em] text-muted-foreground">AB Sales Operations</p>
+            <p className="text-sm uppercase tracking-[0.3em] text-muted-foreground">{DEMO_BRAND_NAME} Sales Operations</p>
             <h2 className="mt-4 max-w-xl text-5xl font-semibold tracking-tight">Clear data. Confident decisions.</h2>
             <p className="mt-4 max-w-lg text-base text-muted-foreground">One secure workspace for roster management, imports, reporting, onboarding, and field performance.</p>
           </div>

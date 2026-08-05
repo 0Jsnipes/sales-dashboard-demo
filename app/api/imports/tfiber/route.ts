@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { getStorage } from "firebase-admin/storage";
 import { canImportSales, requireActor } from "@/src/lib/firebase/server-auth";
-import { getAdminApp, getAdminDb } from "@/src/lib/firebase/admin";
+import { getAdminDb } from "@/src/lib/firebase/admin";
 import { importTFiberRows, parseTFiberWorkbook } from "@/src/lib/imports/tfiber";
 import { expectedImportFileLabel, validateImportFileName } from "@/src/lib/imports/file-conventions";
 import { errorResponse } from "@/src/lib/api/error-response";
@@ -23,7 +22,6 @@ export async function POST(request: Request) {
     const uploadId = randomUUID();
     const buffer = Buffer.from(await file.arrayBuffer());
     const storagePath = `imports/tfiber/${uploadId}/${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-    await getStorage(getAdminApp()).bucket().file(storagePath).save(buffer, { contentType: file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", metadata: { metadata: { uploadId, uploadedBy: actor.token.uid } } });
     await getAdminDb().collection("uploadRuns").doc(uploadId).set({ uploadId, type: "tfiberSales", fileName: file.name, storagePath, uploadedBy: actor.token.uid, uploadedAt: new Date(), status: "pending" });
     const summary = await importTFiberRows({ rows: parseTFiberWorkbook(buffer), uploadId, actorUid: actor.token.uid, fileName: file.name, storagePath });
     const autoEmails = await safelyQueueAutomaticTeamReports({ trigger: "tfiber-sales", uploadId, actorUid: actor.token.uid });

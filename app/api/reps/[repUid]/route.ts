@@ -95,7 +95,7 @@ export async function PATCH(request: Request, { params }: Params) {
     if (rep.authUid) { await getAdminAuth().updateUser(rep.authUid, { disabled: true }); updates.accountStatus = "disabled"; }
     await reference.update(updates);
     if (body.sendTerminationEmail) {
-      await getAdminDb().collection("mail").add({ to: [rep.email], message: { subject: "Important update from AB Marketing", text: `Hi ${rep.firstName},\n\nYour representative status with AB Marketing has been updated. Please contact your manager or operations team with any questions.\n\nAB Marketing Operations`, html: `<p>Hi ${rep.firstName},</p><p>Your representative status with AB Marketing has been updated. Please contact your manager or operations team with any questions.</p><p>AB Marketing Operations</p>` }, metadata: { type: "termination", repUid, requestedBy: actor.token.uid }, createdAt: FieldValue.serverTimestamp() });
+      await getAdminDb().collection("mail").add({ to: [rep.email], message: { subject: "Important update from Snipes Systems", text: `Hi ${rep.firstName},\n\nYour representative status with Snipes Systems has been updated. Please contact your manager or operations team with any questions.\n\nSnipes Systems Operations`, html: `<p>Hi ${rep.firstName},</p><p>Your representative status with Snipes Systems has been updated. Please contact your manager or operations team with any questions.</p><p>Snipes Systems Operations</p>` }, metadata: { type: "termination", repUid, requestedBy: actor.token.uid }, createdAt: FieldValue.serverTimestamp() });
     }
     return NextResponse.json({ status: "terminated", emailStatus: updates.terminationEmailStatus });
   } catch (error) {

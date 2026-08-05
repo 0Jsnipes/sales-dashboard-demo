@@ -2,19 +2,24 @@ import "server-only";
 
 import type { DecodedIdToken } from "firebase-admin/auth";
 import type { AppUser } from "@/src/types/user";
-import { getAdminAuth, getAdminDb } from "./admin";
+import { getAdminDb } from "./admin";
 import { normalizeBusinessUnit, normalizePermissions } from "@/src/lib/access";
 import type { PermissionKey } from "@/src/lib/access";
 import { VIEW_AS_HEADER, viewAsRequestIsReadOnly } from "@/src/lib/auth/view-as";
 import { rosterViewProfile, rosterViewRepUid } from "@/src/lib/auth/roster-view-profile";
 import type { Rep } from "@/src/types/rep";
+import { DEMO_EMAIL, DEMO_SESSION_BEARER, DEMO_UID } from "@/src/lib/demo/config";
 
 export type ServerActor = { token: DecodedIdToken; profile: AppUser; actualProfile: AppUser; viewAsAuthUid: string | null };
 
 export async function requireActor(request: Request): Promise<ServerActor> {
   const header = request.headers.get("authorization");
   if (!header?.startsWith("Bearer ")) throw new Error("UNAUTHENTICATED");
-  const token = await getAdminAuth().verifyIdToken(header.slice(7));
+  const bearer = header.slice(7);
+  // This deployment has no real Firebase project behind it — the client sends a
+  // fixed sentinel instead of a verified ID token (see src/lib/api/client.ts).
+  if (bearer !== DEMO_SESSION_BEARER) throw new Error("UNAUTHENTICATED");
+  const token = { uid: DEMO_UID, email: DEMO_EMAIL } as DecodedIdToken;
   const profile = await getAdminDb().collection("users").doc(token.uid).get();
   if (!profile.exists) throw new Error("PROFILE_NOT_FOUND");
   const storedProfile = profile.data() as AppUser;

@@ -1,8 +1,8 @@
 import "server-only";
 
 import { FieldValue } from "firebase-admin/firestore";
-import { getAdminDb, getAdminStorage } from "@/src/lib/firebase/admin";
-import { buildTeamKnocksExport, buildTeamSalesExport, teamExportSlug, type TeamExportProvider } from "@/src/lib/teams/export";
+import { getAdminDb } from "@/src/lib/firebase/admin";
+import { teamExportSlug, type TeamExportProvider } from "@/src/lib/teams/export";
 import type { TeamReportFileKind, TeamReportRange } from "@/src/lib/teams/report-types";
 import type { Team } from "@/src/types/team";
 
@@ -19,7 +19,6 @@ type QueueTeamReportOptions = {
 };
 
 const contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-const signedUrlLifetimeMs = 24 * 60 * 60 * 1000;
 
 function fileParts(kind: TeamReportFileKind): { provider: TeamExportProvider; dataKind: "sales" | "knocks" } {
   return {
@@ -42,25 +41,16 @@ export async function queueTeamReportEmail(options: QueueTeamReportOptions) {
   const db = getAdminDb();
   const mailCollection = process.env.FIREBASE_TRIGGER_EMAIL_COLLECTION?.trim() || "mail";
   const mailReference = db.collection(mailCollection).doc();
-  const bucket = getAdminStorage().bucket();
-  const expires = Date.now() + signedUrlLifetimeMs;
-  const attachments = await Promise.all(files.map(async (kind) => {
+  // Demo mode never actually delivers mail (see the "Demo Mode — email not
+  // sent" toast on the client), so the attachments are named but not built
+  // or uploaded — there is no real storage bucket to put them in.
+  const attachments = files.map((kind) => {
     const { provider, dataKind } = fileParts(kind);
     const range = ranges[dataKind];
     const providerLabel = provider === "att" ? "att" : "tfiber";
-    const file = dataKind === "sales"
-      ? await buildTeamSalesExport(team, range, provider, { dateOrder: "newest-first" })
-      : await buildTeamKnocksExport(team, range, provider);
     const fileName = `${teamExportSlug(team)}-${providerLabel}-${dataKind}-${rangeFilePart(range)}.xlsx`;
-    const storageFile = bucket.file(`team-email-attachments/${mailReference.id}/${fileName}`);
-    await storageFile.save(Buffer.from(file), {
-      resumable: false,
-      contentType,
-      metadata: { metadata: { teamId: team.teamId, mailDocumentId: mailReference.id } },
-    });
-    const [url] = await storageFile.getSignedUrl({ action: "read", expires });
-    return { filename: fileName, contentType, path: url };
-  }));
+    return { filename: fileName, contentType };
+  });
 
   await mailReference.create({
     to: [recipient],
