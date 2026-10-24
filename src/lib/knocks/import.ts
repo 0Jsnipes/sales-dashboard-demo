@@ -6,7 +6,7 @@ import type { Rep } from "@/src/types/rep";
 import { getAdminApp, getAdminDb } from "@/src/lib/firebase/admin";
 import { reactivateInactiveRepsForMatchedSales } from "@/src/lib/reps/lifecycle";
 import { detectKnockSource } from "@/src/lib/knocks/source-detection";
-import { parseCompanyASalesRabbitKnockRows, parseCompanyBKnockRows } from "@/src/lib/knocks/parse";
+import { parseCompanyAActivityKnockRows, parseCompanyBKnockRows } from "@/src/lib/knocks/parse";
 import { normalizeRepName } from "@/src/lib/knocks/matching";
 import { expectedKnockImportFileLabel, validateKnockImportFileName } from "@/src/lib/imports/file-conventions";
 import type { KnockSource } from "@/src/lib/knocks/types";
@@ -41,12 +41,12 @@ export async function importKnockWorkbook(buffer: Buffer, options: KnockImportOp
   const source = (sourceOverride === "auto" || !sourceOverride ? detectKnockSource(Object.keys(rows[0] ?? {})) : sourceOverride) as KnockSource | null;
   if (!source) throw new Error("Unable to detect knock source from workbook headers.");
   if (!validateKnockImportFileName(source, options.fileName)) {
-    throw new Error(`Knock files for ${source === "companya_salesrabbit" ? "Company A" : "Company B"} must follow the ${expectedKnockImportFileLabel(source)} naming format.`);
+    throw new Error(`Knock files for ${source === "companya_activity" ? "Company A" : "Company B"} must follow the ${expectedKnockImportFileLabel(source)} naming format.`);
   }
 
   const repsSnapshot = await getAdminDb().collection("reps").get();
   const reps = repsSnapshot.docs.map((document) => document.data() as Rep);
-  const parsed = source === "companya_salesrabbit" ? parseCompanyASalesRabbitKnockRows(rows, reps) : parseCompanyBKnockRows(rows, reps);
+  const parsed = source === "companya_activity" ? parseCompanyAActivityKnockRows(rows, reps) : parseCompanyBKnockRows(rows, reps);
 
   const db = getAdminDb();
   const knockDaily = db.collection("knockDaily");
@@ -111,7 +111,7 @@ export async function importKnockWorkbook(buffer: Buffer, options: KnockImportOp
         lcps: new Set<string>(),
       };
       const existing = existingByRepUid.get(repUid)?.data() as Record<string, unknown> | undefined;
-      const nextCompanyAKnocks = source === "companya_salesrabbit" ? Number(data.companyAKnocks || 0) : Number(existing?.companyAKnocks ?? 0);
+      const nextCompanyAKnocks = source === "companya_activity" ? Number(data.companyAKnocks || 0) : Number(existing?.companyAKnocks ?? 0);
       const nextCompanyBKnocks = source === "companyb" ? Number(data.companyBKnocks || 0) : Number(existing?.companyBKnocks ?? 0);
       const nextKnocks = nextCompanyAKnocks + nextCompanyBKnocks;
 

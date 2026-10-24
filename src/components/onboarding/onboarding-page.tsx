@@ -35,7 +35,7 @@ const checks = ["Create account", "Complete UID", "Complete background check", "
 const statusMeta = {
   active: { label: "Active", variant: "success" as const },
   admin_only: { label: "Admin only", variant: "warning" as const },
-  external: { label: "External", variant: "info" as const },
+  demo: { label: "Demo only", variant: "info" as const },
 };
 
 function accentClasses(accent?: string) {
@@ -107,7 +107,6 @@ export function OnboardingPage() {
           category: resourceCategory,
           label: formData.get("label"),
           description: formData.get("description"),
-          url: formData.get("url"),
         }),
       });
       if (!value.resource) throw new Error("The resource was saved but could not be displayed.");
@@ -255,16 +254,14 @@ export function OnboardingPage() {
                               <span className="block">
                                 <Button
                                   className="w-full"
-                                  asChild
+                                  disabled
                                 >
-                                  <a href={resource.href} target="_blank" rel="noreferrer">
-                                    Open resource
-                                  </a>
+                                  Demo only
                                 </Button>
                               </span>
                             </TooltipTrigger>
                             <TooltipContent>
-                              Opens in a new tab.
+                              Resource links are disabled in this demo.
                             </TooltipContent>
                           </Tooltip>
                         </div>
@@ -346,11 +343,6 @@ export function OnboardingPage() {
               <div className="space-y-2">
                 <Label htmlFor="resource-description">Description</Label>
                 <Textarea id="resource-description" name="description" required maxLength={500} placeholder="Explain what this resource is used for." />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="resource-url">URL</Label>
-                <Input id="resource-url" name="url" type="url" required placeholder="https://example.com" />
               </div>
 
               <DialogFooter>

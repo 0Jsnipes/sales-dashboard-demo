@@ -16,8 +16,6 @@ type LegalPageProps = {
 };
 
 export function LegalPage({ eyebrow, title, introduction, sections }: LegalPageProps) {
-  const contactEmail = process.env.NEXT_PUBLIC_LEGAL_CONTACT_EMAIL?.trim();
-
   return (
     <main className="relative min-h-screen overflow-hidden">
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,.14),transparent_35%),radial-gradient(circle_at_right_20%_top_20%,rgba(14,165,233,.12),transparent_30%)]" />
@@ -54,16 +52,7 @@ export function LegalPage({ eyebrow, title, introduction, sections }: LegalPageP
             <section className="border-t border-border/70 pt-8">
               <h2 className="text-xl font-semibold tracking-tight">Contact us</h2>
               <div className="mt-3 text-sm leading-7 text-muted-foreground sm:text-base">
-                {contactEmail ? (
-                  <p>
-                    Questions, privacy requests, and account concerns may be sent to{" "}
-                    <a className="font-medium text-primary underline-offset-4 hover:underline" href={`mailto:${contactEmail}`}>
-                      {contactEmail}
-                    </a>.
-                  </p>
-                ) : (
-                  <p>Questions, privacy requests, and account concerns may be submitted to your Snipes Systems administrator.</p>
-                )}
+                <p>This is a portfolio demo. External contact links are disabled.</p>
               </div>
             </section>
           </div>

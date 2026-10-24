@@ -100,7 +100,7 @@ function normalizeProvider(value: unknown) {
   if (source === "companya" || source === "company a") return "companya";
   if (source === "companyb" || source === "company b") return "companyb";
   if (source === "manual") return "manual";
-  if (source === "frontier") return "frontier";
+  if (source === "companyc") return "companyc";
   return source;
 }
 

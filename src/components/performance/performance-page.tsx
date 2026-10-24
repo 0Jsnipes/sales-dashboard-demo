@@ -269,7 +269,7 @@ function rangeLabel(mode: RangeMode) {
 const PROVIDER_COLORS: Record<string, string> = {
   "Company A": "#2563eb",
   "Company B": "#d946ef",
-  Frontier: "#f97316",
+  "Company C": "#f97316",
   Manual: "#94a3b8",
 };
 

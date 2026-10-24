@@ -241,7 +241,7 @@ export async function POST(request: Request) {
       contentType: file.type,
     });
     const autoEmails = await safelyQueueAutomaticTeamReports({
-      trigger: result.source === "companya_salesrabbit" ? "companya-knocks" : "companyb-knocks",
+      trigger: result.source === "companya_activity" ? "companya-knocks" : "companyb-knocks",
       uploadId: result.uploadId,
       actorUid: actor.token.uid,
     });

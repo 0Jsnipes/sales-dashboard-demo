@@ -11,7 +11,7 @@ export const maxDuration = 300;
 function autoEmailTrigger(result: Record<string, unknown>): TeamAutoEmailUploadType | null {
   if (result.type === "companyASales") return "companya-sales";
   if (result.type === "companyBSales") return "companyb-sales";
-  if (result.type === "knockImport" && result.source === "companya_salesrabbit") return "companya-knocks";
+  if (result.type === "knockImport" && result.source === "companya_activity") return "companya-knocks";
   if (result.type === "knockImport" && result.source === "companyb") return "companyb-knocks";
   return null;
 }

@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 type PreviewResponse = {
   ok: boolean;
-  source: "companya_salesrabbit" | "companyb";
+  source: "companya_activity" | "companyb";
   provider: "Company A" | "Company B";
   program: "Company A" | "Company B";
   fileName: string;
@@ -40,7 +40,7 @@ type PreviewResponse = {
 
 const sourceLabels = {
   auto: "Auto detect",
-  companya_salesrabbit: "Company A SalesRabbit",
+  companya_activity: "Company A Activity",
   companyb: "Company B",
 } as const;
 

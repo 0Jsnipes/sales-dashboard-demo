@@ -51,7 +51,7 @@ const exportFileOptions: Array<{ kind: ExportFileKind; label: string; descriptio
 ];
 const autoEmailTriggerOptions: Array<{ kind: ExportFileKind; label: string; description: string }> = [
   { kind: "companya-sales", label: "Company A sales upload", description: "Run after a Sales_order CSV is imported." },
-  { kind: "companyb-sales", label: "Company B sales upload", description: "Run after an AB Marketing Orders workbook is imported." },
+  { kind: "companyb-sales", label: "Company B sales upload", description: "Run after an Company B Orders workbook is imported." },
   { kind: "companya-knocks", label: "Company A knocks upload", description: "Run after an Company A report workbook is imported." },
   { kind: "companyb-knocks", label: "Company B knocks upload", description: "Run after a Book1 workbook is imported." },
 ];

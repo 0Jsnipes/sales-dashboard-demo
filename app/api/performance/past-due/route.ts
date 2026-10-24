@@ -28,7 +28,7 @@ function providerKey(value: unknown) {
   const source = String(value || "").toLowerCase().replace(/[^a-z]/g, "");
   if (source === "companya" || source.includes("companya")) return "companya";
   if (source === "companyb" || source.includes("companyb")) return "companyb";
-  if (source === "frontier" || source.includes("frontier")) return "frontier";
+  if (source === "companyc" || source.includes("companyc")) return "companyc";
   return "manual";
 }
 
@@ -36,7 +36,7 @@ function providerName(value: unknown) {
   const source = providerKey(value);
   if (source === "companya") return "Company A";
   if (source === "companyb") return "Company B";
-  if (source === "frontier") return "Frontier";
+  if (source === "companyc") return "Company C";
   return "Manual";
 }
 

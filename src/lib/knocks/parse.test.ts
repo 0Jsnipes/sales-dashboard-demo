@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { makeRep } from "@/test/fixtures/rep";
-import { parseCompanyASalesRabbitKnockRows, parseCompanyBKnockRows } from "./parse";
+import { parseCompanyAActivityKnockRows, parseCompanyBKnockRows } from "./parse";
 
-describe("parseCompanyASalesRabbitKnockRows", () => {
+describe("parseCompanyAActivityKnockRows", () => {
   const reps = [makeRep({ repUid: "rep-1", displayName: "Jane Doe", email: "jane.doe@example.com" })];
 
   it("normalizes valid rows and matches a rep by email", () => {
-    const { rows, summary } = parseCompanyASalesRabbitKnockRows(
-      [{ Id: "1", Name: "Jane Doe", Activity: "Sold", Date: "2026-06-01", Email: "jane.doe@example.com", "SalesRabbit Lead ID": "L-1" }],
+    const { rows, summary } = parseCompanyAActivityKnockRows(
+      [{ Id: "1", Name: "Jane Doe", Activity: "Sold", Date: "2026-06-01", Email: "jane.doe@example.com", "Activity Lead ID": "L-1" }],
       reps,
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
-      knockUid: "companya_salesrabbit:1",
+      knockUid: "companya_activity:1",
       provider: "Company A",
       repName: "Jane Doe",
       normalizedStatus: "sale",
@@ -24,7 +24,7 @@ describe("parseCompanyASalesRabbitKnockRows", () => {
   });
 
   it("skips rows with no parseable activity date and leaves them out of validRows", () => {
-    const { rows, summary } = parseCompanyASalesRabbitKnockRows(
+    const { rows, summary } = parseCompanyAActivityKnockRows(
       [{ Id: "2", Name: "Jane Doe", Activity: "Sold", Date: "" }],
       reps,
     );
@@ -33,12 +33,12 @@ describe("parseCompanyASalesRabbitKnockRows", () => {
   });
 
   it("ignores fully blank rows without counting them as skipped", () => {
-    const { summary } = parseCompanyASalesRabbitKnockRows([{ Id: "", Name: "", Activity: "", Date: "" }], reps);
+    const { summary } = parseCompanyAActivityKnockRows([{ Id: "", Name: "", Activity: "", Date: "" }], reps);
     expect(summary).toMatchObject({ totalRowsSeen: 1, validRows: 0, skippedRows: 0 });
   });
 
   it("leaves unmatched rows unmatched when no rep lines up", () => {
-    const { rows } = parseCompanyASalesRabbitKnockRows(
+    const { rows } = parseCompanyAActivityKnockRows(
       [{ Id: "3", Name: "Nobody Here", Activity: "Try 1", Date: "2026-06-01" }],
       reps,
     );
@@ -46,7 +46,7 @@ describe("parseCompanyASalesRabbitKnockRows", () => {
   });
 
   it("counts duplicate knock UIDs within the same file", () => {
-    const { summary } = parseCompanyASalesRabbitKnockRows(
+    const { summary } = parseCompanyAActivityKnockRows(
       [
         { Id: "1", Name: "Jane Doe", Activity: "Sold", Date: "2026-06-01" },
         { Id: "1", Name: "Jane Doe", Activity: "Sold", Date: "2026-06-01" },

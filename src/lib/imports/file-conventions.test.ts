@@ -3,8 +3,8 @@ import { recognizedEmailImportKind } from "./file-conventions";
 
 describe("email attachment recognition", () => {
   it("selects the orders workbook and ignores the expired-orders workbook", () => {
-    expect(recognizedEmailImportKind("AB Marketing Orders to Date.xlsx")).toBe("companyBSales");
-    expect(recognizedEmailImportKind("AB Marketing Expired, Cancelled Orders.xlsx")).toBeNull();
+    expect(recognizedEmailImportKind("Company B Orders to Date.xlsx")).toBe("companyBSales");
+    expect(recognizedEmailImportKind("Company B Expired, Cancelled Orders.xlsx")).toBeNull();
   });
 
   it("recognizes supported Company A sales and knock filenames", () => {

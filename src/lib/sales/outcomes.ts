@@ -52,7 +52,7 @@ function providerKey(value: unknown) {
   const source = normalizedText(value).replace(/[^a-z]/g, "");
   if (source === "companyb" || source.includes("companyb")) return "companyb";
   if (source === "companya" || source.includes("companya")) return "companya";
-  if (source === "frontier" || source.includes("frontier")) return "frontier";
+  if (source === "companyc" || source.includes("companyc")) return "companyc";
   return source || "manual";
 }
 

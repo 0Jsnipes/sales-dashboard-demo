@@ -13,10 +13,6 @@ const inputSchema = z.object({
   category: categorySchema,
   label: z.string().trim().min(2).max(120),
   description: z.string().trim().min(1).max(500),
-  url: z.string().trim().url().refine((value) => {
-    const protocol = new URL(value).protocol;
-    return protocol === "http:" || protocol === "https:";
-  }, "Enter a valid http or https URL."),
 });
 
 const presentation: Record<OnboardingCategory, Pick<OnboardingResource, "icon" | "accent">> = {
@@ -33,7 +29,6 @@ function resourceFromDocument(id: string, data: Record<string, unknown>): Onboar
     category: data.category,
     label: data.label,
     description: data.description,
-    url: data.href,
   });
   if (!value.success) return null;
   return {
@@ -41,8 +36,7 @@ function resourceFromDocument(id: string, data: Record<string, unknown>): Onboar
     category: value.data.category,
     label: value.data.label,
     description: value.data.description,
-    href: value.data.url,
-    status: "external",
+    status: "demo",
     ...presentation[value.data.category],
   };
 }
@@ -72,7 +66,6 @@ export async function POST(request: Request) {
       category: value.data.category,
       label: value.data.label,
       description: value.data.description,
-      href: value.data.url,
       createdAt: FieldValue.serverTimestamp(),
       createdBy: actor.token.uid,
       updatedAt: FieldValue.serverTimestamp(),
@@ -82,7 +75,6 @@ export async function POST(request: Request) {
       category: value.data.category,
       label: value.data.label,
       description: value.data.description,
-      href: value.data.url,
     });
     return NextResponse.json({ resource }, { status: 201 });
   } catch (error) {

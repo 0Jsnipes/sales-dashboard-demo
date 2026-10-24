@@ -4,9 +4,9 @@ import type { KnockSource } from "./types";
 const text = (value: unknown) => String(value ?? "").trim();
 
 export function generateKnockUid(row: Record<string, unknown>, source: KnockSource) {
-  if (source === "companya_salesrabbit") {
+  if (source === "companya_activity") {
     const id = text(row["Id"]);
-    return id ? `companya_salesrabbit:${id}` : "";
+    return id ? `companya_activity:${id}` : "";
   }
   const seed = [
     source,

@@ -1,7 +1,7 @@
 import { normalizeName } from "@/src/lib/matching/normalize";
 
 export function normalizeImportedName(value = "") {
-  return normalizeName(value.replace(/\s*[-–—]\s*ab marketing\b/gi, ""));
+  return normalizeName(value.replace(/\s*[-–—]\s*company b\b/gi, ""));
 }
 
 export function normalizeAlias(value = "") {

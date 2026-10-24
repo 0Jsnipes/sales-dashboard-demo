@@ -1,4 +1,4 @@
-export type KnockSource = "companya_salesrabbit" | "companyb";
+export type KnockSource = "companya_activity" | "companyb";
 
 export type KnockProvider = "Company A" | "Company B";
 

@@ -95,7 +95,7 @@ Examples of accepted source files include:
 
 ```text
 Sales_order.csv
-AB Marketing Orders.xlsx
+Company B Orders.xlsx
 Book1.xlsx
 report.xlsx
 reports.xlsx

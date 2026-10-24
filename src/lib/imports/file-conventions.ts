@@ -4,14 +4,14 @@ export type ImportKind = "companyASales" | "companyBSales" | "companyAKnocks" | 
 
 const patterns: Record<ImportKind, RegExp> = {
   companyASales: /sales[_ -]?order/i,
-  companyBSales: /ab marketing orders/i,
+  companyBSales: /company b orders/i,
   companyAKnocks: /^reports?_?/i,
   companyBKnocks: /^book1(?:\.[a-z0-9]+)?$/i,
 };
 
 const labels: Record<ImportKind, string> = {
   companyASales: "Sales_order - Company A",
-  companyBSales: "AB Marketing Orders - Company B",
+  companyBSales: "Company B Orders - Company B",
   companyAKnocks: "report - Company A Knocks",
   companyBKnocks: "Book1 - Company B Knocks",
 };
@@ -35,9 +35,9 @@ export function recognizedEmailImportKind(fileName: string): ImportKind | null {
 }
 
 export function validateKnockImportFileName(source: KnockSource, fileName: string) {
-  return validateImportFileName(source === "companya_salesrabbit" ? "companyAKnocks" : "companyBKnocks", fileName);
+  return validateImportFileName(source === "companya_activity" ? "companyAKnocks" : "companyBKnocks", fileName);
 }
 
 export function expectedKnockImportFileLabel(source: KnockSource) {
-  return expectedImportFileLabel(source === "companya_salesrabbit" ? "companyAKnocks" : "companyBKnocks");
+  return expectedImportFileLabel(source === "companya_activity" ? "companyAKnocks" : "companyBKnocks");
 }

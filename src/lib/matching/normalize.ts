@@ -4,8 +4,8 @@ const suffixes = /\b(sr|jr|ii|iii|iv)\b/g;
 export function normalizeName(value = "") {
   return value
     .toLowerCase()
-    .replace(/\s*-\s*(?:a\s*b\s*)?(?:energy\s*)?marketing\s*$/g, "")
-    .replace(/\ba\s*b\s*marketing\b/g, "")
+    .replace(/\s*-\s*company\s*b\s*$/g, "")
+    .replace(/\bcompany\s*b\b/g, "")
     .replace(suffixes, "")
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")

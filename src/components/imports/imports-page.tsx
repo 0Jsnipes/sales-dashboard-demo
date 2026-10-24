@@ -246,7 +246,6 @@ function SourceCard({
 export function ImportsPage() {
   const { profile } = useAuth();
   const reducedMotion = useReducedMotion();
-  const inboundEmail = process.env.NEXT_PUBLIC_REPORTS_INBOUND_EMAIL?.trim() || "";
   const [history, setHistory] = useState<UploadHistoryRow[]>([]);
   const [latestSummary, setLatestSummary] = useState<Summary | null>(null);
   const [uploads, setUploads] = useState<ServerUploadRow[]>([]);
@@ -364,18 +363,17 @@ export function ImportsPage() {
 
       <KnockImportPreview />
 
-      {inboundEmail && canViewEmailImports ? (
+      {canViewEmailImports ? (
         <Card className="border-border/70">
           <CardHeader>
             <CardTitle>Email reports</CardTitle>
-            <CardDescription>Send report attachments to this address. Mailgun delivers them directly into the import pipeline.</CardDescription>
+            <CardDescription>Email report delivery is disabled in this demo.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
-              <p className="font-medium">{inboundEmail}</p>
-              <p className="mt-1 text-muted-foreground">Company A sales: `Sales_order`, Company B sales: `AB Marketing Orders`, Company B knocks: `Book1`, Company A knocks: `report` / `reports`.</p>
+              <p className="font-medium">Demo only</p>
+              <p className="mt-1 text-muted-foreground">Company A sales: `Sales_order`, Company B sales: `Company B Orders`, Company B knocks: `Book1`, Company A knocks: `report` / `reports`.</p>
             </div>
-            <p className="text-muted-foreground">Delivery is automatic; no scheduled inbox scan is required.</p>
           </CardContent>
         </Card>
       ) : null}
@@ -404,8 +402,8 @@ export function ImportsPage() {
         <SourceCard
           title="Company B Sales Report"
           description="Workbook upload with retained source files and match evaluation."
-          hint="Use the AB Marketing Orders naming format for Company B sales uploads."
-          acceptLabel="AB Marketing Orders - Company B (.xlsx/.xls)"
+          hint="Use the Company B Orders naming format for Company B sales uploads."
+          acceptLabel="Company B Orders - Company B (.xlsx/.xls)"
           sourceKey="companyBSales"
           endpoint="/api/imports/companyb"
           accept={{ "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx", ".xls"], "application/vnd.ms-excel": [".xls"] }}

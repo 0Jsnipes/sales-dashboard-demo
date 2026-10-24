@@ -57,7 +57,7 @@ function providerKey(value: unknown) {
   const source = String(value || "").toLowerCase().replace(/[^a-z]/g, "");
   if (source === "companya" || source.includes("companya")) return "companya";
   if (source === "companyb" || source.includes("companyb")) return "companyb";
-  if (source === "frontier" || source.includes("frontier")) return "frontier";
+  if (source === "companyc" || source.includes("companyc")) return "companyc";
   return "manual";
 }
 
@@ -65,7 +65,7 @@ function providerLabel(value: unknown) {
   const source = providerKey(value);
   if (source === "companya") return "Company A";
   if (source === "companyb") return "Company B";
-  if (source === "frontier") return "Frontier";
+  if (source === "companyc") return "Company C";
   return "Manual";
 }
 
@@ -256,7 +256,7 @@ export async function GET(request: Request) {
     const rangeDayCount = Math.max(1, Math.round((lastDay.valueOf() - monday.valueOf()) / 86400000) + 1);
     const byDay = Array.from({ length: rangeDayCount }, () => 0);
     const byDayTeams = Array.from({ length: rangeDayCount }, () => new Map<string, number>());
-    const byProvider: Record<string, number> = { "Company A": 0, "Company B": 0, Frontier: 0, Manual: 0 };
+    const byProvider: Record<string, number> = { "Company A": 0, "Company B": 0, "Company C": 0, Manual: 0 };
     for (const order of filteredCurrentOrders) {
       const day = Math.round((Date.parse(String(order.orderDateId) + "T00:00:00Z") - Date.parse(dateId(monday) + "T00:00:00Z")) / 86400000);
       const count = Number(order.saleCount || 1);
@@ -284,7 +284,7 @@ export async function GET(request: Request) {
           ? Number(knockData.companyAKnocks ?? 0)
           : selectedProvider === "companyb"
             ? Number(knockData.companyBKnocks ?? 0)
-            : selectedProvider === "manual" || selectedProvider === "frontier"
+            : selectedProvider === "manual" || selectedProvider === "companyc"
               ? 0
               : Number(knockData.knocks ?? knockData.count ?? 0);
         totalKnocks += knocks;
@@ -334,7 +334,7 @@ export async function GET(request: Request) {
     const statusFunnel: Record<string, StatusTotals> = {
       "Company A": emptyStatusTotals(),
       "Company B": emptyStatusTotals(),
-      Frontier: emptyStatusTotals(),
+      "Company C": emptyStatusTotals(),
       Manual: emptyStatusTotals(),
     };
     for (const order of filteredStatusOrders) {

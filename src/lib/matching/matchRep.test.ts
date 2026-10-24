@@ -15,9 +15,9 @@ describe("matchImportRowToRep", () => {
     expect(result).toEqual({ repUid: "rep-1", confidence: 1, method: "email", reason: "Exact email" });
   });
 
-  it("matches on an alias name after stripping an '- AB Marketing' suffix from the import row", () => {
+  it("matches on an alias name after stripping an '- Company B' suffix from the import row", () => {
     const reps = [makeRep({ repUid: "rep-1", displayName: "Jane Doe", aliases: ["JD"] })];
-    const result = matchImportRowToRep({ rawRepName: "jd - AB Marketing" }, reps);
+    const result = matchImportRowToRep({ rawRepName: "jd - Company B" }, reps);
     expect(result).toEqual({ repUid: "rep-1", confidence: 0.98, method: "alias", reason: "Exact normalized name" });
   });
 

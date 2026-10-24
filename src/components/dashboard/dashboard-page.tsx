@@ -83,7 +83,7 @@ const emptyOrderStatusTotals = (): OrderStatusTotals => ({ total: 0, installed: 
 const providerColors: Record<string, string> = {
   "Company A": "#2a78d6",
   "Company B": "#d55181",
-  Frontier: "#c98500",
+  "Company C": "#c98500",
   Manual: "#008300",
 };
 

@@ -13,24 +13,24 @@ const getHeaders = (rows: RawRow[]) => Object.keys(rows[0] ?? {});
 const nonEmpty = (row: RawRow) => Object.values(row).some((value) => String(value ?? "").trim().length > 0);
 
 function normalizeCommon(row: RawRow, source: KnockSource): NormalizedKnockRow | null {
-  const repName = source === "companya_salesrabbit" ? text(row.Name) : text(row.Rep);
-  const rawStatus = source === "companya_salesrabbit" ? text(row.Activity) : text(row.Status);
-  const rawDate = source === "companya_salesrabbit" ? row.Date : row["Disposition Time (Eastern)"];
+  const repName = source === "companya_activity" ? text(row.Name) : text(row.Rep);
+  const rawStatus = source === "companya_activity" ? text(row.Activity) : text(row.Status);
+  const rawDate = source === "companya_activity" ? row.Date : row["Disposition Time (Eastern)"];
   const date = source === "companyb" ? parseEasternDispositionTime(rawDate) : parseFlexibleDate(rawDate);
   if (!repName && !rawStatus && !date) return null;
   if (!date) return null;
-  // SalesRabbit/Company B exports include helper count columns that reflect grouped totals,
+  // Activity/Company B exports include helper count columns that reflect grouped totals,
   // not per-activity quantities. Each row in these files should count as one knock.
   const quantity = 1;
   const activityDateKey = source === "companyb" ? toEasternDateKey(date) : toDateKey(date);
   const rowBase: NormalizedKnockRow = {
     knockUid: "",
     source,
-    provider: source === "companya_salesrabbit" ? "Company A" : "Company B",
-    program: source === "companya_salesrabbit" ? "Company A" : "Company B",
-    sourceActivityId: source === "companya_salesrabbit" ? text(row.Id) || null : null,
-    sourceLeadId: source === "companya_salesrabbit" ? text(row["SalesRabbit Lead ID"]) || null : text(row["Lead ID"]) || null,
-    sourceRepExternalId: source === "companya_salesrabbit" ? text(row.Id) || null : text(row.external_id) || null,
+    provider: source === "companya_activity" ? "Company A" : "Company B",
+    program: source === "companya_activity" ? "Company A" : "Company B",
+    sourceActivityId: source === "companya_activity" ? text(row.Id) || null : null,
+    sourceLeadId: source === "companya_activity" ? text(row["Activity Lead ID"]) || null : text(row["Lead ID"]) || null,
+    sourceRepExternalId: source === "companya_activity" ? text(row.Id) || null : text(row.external_id) || null,
     repName: repName || "Unknown",
     repEmail: text(row.Email) || null,
     team: text(row.Team) || null,
@@ -44,8 +44,8 @@ function normalizeCommon(row: RawRow, source: KnockSource): NormalizedKnockRow |
     monthKey: activityDateKey.slice(0, 7),
     company: text(row.Company) || null,
     lcp: text(row.LCP) || null,
-    address: source === "companya_salesrabbit" ? null : { street: text(row.street_1) || null, city: text(row.City) || null, state: text(row.state) || null, zip: text(row.Zip) || null },
-    leadName: source === "companya_salesrabbit" ? text(row["Lead Name"]) || null : text(row.Company) || null,
+    address: source === "companya_activity" ? null : { street: text(row.street_1) || null, city: text(row.City) || null, state: text(row.state) || null, zip: text(row.Zip) || null },
+    leadName: source === "companya_activity" ? text(row["Lead Name"]) || null : text(row.Company) || null,
     proximity: text(row.Proximity) || null,
     quantity,
     matchStatus: "unmatched",
@@ -57,8 +57,8 @@ function normalizeCommon(row: RawRow, source: KnockSource): NormalizedKnockRow |
   return rowBase;
 }
 
-export function parseCompanyASalesRabbitKnockRows(rows: RawRow[], reps: Rep[] = []) {
-  return buildPreview(rows, "companya_salesrabbit", reps);
+export function parseCompanyAActivityKnockRows(rows: RawRow[], reps: Rep[] = []) {
+  return buildPreview(rows, "companya_activity", reps);
 }
 
 export function parseCompanyBKnockRows(rows: RawRow[], reps: Rep[] = []) {
@@ -120,5 +120,5 @@ export function parseKnockWorkbook(fileBuffer: Buffer, reps: Rep[] = []) {
   const rows = XLSX.utils.sheet_to_json<RawRow>(sheet, { defval: null, raw: true }).filter(nonEmpty);
   const source = detectKnockSource(getHeaders(rows));
   if (!source) throw new Error("Unable to detect knock source from workbook headers.");
-  return source === "companya_salesrabbit" ? parseCompanyASalesRabbitKnockRows(rows, reps) : parseCompanyBKnockRows(rows, reps);
+  return source === "companya_activity" ? parseCompanyAActivityKnockRows(rows, reps) : parseCompanyBKnockRows(rows, reps);
 }

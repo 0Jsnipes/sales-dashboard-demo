@@ -620,7 +620,7 @@ export function SettingsPage() {
               <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <InfoCard label="App version" value="v1" />
                 <InfoCard label="Environment" value={process.env.NEXT_PUBLIC_APP_ENV ?? "Production"} />
-                <InfoCard label="Firebase project" value="Available via client config only" />
+                <InfoCard label="Demo backend" value="Available via client config only" />
                 <InfoCard label="Audit logs" value="Coming soon" />
               </CardContent>
             </Card>
@@ -642,7 +642,7 @@ export function SettingsPage() {
             <DialogHeader>
               <DialogTitle>Add admin user</DialogTitle>
               <DialogDescription>
-                Create a Firebase Auth account with a temporary password. The admin must change it on first login.
+                Create a demo account with a temporary password. The admin must change it on first login.
               </DialogDescription>
             </DialogHeader>
             <form className="space-y-4" onSubmit={(event) => void createAdmin(event)}>
@@ -843,7 +843,7 @@ export function SettingsPage() {
             <DialogHeader>
               <DialogTitle>Delete admin user</DialogTitle>
               <DialogDescription>
-                This removes the Firebase Auth account and workspace profile for this user. This does not remove historical sales, knocks, roster, or import data.
+                This removes the demo account and workspace profile for this user. This does not remove historical sales, knocks, roster, or import data.
               </DialogDescription>
             </DialogHeader>
             {deleteTarget ? (

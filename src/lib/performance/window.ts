@@ -121,7 +121,7 @@ function providerLabel(value: unknown) {
   const source = String(value || "").toLowerCase();
   if (source === "companya" || source === "company a") return "Company A";
   if (source === "companyb" || source === "company b") return "Company B";
-  if (source === "frontier") return "Frontier";
+  if (source === "companyc") return "Company C";
   return "Manual";
 }
 
