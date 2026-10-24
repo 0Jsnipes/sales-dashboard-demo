@@ -2,7 +2,7 @@ import type { DocumentReference } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { getAdminApp, getAdminDb } from "@/src/lib/firebase/admin";
 
-export type SalesUploadType = "attSales" | "tfiberSales";
+export type SalesUploadType = "companyASales" | "companyBSales";
 export type KnockUploadType = "knockImport";
 
 export type SalesUploadRun = {
@@ -58,7 +58,7 @@ export async function listSalesUploads(limit = 100) {
   const snapshot = await getAdminDb().collection("uploadRuns").orderBy("uploadedAt", "desc").limit(limit).get();
   return snapshot.docs
     .map((document) => document.data() as SalesUploadRun)
-    .filter((item): item is SalesUploadRun & { type: SalesUploadType } => item.type === "attSales" || item.type === "tfiberSales")
+    .filter((item): item is SalesUploadRun & { type: SalesUploadType } => item.type === "companyASales" || item.type === "companyBSales")
     .map((item) => ({
       uploadId: item.uploadId,
       type: item.type,
@@ -104,11 +104,11 @@ async function deleteSalesUploadById(uploadId: string) {
     return { uploadId, deletedOrders: 0, deletedUnmatched: 0, deletedStorage: false, deletedRun: false };
   }
   const run = runSnapshot.data() as SalesUploadRun;
-  if (run.type !== "attSales" && run.type !== "tfiberSales") {
+  if (run.type !== "companyASales" && run.type !== "companyBSales") {
     return { uploadId, deletedOrders: 0, deletedUnmatched: 0, deletedStorage: false, deletedRun: false };
   }
 
-  const orderProvider = run.type === "attSales" ? "att" : "tfiber";
+  const orderProvider = run.type === "companyASales" ? "companya" : "companyb";
   const orderSnapshot = await getAdminDb().collection("salesOrders").doc(orderProvider).collection("orders").get();
   const ordersToDelete = orderSnapshot.docs.filter((document) => String(document.data().sourceUploadId || "") === uploadId);
   const unmatchedSnapshot = await getAdminDb().collection("unmatchedImports").where("uploadId", "==", uploadId).get();

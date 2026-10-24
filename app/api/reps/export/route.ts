@@ -66,12 +66,12 @@ async function firstAndLastSales(repUids: string[]) {
   const firstSaleDateByRepUid = new Map<string, string>();
   const lastSaleDateByRepUid = new Map<string, string>();
   for (const group of chunks(repUids, 30)) {
-    const [attSnapshot, tfiberSnapshot, manualSnapshot] = await Promise.all([
-      db.collection("salesOrders").doc("att").collection("orders").where("matchedRepUid", "in", group).get(),
-      db.collection("salesOrders").doc("tfiber").collection("orders").where("matchedRepUid", "in", group).get(),
+    const [companyASnapshot, companyBSnapshot, manualSnapshot] = await Promise.all([
+      db.collection("salesOrders").doc("companya").collection("orders").where("matchedRepUid", "in", group).get(),
+      db.collection("salesOrders").doc("companyb").collection("orders").where("matchedRepUid", "in", group).get(),
       db.collection("salesOrders").doc("manual").collection("orders").where("matchedRepUid", "in", group).get(),
     ]);
-    for (const document of [...attSnapshot.docs, ...tfiberSnapshot.docs, ...manualSnapshot.docs]) {
+    for (const document of [...companyASnapshot.docs, ...companyBSnapshot.docs, ...manualSnapshot.docs]) {
       const data = document.data() as { matchedRepUid?: string; orderDateId?: string };
       const repUid = text(data.matchedRepUid);
       const orderDateId = text(data.orderDateId);

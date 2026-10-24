@@ -105,7 +105,7 @@ export async function readKnockExportCacheRows(start: string, end: string, repUi
   if (!repUids.length) return [];
   const snapshots = await Promise.all(chunks(repUids, 30).map((group) => db.collection("knockExportChunks").where("repUid", "in", group).get()));
   return snapshots.flatMap((snapshot) => snapshot.docs).flatMap((document) => {
-    const data = document.data() as { provider: "ATT" | "T-Fiber"; activityDateKey: string; rows?: CachedKnockRow[] };
+    const data = document.data() as { provider: "Company A" | "Company B"; activityDateKey: string; rows?: CachedKnockRow[] };
     if (data.activityDateKey < start || data.activityDateKey > end) return [];
     return (data.rows ?? []).map((row) => ({ provider: data.provider, activityDateKey: data.activityDateKey, ...row }));
   });

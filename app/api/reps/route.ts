@@ -4,8 +4,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { normalizeEmail, normalizeName, normalizeSalesId } from "@/src/lib/matching/normalize";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { canManageRepRoles, canManageRoster, requireActor } from "@/src/lib/firebase/server-auth";
-import { rematchTFiberOrdersForRep } from "@/src/lib/imports/tfiber";
-import { rematchATTOrdersForRep } from "@/src/lib/imports/att";
+import { rematchCompanyBOrdersForRep } from "@/src/lib/imports/companyb";
+import { rematchCompanyAOrdersForRep } from "@/src/lib/imports/companya";
 import { parseCommonFilters, applyTextSearchFilter } from "@/src/lib/api/report-filters";
 import { autoMoveNoSaleRepsToInactive } from "@/src/lib/reps/lifecycle";
 import { errorResponse } from "@/src/lib/api/error-response";
@@ -44,12 +44,12 @@ export async function GET(request: Request) {
     const firstSaleDateByRepUid = new Map<string, string>();
     const lastSaleDateByRepUid = new Map<string, string>();
     for (const group of chunks(repUids, 30)) {
-      const [attSnapshot, tfiberSnapshot, manualSnapshot] = await Promise.all([
-        db.collection("salesOrders").doc("att").collection("orders").where("matchedRepUid", "in", group).get(),
-        db.collection("salesOrders").doc("tfiber").collection("orders").where("matchedRepUid", "in", group).get(),
+      const [companyASnapshot, companyBSnapshot, manualSnapshot] = await Promise.all([
+        db.collection("salesOrders").doc("companya").collection("orders").where("matchedRepUid", "in", group).get(),
+        db.collection("salesOrders").doc("companyb").collection("orders").where("matchedRepUid", "in", group).get(),
         db.collection("salesOrders").doc("manual").collection("orders").where("matchedRepUid", "in", group).get(),
       ]);
-      for (const document of [...attSnapshot.docs, ...tfiberSnapshot.docs, ...manualSnapshot.docs]) {
+      for (const document of [...companyASnapshot.docs, ...companyBSnapshot.docs, ...manualSnapshot.docs]) {
         const data = document.data() as { matchedRepUid?: string; orderDateId?: string };
         const repUid = String(data.matchedRepUid || "");
         const orderDateId = String(data.orderDateId || "");
@@ -118,7 +118,7 @@ export async function POST(request: Request) {
     } else {
       await document.create(rep);
     }
-    const [rematchedTFiberOrders, rematchedATTOrders] = await Promise.all([rematchTFiberOrdersForRep(rep), rematchATTOrdersForRep(rep)]);
-    return NextResponse.json({ rep, rematchedTFiberOrders, rematchedATTOrders }, { status: 201 });
+    const [rematchedCompanyBOrders, rematchedCompanyAOrders] = await Promise.all([rematchCompanyBOrdersForRep(rep), rematchCompanyAOrdersForRep(rep)]);
+    return NextResponse.json({ rep, rematchedCompanyBOrders, rematchedCompanyAOrders }, { status: 201 });
   } catch (error) { return errorResponse("reps", error); }
 }

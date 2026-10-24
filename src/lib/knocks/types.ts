@@ -1,6 +1,6 @@
-export type KnockSource = "att_salesrabbit" | "tfiber";
+export type KnockSource = "companya_salesrabbit" | "companyb";
 
-export type KnockProvider = "ATT" | "T-Fiber";
+export type KnockProvider = "Company A" | "Company B";
 
 export type NormalizedKnockStatus =
   | "attempt"

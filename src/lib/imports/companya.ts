@@ -14,11 +14,11 @@ const services: Array<{ name: ServiceName; modernPackage: string; modernStatus: 
   { name: "Wireless", modernPackage: "Wireless_Package", modernStatus: "Wireless_CurrentStatus", legacyPackage: "Wireless Package", legacyStatus: "Wireless Status" },
 ];
 
-const orderCollection = () => getAdminDb().collection("salesOrders").doc("att").collection("orders");
+const orderCollection = () => getAdminDb().collection("salesOrders").doc("companya").collection("orders");
 const chunks = <T,>(values: T[], size: number) => Array.from({ length: Math.ceil(values.length / size) }, (_, index) => values.slice(index * size, (index + 1) * size));
 const text = (value: unknown) => String(value ?? "").trim();
 const valueFor = (row: RawRow, modern: string, legacy: string) => text(row[modern] ?? row[legacy]);
-// Some ATT exports contain intentionally blank column headings. Firestore field names cannot be empty,
+// Some Company A exports contain intentionally blank column headings. Firestore field names cannot be empty,
 // so retain every meaningful source field while dropping those unnamed spacer columns.
 const serializableRow = (row: RawRow) => Object.fromEntries(Object.entries(row).filter(([key]) => key.trim().length > 0).map(([key, value]) => [key, value ?? null]));
 const dateId = (value: unknown) => {
@@ -33,27 +33,27 @@ const rowDate = (row: RawRow) => text(row.OrderDate ?? row["Order Date"]);
 const rowRepName = (row: RawRow) => text(row.SalespersonName ?? row.Salesperson ?? row.UserName ?? row["User Name"]);
 const packageCount = (serviceDetails: Array<{ packageName: string }>) => serviceDetails.filter((item) => Boolean(item.packageName)).length;
 
-export function parseATTReport(buffer: Buffer): RawRow[] {
+export function parseCompanyAReport(buffer: Buffer): RawRow[] {
   const result = Papa.parse<RawRow>(buffer.toString("utf8"), { header: true, skipEmptyLines: true });
-  if (result.errors.length) throw new Error(`Unable to read ATT CSV: ${result.errors[0]?.message ?? "unknown CSV error"}.`);
+  if (result.errors.length) throw new Error(`Unable to read Company A CSV: ${result.errors[0]?.message ?? "unknown CSV error"}.`);
   const first = result.data[0] ?? {};
-  if (!("OrderID" in first || "Order ID" in first) || !("OrderDate" in first || "Order Date" in first)) throw new Error("This is not an ATT order export. Missing Order ID or Order Date.");
-  if (!services.some((service) => service.modernPackage in first || service.legacyPackage in first)) throw new Error("This ATT export does not include Video, Internet, or Wireless package columns.");
+  if (!("OrderID" in first || "Order ID" in first) || !("OrderDate" in first || "Order Date" in first)) throw new Error("This is not an Company A order export. Missing Order ID or Order Date.");
+  if (!services.some((service) => service.modernPackage in first || service.legacyPackage in first)) throw new Error("This Company A export does not include Video, Internet, or Wireless package columns.");
   return result.data;
 }
 
-export async function importATTRows({ rows, uploadId, actorUid, fileName, storagePath }: { rows: RawRow[]; uploadId: string; actorUid: string; fileName: string; storagePath: string }) {
+export async function importCompanyARows({ rows, uploadId, actorUid, fileName, storagePath }: { rows: RawRow[]; uploadId: string; actorUid: string; fileName: string; storagePath: string }) {
   const db = getAdminDb();
   const reps = await loadSaleMatchableReps(db);
   const inactiveRepUids = new Set(reps.filter((rep) => rep.status === "inactive").map((rep) => rep.repUid));
-  const [existingAtt, existingTFiber, existingManual] = await Promise.all([
+  const [existingCompanyA, existingCompanyB, existingManual] = await Promise.all([
     orderCollection().get(),
-    db.collection("salesOrders").doc("tfiber").collection("orders").get(),
+    db.collection("salesOrders").doc("companyb").collection("orders").get(),
     db.collection("salesOrders").doc("manual").collection("orders").get(),
   ]);
-  const existing = new Map(existingAtt.docs.map((document) => [document.id, document.data()]));
+  const existing = new Map(existingCompanyA.docs.map((document) => [document.id, document.data()]));
   const existingSalesDaysByRep = new Set<string>();
-  for (const document of [...existingAtt.docs, ...existingTFiber.docs, ...existingManual.docs]) {
+  for (const document of [...existingCompanyA.docs, ...existingCompanyB.docs, ...existingManual.docs]) {
     const data = document.data();
     const repUid = String(data.matchedRepUid || "").trim();
     const orderDateId = String(data.orderDateId || "").trim();
@@ -97,7 +97,7 @@ export async function importATTRows({ rows, uploadId, actorUid, fileName, storag
     const cancellationDateId = serviceDetails.find((item) => item.cancellationDateId)?.cancellationDateId ?? "";
     const matchedRep = result.repUid ? reps.find((rep) => rep.repUid === result.repUid) : undefined;
     canonical.set(orderUid, { orderUid, unmatched: !isMatched, data: {
-      orderUid, orderId, provider: "att", serviceType: "att", packageName, sourceUploadId: uploadId,
+      orderUid, orderId, provider: "companya", serviceType: "companya", packageName, sourceUploadId: uploadId,
       orderDate: rowDate(row), orderDateId, saleCount, rawRepName, rawSalesId: "", rawManagerName: "",
       matchedRepUid: result.repUid, teamId: matchedRep?.teamId ?? null, matchStatus: isMatched ? (result.method === "manual" ? "manual" : "matched") : "unmatched", matchMethod: result.method ?? null, lockedAssignment: Boolean(previous?.lockedAssignment),
       accountStatus, installationDateId, cancellationDateId, rawData: serializableRow(row),
@@ -107,26 +107,26 @@ export async function importATTRows({ rows, uploadId, actorUid, fileName, storag
   const orders = [...canonical.values()];
   const totalSales = orders.reduce((sum, order) => sum + Number(order.data.saleCount || 0), 0);
   const matchedSales = orders.reduce((sum, order) => sum + (order.unmatched ? 0 : Number(order.data.saleCount || 0)), 0);
-  // ATT rows carry a wide audit payload. Keep commits deliberately small so a historical export
+  // Company A rows carry a wide audit payload. Keep commits deliberately small so a historical export
   // remains below Firestore's 10 MiB atomic-write limit.
   for (const group of chunks(orders, 40)) {
     const batch = db.batch();
     for (const order of group) {
       batch.set(orderCollection().doc(order.orderUid), order.data, { merge: true });
       if (order.unmatched) {
-        const ref = db.collection("unmatchedImports").doc(`${uploadId}-att-${order.orderUid}`);
-        batch.set(ref, { unmatchedId: ref.id, uploadId, provider: "att", rawRepName: order.data.rawRepName, rawSalesId: "", rawData: order.data.rawData, suggestedRepUids: [], resolvedRepUid: null, status: "open", createdAt: FieldValue.serverTimestamp() }, { merge: true });
+        const ref = db.collection("unmatchedImports").doc(`${uploadId}-companya-${order.orderUid}`);
+        batch.set(ref, { unmatchedId: ref.id, uploadId, provider: "companya", rawRepName: order.data.rawRepName, rawSalesId: "", rawData: order.data.rawData, suggestedRepUids: [], resolvedRepUid: null, status: "open", createdAt: FieldValue.serverTimestamp() }, { merge: true });
       }
     }
     await batch.commit();
   }
   const unmatchedSales = totalSales - matchedSales;
   const repsReactivated = await reactivateInactiveRepsForMatchedSales(newlyMatchedInactiveRepUids, db);
-  await db.collection("uploadRuns").doc(uploadId).set({ uploadId, type: "attSales", fileName, storagePath, uploadedBy: actorUid, uploadedAt: FieldValue.serverTimestamp(), rowsRead: rows.length, rowsValid: totalSales, rowsSkipped: skipped, rowsMatched: matchedSales, rowsUnmatched: unmatchedSales, selectedDateIds: [], status: "complete", errors: [], summary: { provider: "att", saleCount: totalSales } }, { merge: true });
+  await db.collection("uploadRuns").doc(uploadId).set({ uploadId, type: "companyASales", fileName, storagePath, uploadedBy: actorUid, uploadedAt: FieldValue.serverTimestamp(), rowsRead: rows.length, rowsValid: totalSales, rowsSkipped: skipped, rowsMatched: matchedSales, rowsUnmatched: unmatchedSales, selectedDateIds: [], status: "complete", errors: [], summary: { provider: "companya", saleCount: totalSales } }, { merge: true });
   return { rowsRead: rows.length, rowsImported: totalSales, rowsSkipped: skipped, rowsMatched: matchedSales, rowsUnmatched: unmatchedSales, repsReactivated };
 }
 
-export async function rematchATTOrdersForRep(rep: Rep) {
+export async function rematchCompanyAOrdersForRep(rep: Rep) {
   const snapshot = await orderCollection().where("matchStatus", "==", "unmatched").get();
   const candidates = snapshot.docs.filter((document) => Boolean(matchImportRowToRep({ rawRepName: document.data().rawRepName }, [rep]).repUid));
   for (const group of chunks(candidates, 400)) {

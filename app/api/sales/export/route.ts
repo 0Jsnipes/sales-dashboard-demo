@@ -45,8 +45,8 @@ export async function GET(request: Request) {
     const url = new URL(request.url); const start = url.searchParams.get("start"); const end = url.searchParams.get("end"); const allTime = url.searchParams.get("allTime") === "true"; const ytd = url.searchParams.get("ytd") === "true";
     if (!allTime && (!/^\d{4}-\d{2}-\d{2}$/.test(start ?? "") || !/^\d{4}-\d{2}-\d{2}$/.test(end ?? "") || start! > end!)) return NextResponse.json({ error: "Choose a valid export date range." }, { status: 400 });
     const db = getAdminDb();
-    const orders = (provider: "tfiber" | "att") => { const collection = db.collection("salesOrders").doc(provider).collection("orders"); return allTime ? collection.get() : collection.where("orderDateId", ">=", start!).where("orderDateId", "<=", end!).get(); };
-    const [tfiber, att, repsSnapshot, assignmentsSnapshot] = await Promise.all([orders("tfiber"), orders("att"), db.collection("reps").get(), db.collection("repLocationAssignments").get()]);
+    const orders = (provider: "companyb" | "companya") => { const collection = db.collection("salesOrders").doc(provider).collection("orders"); return allTime ? collection.get() : collection.where("orderDateId", ">=", start!).where("orderDateId", "<=", end!).get(); };
+    const [companyb, companya, repsSnapshot, assignmentsSnapshot] = await Promise.all([orders("companyb"), orders("companya"), db.collection("reps").get(), db.collection("repLocationAssignments").get()]);
     const roster = new Map(repsSnapshot.docs.map((document) => [document.id, document.data() as Rep]));
     const assignmentsByRep = groupAssignmentsByRep(
       assignmentsSnapshot.docs
@@ -55,17 +55,17 @@ export async function GET(request: Request) {
     );
     const filters = { manager: url.searchParams.get("manager") || "all", team: url.searchParams.get("team") || "all", rep: url.searchParams.get("rep") || "all", location: url.searchParams.get("location") || "all", vendorType: url.searchParams.get("vendorType") || "all", provider: url.searchParams.get("provider") || "all" };
     const locationFor = (rep: Rep | undefined, orderDateId: string) => resolveRepLocation(rep, weekStartFromDateId(orderDateId), assignmentsByRep).locationName;
-    const exported = [...tfiber.docs, ...att.docs].map((document) => {
+    const exported = [...companyb.docs, ...companya.docs].map((document) => {
       const order = document.data();
-      const isATT = String(order.provider).toLowerCase() === "att";
+      const isCompanyA = String(order.provider).toLowerCase() === "companya";
       const rep = order.matchedRepUid ? roster.get(String(order.matchedRepUid)) : undefined;
-      const rawRepName = isATT ? formatImportedName(order.rawRepName) : String(order.rawRepName || "");
+      const rawRepName = isCompanyA ? formatImportedName(order.rawRepName) : String(order.rawRepName || "");
       const displayName = rep?.displayName ?? rawRepName;
       const locationName = locationFor(rep, String(order.orderDateId));
       return {
         orderUid: String(order.orderUid || document.id),
         orderDateId: String(order.orderDateId || ""),
-        provider: isATT ? "ATT" : "T-Fiber",
+        provider: isCompanyA ? "Company A" : "Company B",
         providerKey: String(order.provider || ""),
         orderId: sanitizeOrderId(order.orderId || order.orderUid || document.id),
         accountStatus: String(order.accountStatus || ""),
@@ -74,7 +74,7 @@ export async function GET(request: Request) {
         cancellationDateId: order.cancellationDateId ? String(order.cancellationDateId) : null,
         saleCount: Number(order.saleCount || 1) || 1,
         representative: displayName,
-        manager: rep?.managerName ?? (isATT ? "" : String(order.rawManagerName || "")),
+        manager: rep?.managerName ?? (isCompanyA ? "" : String(order.rawManagerName || "")),
         location: locationName,
         vendorType: rep?.vendorType ?? "unassigned",
         rawRepName,
@@ -85,7 +85,7 @@ export async function GET(request: Request) {
         rawData: order.rawData && typeof order.rawData === "object" ? order.rawData as Record<string, unknown> : {},
       };
     }).filter((row) => (filters.manager === "all" || row.manager === filters.manager) && (filters.team === "all" || row.teamId === filters.team) && (filters.rep === "all" || row.representative === filters.rep) && (filters.location === "all" || row.location === filters.location) && (filters.vendorType === "all" || row.vendorType === filters.vendorType) && (filters.provider === "all" || row.provider.toLowerCase() === filters.provider.toLowerCase())).sort((left, right) => left.orderDateId.localeCompare(right.orderDateId) || left.representative.localeCompare(right.representative));
-    const reportRows = (provider: "ATT" | "T-Fiber") => pruneExportColumns(buildSalesExportRows(exported.filter((row) => row.provider === provider).map((row) => ({
+    const reportRows = (provider: "Company A" | "Company B") => pruneExportColumns(buildSalesExportRows(exported.filter((row) => row.provider === provider).map((row) => ({
       orderUid: row.orderUid,
       orderDateId: row.orderDateId,
       provider: row.provider,
@@ -114,10 +114,10 @@ export async function GET(request: Request) {
       return enableWorksheetFilters(XLSX.utils.json_to_sheet(data.rows, { header: data.headers, dateNF: EXCEL_DATE_FORMAT }));
     };
     const workbook = XLSX.utils.book_new();
-    const attRows = reportRows("ATT");
-    const tfiberRows = reportRows("T-Fiber");
-    if (attRows.length) XLSX.utils.book_append_sheet(workbook, worksheet(attRows), "ATT");
-    if (tfiberRows.length) XLSX.utils.book_append_sheet(workbook, worksheet(tfiberRows), "T-Fiber");
+    const companyARows = reportRows("Company A");
+    const companyBRows = reportRows("Company B");
+    if (companyARows.length) XLSX.utils.book_append_sheet(workbook, worksheet(companyARows), "Company A");
+    if (companyBRows.length) XLSX.utils.book_append_sheet(workbook, worksheet(companyBRows), "Company B");
     if (!workbook.SheetNames.length) XLSX.utils.book_append_sheet(workbook, worksheet([]), "Export");
     const file = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
     const fileName = allTime ? "sales-export-all-time.xlsx" : ytd ? `sales-export-ytd-${start}-to-${end}.xlsx` : `sales-export-${start}-to-${end}.xlsx`;

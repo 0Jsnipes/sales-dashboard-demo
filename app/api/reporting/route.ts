@@ -50,8 +50,8 @@ function customerName(raw: Record<string, unknown> | undefined) {
 
 function providerLabel(value: unknown) {
   const source = text(value).toLowerCase();
-  if (source === "att") return "ATT";
-  if (source === "tfiber" || source === "t-fiber") return "T-Fiber";
+  if (source === "companya" || source === "company a") return "Company A";
+  if (source === "companyb" || source === "company b") return "Company B";
   if (source === "frontier") return "Frontier";
   if (source === "manual") return "Manual";
   return source ? source.toUpperCase() : "Unknown";
@@ -110,13 +110,13 @@ async function sharedContext() {
 
 async function salesRows(): Promise<ReportingPayload> {
   const { db, roster, assignmentsByRep, teamNames } = await sharedContext();
-  const [att, tfiber, manual] = await Promise.all([
-    db.collection("salesOrders").doc("att").collection("orders").get(),
-    db.collection("salesOrders").doc("tfiber").collection("orders").get(),
+  const [companya, companyb, manual] = await Promise.all([
+    db.collection("salesOrders").doc("companya").collection("orders").get(),
+    db.collection("salesOrders").doc("companyb").collection("orders").get(),
     db.collection("salesOrders").doc("manual").collection("orders").get(),
   ]);
 
-  const rows: ReportingRow[] = [...att.docs, ...tfiber.docs, ...manual.docs].map((document) => {
+  const rows: ReportingRow[] = [...companya.docs, ...companyb.docs, ...manual.docs].map((document) => {
     const order = document.data() as Record<string, unknown>;
     const provider = providerLabel(order.provider);
     const raw = order.rawData && typeof order.rawData === "object" ? order.rawData as Record<string, unknown> : {};
@@ -137,7 +137,7 @@ async function salesRows(): Promise<ReportingPayload> {
       matchedRepUid: text(order.matchedRepUid) || null,
       saleCount: Number(order.saleCount || 1),
     };
-    const repName = rep?.displayName || (provider === "ATT" ? formatImportedName(text(order.rawRepName)) : text(order.rawRepName)) || "Unmatched rep";
+    const repName = rep?.displayName || (provider === "Company A" ? formatImportedName(text(order.rawRepName)) : text(order.rawRepName)) || "Unmatched rep";
     const managerName = rep?.managerName || text(order.rawManagerName) || "No manager";
     const locationName = resolveLocation(rep, orderDateId, assignmentsByRep) || "Not assigned";
     const teamId = text(order.teamId || rep?.teamId);
@@ -207,15 +207,15 @@ async function knockRows(): Promise<ReportingPayload> {
     for (const document of reps.docs) {
       const data = document.data() as Record<string, unknown>;
       const rep = resolveRepFromValues({ ...data, repUid: document.id }, roster);
-      const attKnocks = Number(data.attKnocks ?? 0);
-      const tfiberKnocks = Number(data.tfiberKnocks ?? 0);
-      const totalKnocks = Number(data.knocks ?? data.count ?? attKnocks + tfiberKnocks);
+      const companyAKnocks = Number(data.companyAKnocks ?? 0);
+      const companyBKnocks = Number(data.companyBKnocks ?? 0);
+      const totalKnocks = Number(data.knocks ?? data.count ?? companyAKnocks + companyBKnocks);
       const repName = rep?.displayName || text(data.displayName || data.rawRepName) || "Unmatched rep";
       const managerName = rep?.managerName || text(data.managerName) || "No manager";
       const locationName = resolveLocation(rep, dateId, assignmentsByRep) || text(data.locationName) || "Not assigned";
       const teamId = text(data.teamId || rep?.teamId);
       const teamName = teamNames.get(teamId) || (teamId ? "Archived team" : "No team");
-      const provider = attKnocks && tfiberKnocks ? "Mixed" : attKnocks ? "ATT" : tfiberKnocks ? "T-Fiber" : "Unknown";
+      const provider = companyAKnocks && companyBKnocks ? "Mixed" : companyAKnocks ? "Company A" : companyBKnocks ? "Company B" : "Unknown";
       const vendor = text(rep?.vendorType || "unassigned");
       const raw = Object.fromEntries(Object.entries(data).map(([key, value]) => [key, value instanceof Date ? value.toISOString() : value]));
       const values = stringRecord({
@@ -230,8 +230,8 @@ async function knockRows(): Promise<ReportingPayload> {
         Status: text(data.accountStatus || "Recorded"),
         Customer: text(data.customer || data["Customer Name"]),
         Address: text(data["Customer / Address"] || data.Address || data["Service Address"]),
-        "ATT Knocks": attKnocks,
-        "T-Fiber Knocks": tfiberKnocks,
+        "Company A Knocks": companyAKnocks,
+        "Company B Knocks": companyBKnocks,
         "Total Knocks": totalKnocks,
       });
       rows.push({
@@ -249,8 +249,8 @@ async function knockRows(): Promise<ReportingPayload> {
           locationName,
           vendorType: vendor,
           totalKnocks,
-          attKnocks,
-          tfiberKnocks,
+          companyAKnocks,
+          companyBKnocks,
           rawData: raw,
         },
       });
@@ -259,7 +259,7 @@ async function knockRows(): Promise<ReportingPayload> {
 
   rows.sort((a, b) => b.sortDate.localeCompare(a.sortDate) || a.title.localeCompare(b.title));
   return {
-    columns: orderedColumns(rows, ["Date", "Rep", "Order ID", "Status", "Customer", "Address", "Manager", "Team", "Location", "Provider", "Vendor", "Total Knocks", "ATT Knocks", "T-Fiber Knocks"]),
+    columns: orderedColumns(rows, ["Date", "Rep", "Order ID", "Status", "Customer", "Address", "Manager", "Team", "Location", "Provider", "Vendor", "Total Knocks", "Company A Knocks", "Company B Knocks"]),
     rows,
   };
 }

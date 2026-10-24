@@ -17,8 +17,8 @@ function text(value: unknown) {
 
 function normalizeProvider(value: unknown) {
   const source = text(value).toLowerCase();
-  if (source === "att" || source === "at&t") return "att";
-  if (source === "tfiber" || source === "t-fiber" || source === "t-mobile fiber" || source === "tmobile fiber") return "tfiber";
+  if (source === "companya" || source === "company a") return "companya";
+  if (source === "companyb" || source === "company b") return "companyb";
   return source;
 }
 
@@ -96,12 +96,12 @@ export async function GET(request: Request) {
         const lcps = Array.isArray(data.lcps) ? data.lcps.map((value) => String(value).trim()).filter(Boolean) : [];
         if (selectedLcp && selectedLcp !== "all" && !lcps.some((value) => value.toLowerCase() === selectedLcp)) continue;
 
-        const attKnocks = Number(data.attKnocks ?? 0);
-        const tfiberKnocks = Number(data.tfiberKnocks ?? 0);
-        const totalKnocks = Number(data.knocks ?? data.count ?? attKnocks + tfiberKnocks);
-        const provider = attKnocks && tfiberKnocks ? "Mixed" : attKnocks ? "ATT" : tfiberKnocks ? "T-Fiber" : "Unknown";
-        if (selectedProvider === "att" && !attKnocks) continue;
-        if (selectedProvider === "tfiber" && !tfiberKnocks) continue;
+        const companyAKnocks = Number(data.companyAKnocks ?? 0);
+        const companyBKnocks = Number(data.companyBKnocks ?? 0);
+        const totalKnocks = Number(data.knocks ?? data.count ?? companyAKnocks + companyBKnocks);
+        const provider = companyAKnocks && companyBKnocks ? "Mixed" : companyAKnocks ? "Company A" : companyBKnocks ? "Company B" : "Unknown";
+        if (selectedProvider === "companya" && !companyAKnocks) continue;
+        if (selectedProvider === "companyb" && !companyBKnocks) continue;
         if (!totalKnocks) continue;
 
         const rep = resolveRep({ ...data, repUid: document.id }, roster);
@@ -142,8 +142,8 @@ export async function GET(request: Request) {
           Location: locationName,
           Provider: provider,
           "Vendor Type": vendorType,
-          "ATT Knocks": attKnocks,
-          "T-Fiber Knocks": tfiberKnocks,
+          "Company A Knocks": companyAKnocks,
+          "Company B Knocks": companyBKnocks,
           "Total Knocks": totalKnocks,
           LCPs: lcps.join(", "),
           "Order ID": text(data.orderId),

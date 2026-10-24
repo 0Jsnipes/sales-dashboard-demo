@@ -201,8 +201,8 @@ export async function GET(request: Request) {
     const scopedTotals = {
       sales: scopedOrders.reduce((sum, order) => sum + unitsFor(order), 0),
       knocks: activeScopeReps.reduce((sum, rep) => sum + Number(rep.knocks || 0), 0),
-      attKnocks: activeScopeReps.reduce((sum, rep) => sum + Number(rep.attKnocks || 0), 0),
-      tfiberKnocks: activeScopeReps.reduce((sum, rep) => sum + Number(rep.tfiberKnocks || 0), 0),
+      companyAKnocks: activeScopeReps.reduce((sum, rep) => sum + Number(rep.companyAKnocks || 0), 0),
+      companyBKnocks: activeScopeReps.reduce((sum, rep) => sum + Number(rep.companyBKnocks || 0), 0),
       conversion: 0,
       installed: outcomeTotals.installed,
       pending: outcomeTotals.pending,
@@ -260,8 +260,8 @@ export async function GET(request: Request) {
       Scope: topFiltersLabel,
       "Total Sales": scopedTotals.sales,
       Knocks: scopedTotals.knocks,
-      "ATT Knocks": scopedTotals.attKnocks,
-      "T-Fiber Knocks": scopedTotals.tfiberKnocks,
+      "Company A Knocks": scopedTotals.companyAKnocks,
+      "Company B Knocks": scopedTotals.companyBKnocks,
       "Conversion %": scopedTotals.conversion,
       Installed: scopedTotals.installed,
       Pending: scopedTotals.pending,
@@ -312,10 +312,10 @@ export async function GET(request: Request) {
     })));
     appendSheet(workbook, "All Sales", buildSalesExportRows(scopedOrders));
 
-    const attSalesRows = scopedOrders.filter((order) => order.provider === "ATT");
-    const tfiberSalesRows = scopedOrders.filter((order) => order.provider === "T-Fiber");
-    appendSheet(workbook, "ATT Sales", buildSalesExportRows(attSalesRows));
-    appendSheet(workbook, "T-Fiber Sales", buildSalesExportRows(tfiberSalesRows));
+    const companyASalesRows = scopedOrders.filter((order) => order.provider === "Company A");
+    const companyBSalesRows = scopedOrders.filter((order) => order.provider === "Company B");
+    appendSheet(workbook, "Company A Sales", buildSalesExportRows(companyASalesRows));
+    appendSheet(workbook, "Company B Sales", buildSalesExportRows(companyBSalesRows));
     appendSheet(workbook, "Past Due", buildSalesExportRows(pastDueRows));
     appendSheet(workbook, "Canceled", buildSalesExportRows(canceledRows));
 

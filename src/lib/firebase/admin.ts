@@ -14,7 +14,7 @@ import { getDemoAuth, getDemoFirestore } from "@/src/lib/demo/runtime";
  *
  * File storage isn't mocked — nothing in the demo's golden path (roster,
  * imports, teams, reporting) requires it once the two sales-upload routes
- * skip their storage write (see app/api/imports/att and .../tfiber). A few
+ * skip their storage write (see app/api/imports/companya and .../companyb). A few
  * peripheral features that were already effectively dead in this build
  * (inbound email import, the knock CSV pipeline, the backfill ops page)
  * still reference `getAdminApp()` purely so they continue to compile; they

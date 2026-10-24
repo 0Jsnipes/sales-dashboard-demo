@@ -54,8 +54,8 @@ export type TeamAutoEmailSettings = z.infer<typeof teamAutoEmailSettingsSchema>;
 
 export const defaultTeamAutoEmailSettings: TeamAutoEmailSettings = {
   enabled: false,
-  triggerUploadTypes: ["att-sales", "tfiber-sales"],
-  reportFiles: ["att-sales", "tfiber-sales"],
+  triggerUploadTypes: ["companya-sales", "companyb-sales"],
+  reportFiles: ["companya-sales", "companyb-sales"],
   salesRange: "all",
   knocksRange: "previous-day",
   frequency: "daily",

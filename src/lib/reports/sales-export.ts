@@ -1,13 +1,13 @@
 import { enableWorksheetFilters } from "@/src/lib/exports/worksheet";
 
-type SourceExportProvider = "ATT" | "T-Fiber";
+type SourceExportProvider = "Company A" | "Company B";
 
 type SourceExportOrder = {
   provider: SourceExportProvider;
   rawData: Record<string, unknown>;
 };
 
-type ExportProvider = "ATT" | "T-Fiber" | "Manual" | "Unknown";
+type ExportProvider = "Company A" | "Company B" | "Manual" | "Unknown";
 
 type ExportOrder = {
   orderUid?: string;
@@ -46,8 +46,8 @@ function text(value: unknown) {
 
 function normalizeProviderLabel(value: unknown): ExportProvider {
   const source = text(value).toLowerCase();
-  if (source === "att" || source === "at&t") return "ATT";
-  if (source === "tfiber" || source === "t-fiber" || source === "t-mobile fiber" || source === "tmobile fiber") return "T-Fiber";
+  if (source === "companya" || source === "company a") return "Company A";
+  if (source === "companyb" || source === "company b") return "Company B";
   if (source === "manual") return "Manual";
   return "Unknown";
 }
@@ -87,7 +87,7 @@ function normalizedRawRow(rawData: Record<string, unknown> | undefined) {
   );
 }
 
-function attStatusSummary(raw: Record<string, unknown>, fallback: unknown) {
+function companyAStatusSummary(raw: Record<string, unknown>, fallback: unknown) {
   const statuses = [["Video", raw["Video Status"]], ["Internet", raw["Internet Status"]], ["Voice", raw["Voice Status"]], ["Wireless", raw["Wireless Status"]]]
     .filter(([, status]) => text(status))
     .map(([service, status]) => `${service}: ${text(status)}`)
@@ -139,11 +139,11 @@ export function buildSalesExportRow(order: ExportOrder) {
   const manager = text(order.managerName || order.rawManagerName);
   const location = text(order.locationName);
   const customer = text(order.customer || raw["Customer Name"] || raw["Customer / Address"]);
-  const status = provider === "ATT" ? attStatusSummary(raw, order.accountStatus || order.status) : text(order.accountStatus || order.status);
+  const status = provider === "Company A" ? companyAStatusSummary(raw, order.accountStatus || order.status) : text(order.accountStatus || order.status);
   const installDate = raw["Internet Install Date"] ?? raw["Video Install Date"] ?? raw["Voice Install Date"] ?? raw["Wireless Install Date"] ?? raw["Activation Date"] ?? raw["Install Date"] ?? raw["Installation Date"] ?? exportDate(order.installationDateId);
   const estimatedInstallDate = raw["Est. Installation Date"] ?? raw["Estimated Installation Date"] ?? exportDate(order.estimatedInstallationDateId);
 
-  const baseRow = provider === "ATT"
+  const baseRow = provider === "Company A"
     ? {
         "Order Date": raw["Order Date"] ?? exportDate(order.orderDateId),
         "Customer / Address": raw["Customer / Address"] ?? raw["Customer Name"] ?? customer,
@@ -212,7 +212,7 @@ export async function downloadWorkbook(filename: string, sheets: Array<{ name: s
 export function exportOrdersWorkbook(orders: Parameters<typeof buildSalesExportRows>[0], prefix: string) {
   const grouped = new Map<string, typeof orders>();
   for (const order of orders) {
-    const provider = order.provider === "ATT" || order.provider === "T-Fiber" ? order.provider : "Other";
+    const provider = order.provider === "Company A" || order.provider === "Company B" ? order.provider : "Other";
     const current = grouped.get(provider) ?? [];
     current.push(order);
     grouped.set(provider, current);

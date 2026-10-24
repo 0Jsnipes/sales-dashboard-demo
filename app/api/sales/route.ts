@@ -97,8 +97,8 @@ function buildRange(searchParams: URLSearchParams, rangeMode: string | null) {
 
 function normalizeProvider(value: unknown) {
   const source = String(value || "").toLowerCase();
-  if (source === "att") return "att";
-  if (source === "tfiber" || source === "t-fiber") return "tfiber";
+  if (source === "companya" || source === "company a") return "companya";
+  if (source === "companyb" || source === "company b") return "companyb";
   if (source === "manual") return "manual";
   if (source === "frontier") return "frontier";
   return source;
@@ -116,9 +116,9 @@ export async function GET(request: Request) {
     const range = buildRange(url.searchParams, url.searchParams.get("range"));
     const includeOrders = url.searchParams.get("includeOrders") === "true";
     const db = getAdminDb();
-    const [tfiberSnapshot, attSnapshot, manualSnapshot, repsSnapshot, assignmentsSnapshot] = await Promise.all([
-      db.collection("salesOrders").doc("tfiber").collection("orders").where("orderDateId", ">=", range.start).where("orderDateId", "<=", range.end).get(),
-      db.collection("salesOrders").doc("att").collection("orders").where("orderDateId", ">=", range.start).where("orderDateId", "<=", range.end).get(),
+    const [companyBSnapshot, companyASnapshot, manualSnapshot, repsSnapshot, assignmentsSnapshot] = await Promise.all([
+      db.collection("salesOrders").doc("companyb").collection("orders").where("orderDateId", ">=", range.start).where("orderDateId", "<=", range.end).get(),
+      db.collection("salesOrders").doc("companya").collection("orders").where("orderDateId", ">=", range.start).where("orderDateId", "<=", range.end).get(),
       db.collection("salesOrders").doc("manual").collection("orders").where("orderDateId", ">=", range.start).where("orderDateId", "<=", range.end).get(),
       db.collection("reps").get(),
       db.collection("repLocationAssignments").get(),
@@ -137,7 +137,7 @@ export async function GET(request: Request) {
     );
     const resolveLocation = (rep: Rep | undefined) => resolveRepLocation(rep, selectedWeekStart, assignmentsByRep).locationName;
 
-    const allOrders = [...tfiberSnapshot.docs, ...attSnapshot.docs, ...manualSnapshot.docs].map((document) => document.data() as SalesOrder);
+    const allOrders = [...companyBSnapshot.docs, ...companyASnapshot.docs, ...manualSnapshot.docs].map((document) => document.data() as SalesOrder);
     const filteredOrders = applyOutcomeFilter(
       applyTextSearchFilter(allOrders, filters.search, (order) => [
         order.orderId,
@@ -179,19 +179,19 @@ export async function GET(request: Request) {
       const anchor = range.monday ?? new Date(`${range.start}T12:00:00`);
       const dayIndex = Math.max(0, Math.min(dayCount - 1, Math.round((Date.UTC(year, month - 1, day) - Date.UTC(anchor.getFullYear(), anchor.getMonth(), anchor.getDate())) / 86_400_000)));
       const rep = order.matchedRepUid ? roster.get(order.matchedRepUid) : undefined;
-      const isATT = normalizeProvider(order.provider) === "att";
-      const rawName = isATT ? formatImportedName(order.rawRepName || "Unassigned representative") : String(order.rawRepName || "Unassigned representative").trim();
+      const isCompanyA = normalizeProvider(order.provider) === "companya";
+      const rawName = isCompanyA ? formatImportedName(order.rawRepName || "Unassigned representative") : String(order.rawRepName || "Unassigned representative").trim();
       const key = rep ? `rep:${rep.repUid}` : `unmatched:${rawName.toLowerCase()}:${String(order.rawSalesId || "")}`;
       const group: SalesGroup = grouped.get(key) ?? {
         key,
         repUid: rep?.repUid ?? null,
         displayName: rep?.displayName ?? rawName,
         rawSalesId: String(order.rawSalesId || ""),
-        programName: isATT ? "ATT" : "T-Fiber",
+        programName: isCompanyA ? "Company A" : "Company B",
         vendorType: rep?.vendorType ?? "unassigned",
         weeklySalesGoal: Number(rep?.weeklySalesGoal ?? 0),
         weeklyKnocksGoal: Number(rep?.weeklyKnocksGoal ?? 0),
-        managerName: rep?.managerName ?? (isATT ? "" : String(order.rawManagerName || "")),
+        managerName: rep?.managerName ?? (isCompanyA ? "" : String(order.rawManagerName || "")),
         teamId: String(order.teamId || rep?.teamId || "") || null,
         locationName: resolveLocation(rep),
         days: Array.from({ length: dayCount }, () => 0),

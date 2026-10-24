@@ -4,8 +4,8 @@ import { canManageRepRoles, canManageRoster, requireActor } from "@/src/lib/fire
 import { getAdminAuth, getAdminDb } from "@/src/lib/firebase/admin";
 import type { Rep } from "@/src/types/rep";
 import { normalizeName } from "@/src/lib/matching/normalize";
-import { rematchTFiberOrdersForRep } from "@/src/lib/imports/tfiber";
-import { rematchATTOrdersForRep } from "@/src/lib/imports/att";
+import { rematchCompanyBOrdersForRep } from "@/src/lib/imports/companyb";
+import { rematchCompanyAOrdersForRep } from "@/src/lib/imports/companya";
 import { normalizeEmail, normalizeSalesId } from "@/src/lib/matching/normalize";
 import { z } from "zod";
 import { errorResponse } from "@/src/lib/api/error-response";
@@ -47,8 +47,8 @@ export async function PATCH(request: Request, { params }: Params) {
       batch.update(reference, { ...updated, search: { displayName: normalizeName(updated.displayName), aliases: updated.aliases.map(normalizeName), salesIds: updated.salesIds.map(normalizeSalesId) }, updatedAt: FieldValue.serverTimestamp(), updatedBy: actor.token.uid });
       if (rep.authUid) batch.set(db.collection("users").doc(rep.authUid), { repAccessRole: updated.accessRole, dashboardScope: repRolePermissions(updated.accessRole).dashboardScope, updatedAt: FieldValue.serverTimestamp(), updatedBy: actor.token.uid }, { merge: true });
       await batch.commit();
-      const [rematchedTFiberOrders, rematchedATTOrders] = await Promise.all([rematchTFiberOrdersForRep(updated), rematchATTOrdersForRep(updated)]);
-      return NextResponse.json({ rep: updated, rematchedTFiberOrders, rematchedATTOrders });
+      const [rematchedCompanyBOrders, rematchedCompanyAOrders] = await Promise.all([rematchCompanyBOrdersForRep(updated), rematchCompanyAOrdersForRep(updated)]);
+      return NextResponse.json({ rep: updated, rematchedCompanyBOrders, rematchedCompanyAOrders });
     }
     if (body.action === "addAlias") {
       if (actor.profile.role !== "superAdmin") return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
@@ -57,8 +57,8 @@ export async function PATCH(request: Request, { params }: Params) {
       const aliases = rep.aliases.some((current) => normalizeName(current) === normalizeName(alias)) ? rep.aliases : [...rep.aliases, alias];
       const updatedRep = { ...rep, aliases };
       await reference.update({ aliases, "search.aliases": aliases.map(normalizeName), updatedAt: FieldValue.serverTimestamp(), updatedBy: actor.token.uid });
-      const [rematchedTFiberOrders, rematchedATTOrders] = await Promise.all([rematchTFiberOrdersForRep(updatedRep), rematchATTOrdersForRep(updatedRep)]);
-      return NextResponse.json({ aliases, rematchedTFiberOrders, rematchedATTOrders });
+      const [rematchedCompanyBOrders, rematchedCompanyAOrders] = await Promise.all([rematchCompanyBOrdersForRep(updatedRep), rematchCompanyAOrdersForRep(updatedRep)]);
+      return NextResponse.json({ aliases, rematchedCompanyBOrders, rematchedCompanyAOrders });
     }
     if (body.action === "remove") {
       await reference.update({

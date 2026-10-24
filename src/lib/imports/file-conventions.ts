@@ -1,19 +1,19 @@
 import type { KnockSource } from "@/src/lib/knocks/types";
 
-export type ImportKind = "attSales" | "tfiberSales" | "attKnocks" | "tfiberKnocks";
+export type ImportKind = "companyASales" | "companyBSales" | "companyAKnocks" | "companyBKnocks";
 
 const patterns: Record<ImportKind, RegExp> = {
-  attSales: /sales[_ -]?order/i,
-  tfiberSales: /ab marketing orders/i,
-  attKnocks: /^reports?_?/i,
-  tfiberKnocks: /^book1(?:\.[a-z0-9]+)?$/i,
+  companyASales: /sales[_ -]?order/i,
+  companyBSales: /ab marketing orders/i,
+  companyAKnocks: /^reports?_?/i,
+  companyBKnocks: /^book1(?:\.[a-z0-9]+)?$/i,
 };
 
 const labels: Record<ImportKind, string> = {
-  attSales: "Sales_order - ATT",
-  tfiberSales: "AB Marketing Orders - T-fiber",
-  attKnocks: "report - ATT Knocks",
-  tfiberKnocks: "Book1 - t-fiber Knocks",
+  companyASales: "Sales_order - Company A",
+  companyBSales: "AB Marketing Orders - Company B",
+  companyAKnocks: "report - Company A Knocks",
+  companyBKnocks: "Book1 - Company B Knocks",
 };
 
 export function expectedImportFileLabel(kind: ImportKind) {
@@ -26,18 +26,18 @@ export function validateImportFileName(kind: ImportKind, fileName: string) {
 
 export function recognizedEmailImportKind(fileName: string): ImportKind | null {
   const normalized = fileName.trim();
-  if (/\.csv$/i.test(normalized) && validateImportFileName("attSales", normalized)) return "attSales";
+  if (/\.csv$/i.test(normalized) && validateImportFileName("companyASales", normalized)) return "companyASales";
   if (!/\.(xlsx|xls)$/i.test(normalized)) return null;
-  if (validateImportFileName("tfiberSales", normalized)) return "tfiberSales";
-  if (validateImportFileName("tfiberKnocks", normalized)) return "tfiberKnocks";
-  if (validateImportFileName("attKnocks", normalized)) return "attKnocks";
+  if (validateImportFileName("companyBSales", normalized)) return "companyBSales";
+  if (validateImportFileName("companyBKnocks", normalized)) return "companyBKnocks";
+  if (validateImportFileName("companyAKnocks", normalized)) return "companyAKnocks";
   return null;
 }
 
 export function validateKnockImportFileName(source: KnockSource, fileName: string) {
-  return validateImportFileName(source === "att_salesrabbit" ? "attKnocks" : "tfiberKnocks", fileName);
+  return validateImportFileName(source === "companya_salesrabbit" ? "companyAKnocks" : "companyBKnocks", fileName);
 }
 
 export function expectedKnockImportFileLabel(source: KnockSource) {
-  return expectedImportFileLabel(source === "att_salesrabbit" ? "attKnocks" : "tfiberKnocks");
+  return expectedImportFileLabel(source === "companya_salesrabbit" ? "companyAKnocks" : "companyBKnocks");
 }

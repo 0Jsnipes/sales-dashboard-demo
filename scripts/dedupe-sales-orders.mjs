@@ -84,7 +84,7 @@ async function main() {
     .filter((value) => value.startsWith("--provider="))
     .map((value) => value.split("=", 2)[1])
     .filter(Boolean);
-  const targetProviders = providers.length ? providers : ["att", "tfiber", "manual"];
+  const targetProviders = providers.length ? providers : ["companya", "companyb", "manual"];
 
   loadEnvFile(path.join(__dirname, "..", ".env.local"));
   const app = ensureAdminApp();

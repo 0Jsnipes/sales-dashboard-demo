@@ -25,7 +25,7 @@ import type { Team } from "@/src/types/team";
 type TeamForm = { name: string; description: string; color: string; active: boolean; managerRepUid: string };
 type ExportRangeMode = "wtd" | "mtd" | "ytd" | "custom";
 type EmailRangeMode = ExportRangeMode | "previous-day" | "all";
-type ExportFileKind = "att-sales" | "tfiber-sales" | "att-knocks" | "tfiber-knocks";
+type ExportFileKind = "companya-sales" | "companyb-sales" | "companya-knocks" | "companyb-knocks";
 type AutoEmailRangePreset = "all" | "previous-day" | "wtd" | "mtd" | "ytd";
 type AutoEmailRule = {
   ruleId: string;
@@ -44,16 +44,16 @@ type AutoEmailRule = {
 type AutoEmailTemplate = Omit<AutoEmailRule, "ruleId" | "teamId" | "enabled"> & { templateId: string };
 const blankForm: TeamForm = { name: "", description: "", color: "#2563eb", active: true, managerRepUid: "" };
 const exportFileOptions: Array<{ kind: ExportFileKind; label: string; description: string }> = [
-  { kind: "att-sales", label: "ATT sales", description: "ATT orders for the selected period." },
-  { kind: "tfiber-sales", label: "T-Fiber sales", description: "T-Fiber orders for the selected period." },
-  { kind: "att-knocks", label: "ATT knocks", description: "ATT knock activity for the selected period." },
-  { kind: "tfiber-knocks", label: "T-Fiber knocks", description: "T-Fiber knock activity for the selected period." },
+  { kind: "companya-sales", label: "Company A sales", description: "Company A orders for the selected period." },
+  { kind: "companyb-sales", label: "Company B sales", description: "Company B orders for the selected period." },
+  { kind: "companya-knocks", label: "Company A knocks", description: "Company A knock activity for the selected period." },
+  { kind: "companyb-knocks", label: "Company B knocks", description: "Company B knock activity for the selected period." },
 ];
 const autoEmailTriggerOptions: Array<{ kind: ExportFileKind; label: string; description: string }> = [
-  { kind: "att-sales", label: "ATT sales upload", description: "Run after a Sales_order CSV is imported." },
-  { kind: "tfiber-sales", label: "T-Fiber sales upload", description: "Run after an AB Marketing Orders workbook is imported." },
-  { kind: "att-knocks", label: "ATT knocks upload", description: "Run after an ATT report workbook is imported." },
-  { kind: "tfiber-knocks", label: "T-Fiber knocks upload", description: "Run after a Book1 workbook is imported." },
+  { kind: "companya-sales", label: "Company A sales upload", description: "Run after a Sales_order CSV is imported." },
+  { kind: "companyb-sales", label: "Company B sales upload", description: "Run after an AB Marketing Orders workbook is imported." },
+  { kind: "companya-knocks", label: "Company A knocks upload", description: "Run after an Company A report workbook is imported." },
+  { kind: "companyb-knocks", label: "Company B knocks upload", description: "Run after a Book1 workbook is imported." },
 ];
 const allExportFiles = () => new Set<ExportFileKind>(exportFileOptions.map((option) => option.kind));
 
@@ -63,8 +63,8 @@ function newAutoEmailRule(teamId: string, index: number): AutoEmailRule {
     teamId,
     name: `Automatic report ${index}`,
     enabled: false,
-    triggerUploadType: "att-sales",
-    reportFiles: ["att-sales"],
+    triggerUploadType: "companya-sales",
+    reportFiles: ["companya-sales"],
     salesRange: "all",
     knocksRange: "previous-day",
     frequency: "daily",
@@ -353,7 +353,7 @@ export function TeamsPage() {
     try {
       const params = new URLSearchParams(range);
       const getFile = async (kind: ExportFileKind) => {
-        const [provider, dataKind] = kind.split("-") as ["att" | "tfiber", "sales" | "knocks"];
+        const [provider, dataKind] = kind.split("-") as ["companya" | "companyb", "sales" | "knocks"];
         const fileParams = new URLSearchParams(params);
         fileParams.set("provider", provider);
         const response = await authedFetch(`/api/teams/${exportTeam.teamId}/export/${dataKind}?${fileParams.toString()}`);

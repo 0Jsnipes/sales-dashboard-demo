@@ -86,7 +86,7 @@ export function buildDemoDataset(): DemoDataset {
     push("reps", rep.repUid, {
       repUid: rep.repUid, displayName: rep.displayName, firstName, lastName: rest.join(" "), email: rep.email, emailNormalized: rep.email.toLowerCase(), phone: "",
       salesIds: [`SS-${rep.repUid.slice(-6).toUpperCase()}`], aliases: [], managerUid: rep.managerUid, managerName: rep.managerName, teamId: rep.teamId,
-      locationId: locationId(rep.locationName), locationName: rep.locationName, programIds: ["ATT", "T-Fiber"], vendorType: "organic", accessRole: rep.accessRole,
+      locationId: locationId(rep.locationName), locationName: rep.locationName, programIds: ["Company A", "Company B"], vendorType: "organic", accessRole: rep.accessRole,
       weeklySalesGoal: rep.weeklySalesGoal, weeklyKnocksGoal: rep.weeklyKnocksGoal, socials: {}, status: "active", authUid: null, accountStatus: "none",
       onboarding: { onboarded: true, checks: { profile: true, training: true } },
       search: { displayName: rep.displayName.toLowerCase(), aliases: [], salesIds: [`ss-${rep.repUid.slice(-6)}`] },
@@ -106,33 +106,33 @@ export function buildDemoDataset(): DemoDataset {
   const totalDays = 730;
   const startDate = addDays(today, -(totalDays - 1));
   let orderCounter = 100000;
-  const uploadEntries: Array<{ dayId: string; date: Date; provider: "att" | "tfiber"; rows: number }> = [];
+  const uploadEntries: Array<{ dayId: string; date: Date; provider: "companya" | "companyb"; rows: number }> = [];
 
   for (let offset = 0; offset < totalDays; offset += 1) {
     const day = addDays(startDate, offset);
     const dayId = localDateId(day);
     const weekday = day.getDay();
     if (weekday === 0) continue;
-    let attRows = 0;
-    let tfiberRows = 0;
+    let companyARows = 0;
+    let companyBRows = 0;
 
     for (let index = 0; index < flatReps.length; index += 1) {
       const rep = flatReps[index];
       const performanceFactor = 0.62 + (index % flatReps.length) * 0.055;
       const knocks = Math.max(10, Math.round((30 + random() * 42) * performanceFactor));
-      const attKnocks = Math.round(knocks * (0.4 + random() * 0.2));
-      const tfiberKnocks = knocks - attKnocks;
+      const companyAKnocks = Math.round(knocks * (0.4 + random() * 0.2));
+      const companyBKnocks = knocks - companyAKnocks;
       push(`knockDaily/${dayId}/reps`, rep.repUid, {
         repUid: rep.repUid, displayName: rep.displayName, managerName: rep.managerName, teamId: rep.teamId, locationName: rep.locationName,
-        source: "demo", attKnocks, tfiberKnocks, knocks, count: knocks, updatedAt: day,
+        source: "demo", companyAKnocks, companyBKnocks, knocks, count: knocks, updatedAt: day,
       });
 
       const expectedSales = knocks * (0.016 + (index % flatReps.length) * 0.0026);
       const saleCount = Math.min(3, Math.floor(expectedSales) + (random() < expectedSales % 1 ? 1 : 0));
       for (let saleIndex = 0; saleIndex < saleCount; saleIndex += 1) {
-        const provider: "att" | "tfiber" = random() < 0.48 ? "att" : "tfiber";
+        const provider: "companya" | "companyb" = random() < 0.48 ? "companya" : "companyb";
         const statusRoll = random();
-        const status = provider === "tfiber"
+        const status = provider === "companyb"
           ? statusRoll < 0.56 ? "Active" : statusRoll < 0.82 ? "Pending Installation" : statusRoll < 0.92 ? "Preorder" : "Canceled"
           : statusRoll < 0.6 ? "Installed" : statusRoll < 0.82 ? "Pending" : statusRoll < 0.92 ? "Preorder" : "Canceled";
         const installed = status === "Active" || status === "Installed";
@@ -148,13 +148,13 @@ export function buildDemoDataset(): DemoDataset {
           rawData: { "Customer Name": CUSTOMER_NAMES[Math.floor(random() * CUSTOMER_NAMES.length)], "Account Status": status, "Order ID": orderId, Representative: rep.displayName },
           createdAt: day, updatedAt: day,
         });
-        if (provider === "att") attRows += 1; else tfiberRows += 1;
+        if (provider === "companya") companyARows += 1; else companyBRows += 1;
       }
     }
 
-    if (weekday !== 6 && (attRows > 0 || tfiberRows > 0)) {
-      if (attRows > 0) uploadEntries.push({ dayId, date: day, provider: "att", rows: attRows });
-      if (tfiberRows > 0) uploadEntries.push({ dayId, date: day, provider: "tfiber", rows: tfiberRows });
+    if (weekday !== 6 && (companyARows > 0 || companyBRows > 0)) {
+      if (companyARows > 0) uploadEntries.push({ dayId, date: day, provider: "companya", rows: companyARows });
+      if (companyBRows > 0) uploadEntries.push({ dayId, date: day, provider: "companyb", rows: companyBRows });
     }
   }
 
@@ -162,8 +162,8 @@ export function buildDemoDataset(): DemoDataset {
     const uploadId = `upload-${entry.provider}-${entry.dayId}`;
     const uploadedAt = new Date(entry.date.getFullYear(), entry.date.getMonth(), entry.date.getDate(), 8, 30);
     push("uploadRuns", uploadId, {
-      uploadId, type: entry.provider === "att" ? "attSales" : "tfiberSales",
-      fileName: `${entry.provider === "att" ? "ATT" : "TFiber"}_Sales_${entry.dayId}.xlsx`, storagePath: "", uploadedBy: DEMO_UID, uploadedAt,
+      uploadId, type: entry.provider === "companya" ? "companyASales" : "companyBSales",
+      fileName: `${entry.provider === "companya" ? "Company A" : "CompanyB"}_Sales_${entry.dayId}.xlsx`, storagePath: "", uploadedBy: DEMO_UID, uploadedAt,
       status: "complete", rowsRead: entry.rows, rowsValid: entry.rows, rowsSkipped: 0, rowsMatched: entry.rows, rowsUnmatched: 0,
       summary: { saleCount: entry.rows }, ingestMethod: "manual", origin: "", emailSender: "", emailSubject: "",
     });

@@ -12,7 +12,7 @@ import { DataRainBackground } from "@/components/ui/data-rain-background";
 
 const features = [
   { icon: Users, title: "Roster", text: "Maintain a single source of truth for reps, managers, and locations." },
-  { icon: FileUp, title: "Imports", text: "Validate ATT and T-Fiber uploads before they reach reporting." },
+  { icon: FileUp, title: "Imports", text: "Validate Company A and Company B uploads before they reach reporting." },
   { icon: BarChart3, title: "Reporting", text: "Track sales, knocks, goals, and performance from one command center." },
   { icon: Target, title: "Onboarding", text: "Keep first-week setup structured and auditable." },
 ];
@@ -100,7 +100,7 @@ export function LandingPage() {
               <div className="grid gap-3">
                 {[
                   "Review unmatched rows before they enter reporting.",
-                  "Upload ATT and T-Fiber files from the import center.",
+                  "Upload Company A and Company B files from the import center.",
                   "Track onboarding and backfill work with audited actions.",
                 ].map((item) => (
                   <div key={item} className="flex items-start gap-3 rounded-2xl border border-border/70 p-3">

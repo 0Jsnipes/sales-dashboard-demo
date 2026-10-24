@@ -26,21 +26,21 @@ export async function GET(request: Request) {
     if (!range) return NextResponse.json({ error: "Choose a valid date range." }, { status: 400 });
 
     const db = getAdminDb();
-    const salesQuery = (provider: "att" | "tfiber" | "manual") => db.collection("salesOrders").doc(provider).collection("orders")
+    const salesQuery = (provider: "companya" | "companyb" | "manual") => db.collection("salesOrders").doc(provider).collection("orders")
       .where("orderDateId", ">=", range.start)
       .where("orderDateId", "<=", range.end)
       .get();
-    const [chunksSnapshot, repsSnapshot, attSales, tfiberSales, manualSales] = await Promise.all([
+    const [chunksSnapshot, repsSnapshot, companyASales, companyBSales, manualSales] = await Promise.all([
       db.collection("knockExportChunks").where("activityDateKey", ">=", range.start).where("activityDateKey", "<=", range.end).get(),
       db.collection("reps").get(),
-      salesQuery("att"),
-      salesQuery("tfiber"),
+      salesQuery("companya"),
+      salesQuery("companyb"),
       salesQuery("manual"),
     ]);
     const activities: KnockHoursActivity[] = [];
     for (const document of chunksSnapshot.docs) {
       const data = document.data() as { source?: string; activityDateKey?: string; rows?: CachedRow[] };
-      if (data.source !== "tfiber" || !data.activityDateKey) continue;
+      if (data.source !== "companyb" || !data.activityDateKey) continue;
       for (const row of data.rows ?? []) {
         if (!row.repUid) continue;
         if (lcp !== "all" && String(row.rawData?.LCP ?? "").trim().toLowerCase() !== lcp) continue;
@@ -52,7 +52,7 @@ export async function GET(request: Request) {
 
     const reps = new Map(repsSnapshot.docs.map((document) => [document.id, document.data() as Rep]));
     const salesByRep = new Map<string, number>();
-    for (const document of [...attSales.docs, ...tfiberSales.docs, ...manualSales.docs]) {
+    for (const document of [...companyASales.docs, ...companyBSales.docs, ...manualSales.docs]) {
       const data = document.data();
       const repUid = String(data.matchedRepUid ?? "").trim();
       if (!repUid) continue;

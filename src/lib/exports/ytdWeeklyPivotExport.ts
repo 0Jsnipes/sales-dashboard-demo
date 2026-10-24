@@ -2,7 +2,7 @@ import * as XLSX from "xlsx";
 import { toDateId } from "@/src/lib/date/week";
 import { enableWorksheetFilters } from "@/src/lib/exports/worksheet";
 
-export type YtdPivotProvider = "ATT" | "T-Fiber";
+export type YtdPivotProvider = "Company A" | "Company B";
 
 export type YtdPivotInputRow = {
   orderDateId?: string;
@@ -155,14 +155,14 @@ function detectValue(rawData: Record<string, unknown> | undefined, candidates: s
 
 function normalizeProvider(value: unknown, originalSheet?: string) {
   const sources = [text(value), text(originalSheet)].filter(Boolean).map((item) => item.toLowerCase());
-  if (sources.some((item) => item === "att" || item === "at&t" || item === "sales att")) return "ATT" as const;
-  if (sources.some((item) => item === "t-fiber" || item === "tfiber" || item === "t fiber" || item === "t-mobile fiber" || item === "tmobile fiber")) return "T-Fiber" as const;
+  if (sources.some((item) => item === "companya" || item === "company a" || item === "sales companya")) return "Company A" as const;
+  if (sources.some((item) => item === "company b" || item === "companyb" || item === "company b")) return "Company B" as const;
   return null;
 }
 
 type NormalizeResult = {
-  attRows: NormalizedYtdPivotRow[];
-  tfiberRows: NormalizedYtdPivotRow[];
+  companyARows: NormalizedYtdPivotRow[];
+  companyBRows: NormalizedYtdPivotRow[];
   skippedRows: number;
   firstDateFound: string;
   lastDateFound: string;
@@ -213,8 +213,8 @@ export function normalizeSalesRows(rows: YtdPivotInputRow[], selectedYear: numbe
     });
   });
 
-  const attRows = normalized.filter((row) => row.provider === "ATT");
-  const tfiberRows = normalized.filter((row) => row.provider === "T-Fiber");
+  const companyARows = normalized.filter((row) => row.provider === "Company A");
+  const companyBRows = normalized.filter((row) => row.provider === "Company B");
   const maxWeekFromRows = normalized.reduce((max, row) => Math.max(max, row.weekNumber), 0);
   const todayWeek = getYtdWeekInfo(new Date(), selectedYear)?.weekNumber ?? 0;
   const yearEndWeek = getYtdWeekInfo(new Date(selectedYear, 11, 31), selectedYear)?.weekNumber ?? 1;
@@ -222,30 +222,30 @@ export function normalizeSalesRows(rows: YtdPivotInputRow[], selectedYear: numbe
     ? Math.max(maxWeekFromRows, todayWeek, 1)
     : Math.max(maxWeekFromRows, yearEndWeek, 1);
 
-  return { attRows, tfiberRows, skippedRows, firstDateFound, lastDateFound, totalWeeks };
+  return { companyARows, companyBRows, skippedRows, firstDateFound, lastDateFound, totalWeeks };
 }
 
-export function buildWeeklySummary(attRows: NormalizedYtdPivotRow[], tfiberRows: NormalizedYtdPivotRow[], selectedYear: number, totalWeeks: number) {
+export function buildWeeklySummary(companyARows: NormalizedYtdPivotRow[], companyBRows: NormalizedYtdPivotRow[], selectedYear: number, totalWeeks: number) {
   const rows = Array.from({ length: totalWeeks }, (_, index) => {
     const weekNumber = index + 1;
     const weekInfo = getYtdWeekInfo(new Date(selectedYear, 0, 1 + index * 7), selectedYear);
-    const attSales = attRows.filter((row) => row.weekNumber === weekNumber).length;
-    const tfiberSales = tfiberRows.filter((row) => row.weekNumber === weekNumber).length;
+    const companyASales = companyARows.filter((row) => row.weekNumber === weekNumber).length;
+    const companyBSales = companyBRows.filter((row) => row.weekNumber === weekNumber).length;
     return {
       Week: `Week ${weekNumber}`,
       "Date Range": weekInfo?.dateRange ?? "",
-      "ATT Sales": attSales,
-      "T-Fiber Sales": tfiberSales,
-      "Total Sales": attSales + tfiberSales,
+      "Company A Sales": companyASales,
+      "Company B Sales": companyBSales,
+      "Total Sales": companyASales + companyBSales,
     };
   });
 
   rows.push({
     Week: "Total",
     "Date Range": "",
-    "ATT Sales": attRows.length,
-    "T-Fiber Sales": tfiberRows.length,
-    "Total Sales": attRows.length + tfiberRows.length,
+    "Company A Sales": companyARows.length,
+    "Company B Sales": companyBRows.length,
+    "Total Sales": companyARows.length + companyBRows.length,
   });
 
   return rows;
@@ -350,8 +350,8 @@ export function writeWorkbook(sheets: Array<{ name: string; rows: Record<string,
 export function buildRunNotesRows(options: {
   generatedAt: Date;
   selectedYear: number;
-  attRows: NormalizedYtdPivotRow[];
-  tfiberRows: NormalizedYtdPivotRow[];
+  companyARows: NormalizedYtdPivotRow[];
+  companyBRows: NormalizedYtdPivotRow[];
   skippedRows: number;
   firstDateFound: string;
   lastDateFound: string;
@@ -360,9 +360,9 @@ export function buildRunNotesRows(options: {
     { Note: "Generated at", Value: options.generatedAt.toISOString() },
     { Note: "Selected year", Value: options.selectedYear },
     { Note: "Week logic", Value: "Jan 1 based 7-day blocks" },
-    { Note: "ATT total sales", Value: options.attRows.length },
-    { Note: "T-Fiber total sales", Value: options.tfiberRows.length },
-    { Note: "Combined total sales", Value: options.attRows.length + options.tfiberRows.length },
+    { Note: "Company A total sales", Value: options.companyARows.length },
+    { Note: "Company B total sales", Value: options.companyBRows.length },
+    { Note: "Combined total sales", Value: options.companyARows.length + options.companyBRows.length },
     { Note: "Date range found", Value: options.firstDateFound && options.lastDateFound ? `${options.firstDateFound} to ${options.lastDateFound}` : "No valid sales found" },
     { Note: "Skipped rows due to missing/invalid date", Value: options.skippedRows },
   ];
@@ -376,18 +376,18 @@ export function buildYtdWeeklySalesPivotWorkbook(options: {
   const generatedAt = new Date();
   const normalized = normalizeSalesRows(options.rows, options.selectedYear);
   const sheets = [
-    { name: "Weekly Summary", rows: buildWeeklySummary(normalized.attRows, normalized.tfiberRows, options.selectedYear, normalized.totalWeeks) },
-    { name: "ATT Weekly Pivot", rows: buildRepPivot(normalized.attRows, options.selectedYear, normalized.totalWeeks) },
-    { name: "T-Fiber Weekly Pivot", rows: buildRepPivot(normalized.tfiberRows, options.selectedYear, normalized.totalWeeks) },
-    { name: "Normalized ATT", rows: buildNormalizedSheetRows(normalized.attRows) },
-    { name: "Normalized T-Fiber", rows: buildNormalizedSheetRows(normalized.tfiberRows) },
+    { name: "Weekly Summary", rows: buildWeeklySummary(normalized.companyARows, normalized.companyBRows, options.selectedYear, normalized.totalWeeks) },
+    { name: "Company A Weekly Pivot", rows: buildRepPivot(normalized.companyARows, options.selectedYear, normalized.totalWeeks) },
+    { name: "Company B Weekly Pivot", rows: buildRepPivot(normalized.companyBRows, options.selectedYear, normalized.totalWeeks) },
+    { name: "Normalized Company A", rows: buildNormalizedSheetRows(normalized.companyARows) },
+    { name: "Normalized Company B", rows: buildNormalizedSheetRows(normalized.companyBRows) },
     {
       name: "Run Notes",
       rows: buildRunNotesRows({
         generatedAt,
         selectedYear: options.selectedYear,
-        attRows: normalized.attRows,
-        tfiberRows: normalized.tfiberRows,
+        companyARows: normalized.companyARows,
+        companyBRows: normalized.companyBRows,
         skippedRows: normalized.skippedRows,
         firstDateFound: normalized.firstDateFound,
         lastDateFound: normalized.lastDateFound,

@@ -90,8 +90,8 @@ type SalesGridRow = SalesRepGroup & {
 
 function normalizeProviderFilter(value: string) {
   const source = value.trim().toLowerCase();
-  if (source === "att" || source === "at&t") return "att";
-  if (source === "tfiber" || source === "t-fiber" || source === "tmobile fiber" || source === "t-mobile fiber") return "tfiber";
+  if (source === "companya" || source === "company a") return "companya";
+  if (source === "companyb" || source === "company b") return "companyb";
   return source;
 }
 
@@ -664,7 +664,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
 
   const teamChart = useMemo(() => visibleRows.map((row) => ({ name: row.displayName, sales: row.total })), [visibleRows]);
   const knockHoursChart = useMemo(() => {
-    if (!knockHours || (providerFilter !== "all" && normalizeProviderFilter(providerFilter) !== "tfiber")) return [];
+    if (!knockHours || (providerFilter !== "all" && normalizeProviderFilter(providerFilter) !== "companyb")) return [];
     const term = search.trim().toLowerCase();
     return knockHours.rows.filter((row) => {
       if (term && ![row.displayName, row.managerName, row.locationName].join(" ").toLowerCase().includes(term)) return false;
@@ -1131,8 +1131,8 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
               <SelectTrigger className="h-11 border-border/60 bg-background/80"><SelectValue placeholder="Provider" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All providers</SelectItem>
-                <SelectItem value="att">ATT</SelectItem>
-                <SelectItem value="tfiber">T-Fiber</SelectItem>
+                <SelectItem value="companya">Company A</SelectItem>
+                <SelectItem value="companyb">Company B</SelectItem>
               </SelectContent>
             </Select>
             {isKnocks ? (
@@ -1280,7 +1280,7 @@ export function SalesPage({ kind = "sales" }: { kind?: WorkspaceKind }) {
                     </div>
                   </div>
                 ) : (
-                  <EmptyState title="No timestamped knocks" description="No matched T-Fiber disposition timestamps were found for this period and scope." />
+                  <EmptyState title="No timestamped knocks" description="No matched Company B disposition timestamps were found for this period and scope." />
                 )
               ) : teamChart.length ? (
                 <div className="h-[420px] w-full">

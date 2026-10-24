@@ -35,10 +35,10 @@ describe("team auto-email settings", () => {
     expect(teamAutoEmailRuleSchema.safeParse({
       ruleId: "sales-rule",
       teamId: "team-1",
-      name: "Daily ATT sales",
+      name: "Daily Company A sales",
       enabled: true,
-      triggerUploadType: "att-sales",
-      reportFiles: ["att-sales"],
+      triggerUploadType: "companya-sales",
+      reportFiles: ["companya-sales"],
       salesRange: "all",
       knocksRange: "previous-day",
       frequency: "daily",
@@ -54,9 +54,9 @@ describe("team auto-email settings", () => {
 
   it("stores reusable templates without team or approval state", () => {
     const parsed = teamAutoEmailTemplateInputSchema.safeParse({
-      name: "Daily T-Fiber knocks",
-      triggerUploadType: "tfiber-knocks",
-      reportFiles: ["tfiber-knocks"],
+      name: "Daily Company B knocks",
+      triggerUploadType: "companyb-knocks",
+      reportFiles: ["companyb-knocks"],
       salesRange: "all",
       knocksRange: "previous-day",
       frequency: "daily",

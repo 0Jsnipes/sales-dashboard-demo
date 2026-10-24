@@ -86,10 +86,10 @@ The system supports multiple report formats from different providers.
 
 Current import workflows include:
 
-* AT&T sales reports
-* T-Fiber sales reports
-* AT&T activity / knock reports
-* T-Fiber activity / knock reports
+* Company A sales reports
+* Company B sales reports
+* Company A activity / knock reports
+* Company B activity / knock reports
 
 Examples of accepted source files include:
 

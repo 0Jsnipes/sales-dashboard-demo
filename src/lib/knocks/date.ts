@@ -33,7 +33,7 @@ function easternWallTime(year: number, month: number, day: number, hour: number,
   return Number.isNaN(parsed.valueOf()) ? null : parsed;
 }
 
-/** Parses T-Fiber's timezone-free Disposition Time value as America/New_York. */
+/** Parses Company B's timezone-free Disposition Time value as America/New_York. */
 export function parseEasternDispositionTime(value: unknown) {
   if (value instanceof Date && !Number.isNaN(value.valueOf())) return value;
   const text = String(value ?? "").replace(/[\u00a0\u202f]/g, " ").trim();

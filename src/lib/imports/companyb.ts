@@ -8,7 +8,7 @@ import { getAdminDb } from "@/src/lib/firebase/admin";
 import { loadSaleMatchableReps, reactivateInactiveRepsForMatchedSales } from "@/src/lib/reps/lifecycle";
 
 type RawRow = Record<string, unknown>;
-const orderCollection = () => getAdminDb().collection("salesOrders").doc("tfiber").collection("orders");
+const orderCollection = () => getAdminDb().collection("salesOrders").doc("companyb").collection("orders");
 const dateId = (value: unknown) => {
   if (value instanceof Date && !Number.isNaN(value.valueOf())) return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
   const text = String(value ?? "").trim();
@@ -18,7 +18,7 @@ const dateId = (value: unknown) => {
 const serializable = (row: RawRow) => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, value instanceof Date ? value.toISOString() : value ?? null]));
 const chunks = <T,>(values: T[], size: number) => Array.from({ length: Math.ceil(values.length / size) }, (_, index) => values.slice(index * size, (index + 1) * size));
 
-export function parseTFiberWorkbook(buffer: Buffer): RawRow[] {
+export function parseCompanyBWorkbook(buffer: Buffer): RawRow[] {
   const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
   const sheet = workbook.Sheets[workbook.SheetNames[0] ?? ""];
   if (!sheet) throw new Error("The workbook does not contain a worksheet.");
@@ -26,22 +26,22 @@ export function parseTFiberWorkbook(buffer: Buffer): RawRow[] {
   const required = ["Alt Order ID", "Order #", "Rep ID", "dealername", "Order Date"];
   const first = rows[0] ?? {};
   const missing = required.filter((column) => !(column in first));
-  if (missing.length) throw new Error(`This is not a T-Fiber order export. Missing: ${missing.join(", ")}.`);
+  if (missing.length) throw new Error(`This is not a Company B order export. Missing: ${missing.join(", ")}.`);
   return rows;
 }
 
-export async function importTFiberRows({ rows, uploadId, actorUid, fileName, storagePath }: { rows: RawRow[]; uploadId: string; actorUid: string; fileName: string; storagePath: string }) {
+export async function importCompanyBRows({ rows, uploadId, actorUid, fileName, storagePath }: { rows: RawRow[]; uploadId: string; actorUid: string; fileName: string; storagePath: string }) {
   const db = getAdminDb();
   const reps = await loadSaleMatchableReps(db);
   const inactiveRepUids = new Set(reps.filter((rep) => rep.status === "inactive").map((rep) => rep.repUid));
-  const [existingATT, existingTFiber, existingManual] = await Promise.all([
-    db.collection("salesOrders").doc("att").collection("orders").get(),
+  const [existingCompanyA, existingCompanyB, existingManual] = await Promise.all([
+    db.collection("salesOrders").doc("companya").collection("orders").get(),
     orderCollection().get(),
     db.collection("salesOrders").doc("manual").collection("orders").get(),
   ]);
-  const existing = new Map(existingTFiber.docs.map((document) => [document.id, document.data()]));
+  const existing = new Map(existingCompanyB.docs.map((document) => [document.id, document.data()]));
   const existingSalesDaysByRep = new Set<string>();
-  for (const document of [...existingATT.docs, ...existingTFiber.docs, ...existingManual.docs]) {
+  for (const document of [...existingCompanyA.docs, ...existingCompanyB.docs, ...existingManual.docs]) {
     const data = document.data();
     const repUid = String(data.matchedRepUid || "").trim();
     const orderDateId = String(data.orderDateId || "").trim();
@@ -71,7 +71,7 @@ export async function importTFiberRows({ rows, uploadId, actorUid, fileName, sto
     const estimatedInstallationDateId = dateId(row["Est. Installation Date"]);
     const activationDateId = dateId(row["Activation Date"]);
     const matchedRep = result.repUid ? reps.find((rep) => rep.repUid === result.repUid) : undefined;
-    const data = { orderUid, orderId, provider: "tfiber", sourceUploadId: uploadId, orderDate: orderDateId, orderDateId, saleCount: 1, rawRepName: String(row.dealername ?? ""), rawSalesId: String(row["Rep ID"] ?? ""), rawManagerName: String(row.Manager ?? row["Manager Name"] ?? ""), matchedRepUid: result.repUid, teamId: matchedRep?.teamId ?? null, matchStatus: isMatched ? (result.method === "manual" ? "manual" : "matched") : "unmatched", matchMethod: result.method, lockedAssignment: Boolean(previous?.lockedAssignment), accountStatus: String(row["Account Status"] ?? ""), installationDateId: activationDateId, estimatedInstallationDateId, cancellationDateId: dateId(row["Order Cancellation Date"]), rawData: serializable(row), legacyPath: null, createdAt: previous?.createdAt ?? FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() };
+    const data = { orderUid, orderId, provider: "companyb", sourceUploadId: uploadId, orderDate: orderDateId, orderDateId, saleCount: 1, rawRepName: String(row.dealername ?? ""), rawSalesId: String(row["Rep ID"] ?? ""), rawManagerName: String(row.Manager ?? row["Manager Name"] ?? ""), matchedRepUid: result.repUid, teamId: matchedRep?.teamId ?? null, matchStatus: isMatched ? (result.method === "manual" ? "manual" : "matched") : "unmatched", matchMethod: result.method, lockedAssignment: Boolean(previous?.lockedAssignment), accountStatus: String(row["Account Status"] ?? ""), installationDateId: activationDateId, estimatedInstallationDateId, cancellationDateId: dateId(row["Order Cancellation Date"]), rawData: serializable(row), legacyPath: null, createdAt: previous?.createdAt ?? FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() };
     orders.push({ orderUid, data, unmatched: !isMatched });
   }
   for (const group of chunks(orders, 350)) {
@@ -79,18 +79,18 @@ export async function importTFiberRows({ rows, uploadId, actorUid, fileName, sto
     for (const order of group) {
       batch.set(orderCollection().doc(order.orderUid), order.data, { merge: true });
       if (order.unmatched) {
-        const ref = db.collection("unmatchedImports").doc(`${uploadId}-tfiber-${order.orderUid}`);
-        batch.set(ref, { unmatchedId: ref.id, uploadId, provider: "tfiber", rawRepName: order.data.rawRepName, rawSalesId: order.data.rawSalesId, rawData: order.data.rawData, suggestedRepUids: [], resolvedRepUid: null, status: "open", createdAt: FieldValue.serverTimestamp() }, { merge: true });
+        const ref = db.collection("unmatchedImports").doc(`${uploadId}-companyb-${order.orderUid}`);
+        batch.set(ref, { unmatchedId: ref.id, uploadId, provider: "companyb", rawRepName: order.data.rawRepName, rawSalesId: order.data.rawSalesId, rawData: order.data.rawData, suggestedRepUids: [], resolvedRepUid: null, status: "open", createdAt: FieldValue.serverTimestamp() }, { merge: true });
       }
     }
     await batch.commit();
   }
   const repsReactivated = await reactivateInactiveRepsForMatchedSales(newlyMatchedInactiveRepUids, db);
-  await db.collection("uploadRuns").doc(uploadId).set({ uploadId, type: "tfiberSales", fileName, storagePath, uploadedBy: actorUid, uploadedAt: FieldValue.serverTimestamp(), rowsRead: rows.length, rowsValid: orders.length, rowsSkipped: skipped, rowsMatched: matched, rowsUnmatched: orders.length - matched, selectedDateIds: [], status: "complete", errors: [], summary: { provider: "tfiber", saleCount: orders.length } }, { merge: true });
+  await db.collection("uploadRuns").doc(uploadId).set({ uploadId, type: "companyBSales", fileName, storagePath, uploadedBy: actorUid, uploadedAt: FieldValue.serverTimestamp(), rowsRead: rows.length, rowsValid: orders.length, rowsSkipped: skipped, rowsMatched: matched, rowsUnmatched: orders.length - matched, selectedDateIds: [], status: "complete", errors: [], summary: { provider: "companyb", saleCount: orders.length } }, { merge: true });
   return { rowsRead: rows.length, rowsImported: orders.length, rowsSkipped: skipped, rowsMatched: matched, rowsUnmatched: orders.length - matched, repsReactivated };
 }
 
-export async function rematchTFiberOrdersForRep(rep: Rep) {
+export async function rematchCompanyBOrdersForRep(rep: Rep) {
   const snapshot = await orderCollection().where("matchStatus", "==", "unmatched").get();
   const candidates = snapshot.docs.filter((document) => {
     const row = document.data();

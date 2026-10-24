@@ -15,7 +15,7 @@ export async function GET(request: Request, { params }: Params) {
     const range = parseTeamExportRange(new URL(request.url).searchParams);
     if (!range) return NextResponse.json({ error: "Choose a valid export date range." }, { status: 400 });
     const provider = new URL(request.url).searchParams.get("provider") as TeamExportProvider | null;
-    if (provider !== "att" && provider !== "tfiber") return NextResponse.json({ error: "Choose ATT or T-Fiber." }, { status: 400 });
+    if (provider !== "companya" && provider !== "companyb") return NextResponse.json({ error: "Choose Company A or Company B." }, { status: 400 });
     const team = await getTeamById((await params).teamId);
     if (!team) return NextResponse.json({ error: "TEAM_NOT_FOUND" }, { status: 404 });
     const file = await buildTeamKnocksExport(team, range, provider);

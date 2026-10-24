@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { canImportSales, requireActor } from "@/src/lib/firebase/server-auth";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { detectKnockSource } from "@/src/lib/knocks/source-detection";
-import { parseAttSalesRabbitKnockRows, parseTFiberKnockRows } from "@/src/lib/knocks/parse";
+import { parseCompanyASalesRabbitKnockRows, parseCompanyBKnockRows } from "@/src/lib/knocks/parse";
 import { expectedKnockImportFileLabel, validateKnockImportFileName } from "@/src/lib/imports/file-conventions";
 import * as XLSX from "xlsx";
 import type { Rep } from "@/src/types/rep";
@@ -29,13 +29,13 @@ export async function POST(request: Request) {
     const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null, raw: true }).filter((row) => Object.values(row).some((value) => String(value ?? "").trim().length > 0));
     const detected = (sourceOverride === "auto" || !sourceOverride ? detectKnockSource(Object.keys(rawRows[0] ?? {})) : sourceOverride) as KnockSource | null;
     if (!detected) return NextResponse.json({ error: "Unable to detect knock source from workbook headers." }, { status: 400 });
-    if (!validateKnockImportFileName(detected, file.name)) return NextResponse.json({ error: `Knock files for ${detected === "att_salesrabbit" ? "ATT" : "T-Fiber"} must follow the ${expectedKnockImportFileLabel(detected)} naming format.` }, { status: 400 });
-    const parsed = detected === "att_salesrabbit" ? parseAttSalesRabbitKnockRows(rawRows, reps) : parseTFiberKnockRows(rawRows, reps);
+    if (!validateKnockImportFileName(detected, file.name)) return NextResponse.json({ error: `Knock files for ${detected === "companya_salesrabbit" ? "Company A" : "Company B"} must follow the ${expectedKnockImportFileLabel(detected)} naming format.` }, { status: 400 });
+    const parsed = detected === "companya_salesrabbit" ? parseCompanyASalesRabbitKnockRows(rawRows, reps) : parseCompanyBKnockRows(rawRows, reps);
     return NextResponse.json({
       ok: true,
       source: detected,
-      provider: detected === "att_salesrabbit" ? "ATT" : "T-Fiber",
-      program: detected === "att_salesrabbit" ? "ATT" : "T-Fiber",
+      provider: detected === "companya_salesrabbit" ? "Company A" : "Company B",
+      program: detected === "companya_salesrabbit" ? "Company A" : "Company B",
       fileName: file.name,
       summary: parsed.summary,
       matchedPreview: parsed.rows.filter((row) => row.matchStatus === "matched").slice(0, 50),

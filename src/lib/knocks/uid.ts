@@ -4,9 +4,9 @@ import type { KnockSource } from "./types";
 const text = (value: unknown) => String(value ?? "").trim();
 
 export function generateKnockUid(row: Record<string, unknown>, source: KnockSource) {
-  if (source === "att_salesrabbit") {
+  if (source === "companya_salesrabbit") {
     const id = text(row["Id"]);
-    return id ? `att_salesrabbit:${id}` : "";
+    return id ? `companya_salesrabbit:${id}` : "";
   }
   const seed = [
     source,
@@ -18,5 +18,5 @@ export function generateKnockUid(row: Record<string, unknown>, source: KnockSour
     text(row.Zip),
   ].join("|");
   const hash = createHash("sha256").update(seed).digest("hex").slice(0, 24);
-  return `tfiber_${hash}`;
+  return `companyb_${hash}`;
 }

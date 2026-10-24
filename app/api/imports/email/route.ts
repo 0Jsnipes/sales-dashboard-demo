@@ -9,10 +9,10 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 function autoEmailTrigger(result: Record<string, unknown>): TeamAutoEmailUploadType | null {
-  if (result.type === "attSales") return "att-sales";
-  if (result.type === "tfiberSales") return "tfiber-sales";
-  if (result.type === "knockImport" && result.source === "att_salesrabbit") return "att-knocks";
-  if (result.type === "knockImport" && result.source === "tfiber") return "tfiber-knocks";
+  if (result.type === "companyASales") return "companya-sales";
+  if (result.type === "companyBSales") return "companyb-sales";
+  if (result.type === "knockImport" && result.source === "companya_salesrabbit") return "companya-knocks";
+  if (result.type === "knockImport" && result.source === "companyb") return "companyb-knocks";
   return null;
 }
 
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     }
 
     const files = attachmentFiles(form);
-    if (!files.length) return NextResponse.json({ error: "NO_ATTACHMENTS" }, { status: 400 });
+    if (!files.length) return NextResponse.json({ error: "NO_CompanyAACHMENTS" }, { status: 400 });
 
     const actorUid = "system:email-import";
     const subject = String(form.get("subject") ?? "").trim();

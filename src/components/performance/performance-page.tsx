@@ -45,8 +45,8 @@ type PerformanceResponse = {
   totals: {
     sales: number;
     knocks: number;
-    attKnocks: number;
-    tfiberKnocks: number;
+    companyAKnocks: number;
+    companyBKnocks: number;
     conversion: number;
     installed: number;
     pending: number;
@@ -67,8 +67,8 @@ type PerformanceResponse = {
     vendorType: string;
     sales: number;
     knocks: number;
-    attKnocks: number;
-    tfiberKnocks: number;
+    companyAKnocks: number;
+    companyBKnocks: number;
     installed: number;
     pending: number;
     pastDue: number;
@@ -267,8 +267,8 @@ function rangeLabel(mode: RangeMode) {
 }
 
 const PROVIDER_COLORS: Record<string, string> = {
-  ATT: "#2563eb",
-  "T-Fiber": "#d946ef",
+  "Company A": "#2563eb",
+  "Company B": "#d946ef",
   Frontier: "#f97316",
   Manual: "#94a3b8",
 };
@@ -283,8 +283,8 @@ function providerColor(name: string) {
 
 function orderProviderKey(order: PerformanceOrder) {
   const source = normalize(order.providerKey ?? order.provider);
-  if (source === "att") return "att";
-  if (source === "tfiber" || source === "t-fiber") return "tfiber";
+  if (source === "companya" || source === "company a") return "companya";
+  if (source === "companyb" || source === "company b") return "companyb";
   if (source === "manual") return "manual";
   return source;
 }
@@ -621,13 +621,13 @@ export function PerformancePage() {
     const sales = scopedOrders.reduce((sum, order) => sum + unitsFor(order), 0);
     const outcomeTotals = countOutcomes(scopedOrders);
     const knocks = activeScopeReps.reduce((sum, rep) => sum + Number(rep.knocks || 0), 0);
-    const attKnocks = activeScopeReps.reduce((sum, rep) => sum + Number(rep.attKnocks || 0), 0);
-    const tfiberKnocks = activeScopeReps.reduce((sum, rep) => sum + Number(rep.tfiberKnocks || 0), 0);
+    const companyAKnocks = activeScopeReps.reduce((sum, rep) => sum + Number(rep.companyAKnocks || 0), 0);
+    const companyBKnocks = activeScopeReps.reduce((sum, rep) => sum + Number(rep.companyBKnocks || 0), 0);
     return {
       sales,
       knocks,
-      attKnocks,
-      tfiberKnocks,
+      companyAKnocks,
+      companyBKnocks,
       conversion: knocks ? Math.round((sales / knocks) * 100) : 0,
       installed: outcomeTotals.installed,
       pending: outcomeTotals.pending,
@@ -791,7 +791,7 @@ export function PerformancePage() {
     if (!reassignOrder || !reassignRepUid) return;
     const provider = orderProviderKey(reassignOrder);
     const documentId = orderDocumentId(reassignOrder);
-    if (!["att", "tfiber", "manual"].includes(provider) || !documentId) {
+    if (!["companya", "companyb", "manual"].includes(provider) || !documentId) {
       toast.error("This order cannot be reassigned from the performance table.");
       return;
     }
@@ -957,7 +957,7 @@ export function PerformancePage() {
         <StatTile
           label="Total knocks"
           value={formatNumber(scopedTotals.knocks)}
-          detail={`ATT ${formatNumber(scopedTotals.attKnocks)} / T-Fiber ${formatNumber(scopedTotals.tfiberKnocks)}`}
+          detail={`Company A ${formatNumber(scopedTotals.companyAKnocks)} / Company B ${formatNumber(scopedTotals.companyBKnocks)}`}
           icon={BarChart3}
           accentColor="var(--info)"
         />

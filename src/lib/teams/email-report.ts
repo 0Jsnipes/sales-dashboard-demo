@@ -22,7 +22,7 @@ const contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml
 
 function fileParts(kind: TeamReportFileKind): { provider: TeamExportProvider; dataKind: "sales" | "knocks" } {
   return {
-    provider: kind.startsWith("att-") ? "att" : "tfiber",
+    provider: kind.startsWith("companya-") ? "companya" : "companyb",
     dataKind: kind.endsWith("sales") ? "sales" : "knocks",
   };
 }
@@ -47,7 +47,7 @@ export async function queueTeamReportEmail(options: QueueTeamReportOptions) {
   const attachments = files.map((kind) => {
     const { provider, dataKind } = fileParts(kind);
     const range = ranges[dataKind];
-    const providerLabel = provider === "att" ? "att" : "tfiber";
+    const providerLabel = provider === "companya" ? "companya" : "companyb";
     const fileName = `${teamExportSlug(team)}-${providerLabel}-${dataKind}-${rangeFilePart(range)}.xlsx`;
     return { filename: fileName, contentType };
   });

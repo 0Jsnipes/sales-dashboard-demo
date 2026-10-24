@@ -1,19 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { makeRep } from "@/test/fixtures/rep";
-import { parseAttSalesRabbitKnockRows, parseTFiberKnockRows } from "./parse";
+import { parseCompanyASalesRabbitKnockRows, parseCompanyBKnockRows } from "./parse";
 
-describe("parseAttSalesRabbitKnockRows", () => {
+describe("parseCompanyASalesRabbitKnockRows", () => {
   const reps = [makeRep({ repUid: "rep-1", displayName: "Jane Doe", email: "jane.doe@example.com" })];
 
   it("normalizes valid rows and matches a rep by email", () => {
-    const { rows, summary } = parseAttSalesRabbitKnockRows(
+    const { rows, summary } = parseCompanyASalesRabbitKnockRows(
       [{ Id: "1", Name: "Jane Doe", Activity: "Sold", Date: "2026-06-01", Email: "jane.doe@example.com", "SalesRabbit Lead ID": "L-1" }],
       reps,
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
-      knockUid: "att_salesrabbit:1",
-      provider: "ATT",
+      knockUid: "companya_salesrabbit:1",
+      provider: "Company A",
       repName: "Jane Doe",
       normalizedStatus: "sale",
       repId: "rep-1",
@@ -24,7 +24,7 @@ describe("parseAttSalesRabbitKnockRows", () => {
   });
 
   it("skips rows with no parseable activity date and leaves them out of validRows", () => {
-    const { rows, summary } = parseAttSalesRabbitKnockRows(
+    const { rows, summary } = parseCompanyASalesRabbitKnockRows(
       [{ Id: "2", Name: "Jane Doe", Activity: "Sold", Date: "" }],
       reps,
     );
@@ -33,12 +33,12 @@ describe("parseAttSalesRabbitKnockRows", () => {
   });
 
   it("ignores fully blank rows without counting them as skipped", () => {
-    const { summary } = parseAttSalesRabbitKnockRows([{ Id: "", Name: "", Activity: "", Date: "" }], reps);
+    const { summary } = parseCompanyASalesRabbitKnockRows([{ Id: "", Name: "", Activity: "", Date: "" }], reps);
     expect(summary).toMatchObject({ totalRowsSeen: 1, validRows: 0, skippedRows: 0 });
   });
 
   it("leaves unmatched rows unmatched when no rep lines up", () => {
-    const { rows } = parseAttSalesRabbitKnockRows(
+    const { rows } = parseCompanyASalesRabbitKnockRows(
       [{ Id: "3", Name: "Nobody Here", Activity: "Try 1", Date: "2026-06-01" }],
       reps,
     );
@@ -46,7 +46,7 @@ describe("parseAttSalesRabbitKnockRows", () => {
   });
 
   it("counts duplicate knock UIDs within the same file", () => {
-    const { summary } = parseAttSalesRabbitKnockRows(
+    const { summary } = parseCompanyASalesRabbitKnockRows(
       [
         { Id: "1", Name: "Jane Doe", Activity: "Sold", Date: "2026-06-01" },
         { Id: "1", Name: "Jane Doe", Activity: "Sold", Date: "2026-06-01" },
@@ -57,17 +57,17 @@ describe("parseAttSalesRabbitKnockRows", () => {
   });
 });
 
-describe("parseTFiberKnockRows", () => {
+describe("parseCompanyBKnockRows", () => {
   const reps = [makeRep({ repUid: "rep-1", displayName: "Jane Doe", email: "jane.doe@example.com" })];
 
   it("normalizes valid rows and matches a rep by name", () => {
-    const { rows, summary } = parseTFiberKnockRows(
+    const { rows, summary } = parseCompanyBKnockRows(
       [{ Rep: "Jane Doe", Status: "New Sale", "Disposition Time (Eastern)": "2026-06-01 10:00:00", "Lead ID": "L-9", external_id: "EXT-9", street_1: "123 Main St", City: "Springfield", state: "IL", Zip: "62704" }],
       reps,
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
-      provider: "T-Fiber",
+      provider: "Company B",
       repName: "Jane Doe",
       normalizedStatus: "sale",
       repId: "rep-1",
@@ -79,7 +79,7 @@ describe("parseTFiberKnockRows", () => {
   });
 
   it("parses the exported Eastern timestamp format without shifting the activity date", () => {
-    const { rows } = parseTFiberKnockRows(
+    const { rows } = parseCompanyBKnockRows(
       [{ Rep: "Jane Doe", Status: "Try 1", "Disposition Time (Eastern)": "Jul 8, 2026, 11:58:50\u202fPM", "Lead ID": "L-10" }],
       reps,
     );
@@ -92,7 +92,7 @@ describe("parseTFiberKnockRows", () => {
   });
 
   it("skips rows with an unparseable disposition time", () => {
-    const { summary } = parseTFiberKnockRows(
+    const { summary } = parseCompanyBKnockRows(
       [{ Rep: "Jane Doe", Status: "New Sale", "Disposition Time (Eastern)": "not-a-date" }],
       reps,
     );
@@ -100,7 +100,7 @@ describe("parseTFiberKnockRows", () => {
   });
 
   it("normalizes unmapped statuses to other rather than dropping them", () => {
-    const { rows } = parseTFiberKnockRows(
+    const { rows } = parseCompanyBKnockRows(
       [{ Rep: "Jane Doe", Status: "Some Brand New Disposition", "Disposition Time (Eastern)": "2026-06-01 10:00:00" }],
       reps,
     );

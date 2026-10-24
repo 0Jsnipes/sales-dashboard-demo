@@ -3,7 +3,7 @@ import { getAdminDb } from "@/src/lib/firebase/admin";
 import { requireActor } from "@/src/lib/firebase/server-auth";
 import { parseCommonFilters, parseDateRangeParams } from "@/src/lib/api/report-filters";
 import { normalizePerformanceOutcome } from "@/src/lib/performance/performance-utils";
-import { readFirstText, resolveTFiberPastDueAsOfDate, type SaleOutcome, type SalesOrderRecord } from "@/src/lib/sales/outcomes";
+import { readFirstText, resolveCompanyBPastDueAsOfDate, type SaleOutcome, type SalesOrderRecord } from "@/src/lib/sales/outcomes";
 import { errorResponse } from "@/src/lib/api/error-response";
 import { dashboardRepAllowed, resolveDashboardAccessScope } from "@/src/lib/dashboard/scope";
 
@@ -55,16 +55,16 @@ const orderDedupeKey = (order: Record<string, unknown>) => `${String(order.order
 
 function providerKey(value: unknown) {
   const source = String(value || "").toLowerCase().replace(/[^a-z]/g, "");
-  if (source === "att" || source.includes("att")) return "att";
-  if (source === "tfiber" || source.includes("tfiber")) return "tfiber";
+  if (source === "companya" || source.includes("companya")) return "companya";
+  if (source === "companyb" || source.includes("companyb")) return "companyb";
   if (source === "frontier" || source.includes("frontier")) return "frontier";
   return "manual";
 }
 
 function providerLabel(value: unknown) {
   const source = providerKey(value);
-  if (source === "att") return "ATT";
-  if (source === "tfiber") return "T-Fiber";
+  if (source === "companya") return "Company A";
+  if (source === "companyb") return "Company B";
   if (source === "frontier") return "Frontier";
   return "Manual";
 }
@@ -78,7 +78,7 @@ function addOutcome(totals: StatusTotals, outcome: SaleOutcome, count: number) {
   if (outcome === "installed") totals.installed += count;
   else if (outcome === "pending") totals.pending += count;
   else if (outcome === "past_due") {
-    // Past due is a subset of pending for T-Fiber reporting, not a replacement bucket.
+    // Past due is a subset of pending for Company B reporting, not a replacement bucket.
     totals.pending += count;
     totals.pastDue += count;
   } else if (outcome === "preorder") totals.preorder += count;
@@ -116,7 +116,7 @@ function resolveEstimatedInstallDateId(order: OrderDoc) {
   return dateIdFromUnknown(
     order.estimatedInstallationDateId
       || readFirstText(raw, ["Est. Installation Date", "Estimated Installation Date", "ETA Installation Date", "Install ETA"])
-      || (providerKey(order.provider || order.providerKey) === "tfiber" ? order.installationDateId : ""),
+      || (providerKey(order.provider || order.providerKey) === "companyb" ? order.installationDateId : ""),
   ) || undefined;
 }
 
@@ -191,11 +191,11 @@ export async function GET(request: Request) {
       const startId = dateId(start);
       const endId = dateId(end);
       const get = (provider: string) => db.collection(salesOrdersCollection).doc(provider).collection("orders").where("orderDateId", ">=", startId).where("orderDateId", "<=", endId).get();
-      const [att, tfiber, manual] = await Promise.all([get("att"), get("tfiber"), get("manual")]);
+      const [companya, companyb, manual] = await Promise.all([get("companya"), get("companyb"), get("manual")]);
       return dedupeOrders(
         [
-          ...att.docs.map((document) => ({ id: document.id, providerKey: "att", ...document.data(), provider: String(document.data().provider || "att") })),
-          ...tfiber.docs.map((document) => ({ id: document.id, providerKey: "tfiber", ...document.data(), provider: String(document.data().provider || "tfiber") })),
+          ...companya.docs.map((document) => ({ id: document.id, providerKey: "companya", ...document.data(), provider: String(document.data().provider || "companya") })),
+          ...companyb.docs.map((document) => ({ id: document.id, providerKey: "companyb", ...document.data(), provider: String(document.data().provider || "companyb") })),
           ...manual.docs.map((document) => ({ id: document.id, providerKey: "manual", ...document.data(), provider: String(document.data().provider || "manual") })),
         ] as OrderDoc[],
       );
@@ -242,7 +242,7 @@ export async function GET(request: Request) {
     const filteredStatusOrders = applyOrderFilters(statusOrders);
     const filteredComparisonOrders = applyOrderFilters(comparisonOrders);
     const filteredPreviousOrders = applyOrderFilters(previousOrders);
-    const tfiberPastDueAsOfDate = resolveTFiberPastDueAsOfDate(filteredStatusOrders);
+    const companyBPastDueAsOfDate = resolveCompanyBPastDueAsOfDate(filteredStatusOrders);
 
     const repTotals = new Map<string, number>();
     for (const order of filteredCurrentOrders) {
@@ -256,7 +256,7 @@ export async function GET(request: Request) {
     const rangeDayCount = Math.max(1, Math.round((lastDay.valueOf() - monday.valueOf()) / 86400000) + 1);
     const byDay = Array.from({ length: rangeDayCount }, () => 0);
     const byDayTeams = Array.from({ length: rangeDayCount }, () => new Map<string, number>());
-    const byProvider: Record<string, number> = { ATT: 0, "T-Fiber": 0, Frontier: 0, Manual: 0 };
+    const byProvider: Record<string, number> = { "Company A": 0, "Company B": 0, Frontier: 0, Manual: 0 };
     for (const order of filteredCurrentOrders) {
       const day = Math.round((Date.parse(String(order.orderDateId) + "T00:00:00Z") - Date.parse(dateId(monday) + "T00:00:00Z")) / 86400000);
       const count = Number(order.saleCount || 1);
@@ -280,10 +280,10 @@ export async function GET(request: Request) {
       for (const document of daily.docs) {
         if (!repMatchesCommon(repMap.get(document.id))) continue;
         const knockData = document.data();
-        const knocks = selectedProvider === "att"
-          ? Number(knockData.attKnocks ?? 0)
-          : selectedProvider === "tfiber"
-            ? Number(knockData.tfiberKnocks ?? 0)
+        const knocks = selectedProvider === "companya"
+          ? Number(knockData.companyAKnocks ?? 0)
+          : selectedProvider === "companyb"
+            ? Number(knockData.companyBKnocks ?? 0)
             : selectedProvider === "manual" || selectedProvider === "frontier"
               ? 0
               : Number(knockData.knocks ?? knockData.count ?? 0);
@@ -325,22 +325,22 @@ export async function GET(request: Request) {
       const uploadedAt = row?.uploadedAt?.toDate?.();
       return row ? { uploadedAt: uploadedAt?.toISOString() ?? null, rows: Number(row.rowsValid ?? row.summary?.saleCount ?? 0), fileName: String(row.fileName ?? "") } : null;
     };
-    const freshness = { att: uploadInfo("attSales"), tfiber: uploadInfo("tfiberSales") };
+    const freshness = { companya: uploadInfo("companyASales"), companyb: uploadInfo("companyBSales") };
     const todayKey = dateId(today);
-    const uploadedToday = [freshness.att, freshness.tfiber].some((item) => item?.uploadedAt && dateId(new Date(item.uploadedAt)) === todayKey);
-    if (!accessScope.restricted && !uploadedToday) alerts.push({ type: "upload", title: "No sales report uploaded today", detail: "Upload an ATT or T-Fiber report to keep today’s reporting current." });
+    const uploadedToday = [freshness.companya, freshness.companyb].some((item) => item?.uploadedAt && dateId(new Date(item.uploadedAt)) === todayKey);
+    if (!accessScope.restricted && !uploadedToday) alerts.push({ type: "upload", title: "No sales report uploaded today", detail: "Upload an Company A or Company B report to keep today’s reporting current." });
 
     const orderStatusTotals = emptyStatusTotals();
     const statusFunnel: Record<string, StatusTotals> = {
-      ATT: emptyStatusTotals(),
-      "T-Fiber": emptyStatusTotals(),
+      "Company A": emptyStatusTotals(),
+      "Company B": emptyStatusTotals(),
       Frontier: emptyStatusTotals(),
       Manual: emptyStatusTotals(),
     };
     for (const order of filteredStatusOrders) {
       const rawProviderKey = providerKey(order.provider || order.providerKey);
       const record = toSalesOrderRecord(order);
-      const outcome = normalizePerformanceOutcome(record, rawProviderKey === "tfiber" ? { asOfDate: tfiberPastDueAsOfDate } : undefined);
+      const outcome = normalizePerformanceOutcome(record, rawProviderKey === "companyb" ? { asOfDate: companyBPastDueAsOfDate } : undefined);
       const count = Number(order.saleCount || 1);
       const label = providerLabel(rawProviderKey);
       addOutcome(orderStatusTotals, outcome, count);
@@ -389,7 +389,7 @@ export async function GET(request: Request) {
       },
       alerts,
       goalPacing,
-      freshness: accessScope.restricted ? { att: null, tfiber: null } : freshness,
+      freshness: accessScope.restricted ? { companya: null, companyb: null } : freshness,
       statusFunnel,
       orderStatusTotals,
       teamSnapshot,
@@ -405,7 +405,7 @@ export async function GET(request: Request) {
       },
       meta: {
         filtersApplied: Object.entries(common).filter(([, value]) => Boolean(value)),
-        tfiberPastDueAsOfDate: dateId(tfiberPastDueAsOfDate),
+        companyBPastDueAsOfDate: dateId(companyBPastDueAsOfDate),
       },
     });
   } catch (error) {

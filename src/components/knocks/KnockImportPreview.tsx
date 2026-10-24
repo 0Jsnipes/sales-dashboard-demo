@@ -13,9 +13,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 type PreviewResponse = {
   ok: boolean;
-  source: "att_salesrabbit" | "tfiber";
-  provider: "ATT" | "T-Fiber";
-  program: "ATT" | "T-Fiber";
+  source: "companya_salesrabbit" | "companyb";
+  provider: "Company A" | "Company B";
+  program: "Company A" | "Company B";
   fileName: string;
   summary: {
     totalRowsSeen: number;
@@ -40,8 +40,8 @@ type PreviewResponse = {
 
 const sourceLabels = {
   auto: "Auto detect",
-  att_salesrabbit: "AT&T SalesRabbit",
-  tfiber: "T-Fiber",
+  companya_salesrabbit: "Company A SalesRabbit",
+  companyb: "Company B",
 } as const;
 
 export function KnockImportPreview() {
@@ -121,7 +121,7 @@ export function KnockImportPreview() {
     <Card className="border-border/70">
       <CardHeader className="space-y-2">
         <CardTitle>Preview Knock Import</CardTitle>
-        <CardDescription>Preview only. T-Fiber knocks must use `Book1`; ATT knocks must use `report` / `reports`.</CardDescription>
+        <CardDescription>Preview only. Company B knocks must use `Book1`; Company A knocks must use `report` / `reports`.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-3 md:grid-cols-[1fr_240px_auto]">
@@ -129,7 +129,7 @@ export function KnockImportPreview() {
             <input {...getInputProps()} aria-label="Knock import file" />
             <UploadCloud className="mx-auto h-6 w-6 text-muted-foreground" />
             <p className="mt-2 font-medium">{file ? file.name : "Drag and drop an .xlsx file"}</p>
-            <p className="mt-1 text-sm text-muted-foreground">T-Fiber: `Book1` workbook. ATT: `report` workbook.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Company B: `Book1` workbook. Company A: `report` workbook.</p>
           </div>
           <div className="space-y-2">
             <p className="text-sm font-medium">Source</p>

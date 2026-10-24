@@ -77,7 +77,7 @@ function Field({ label, helper, children }: { label: string; helper?: string; ch
   );
 }
 
-const PROGRAM_OPTIONS = ["ATT", "T-Fiber"] as const;
+const PROGRAM_OPTIONS = ["Company A", "Company B"] as const;
 const ADD_LOCATION_VALUE = "__add_location__";
 
 export function RepEditorDialog({ open, title, description, saveLabel, saving, form, setForm, managers, locations, managerDraft, locationDraft, onCreateManager, onCreateLocation, managerCreating, locationCreating, canCreateManager, canCreateLocation, onManagerDraftChange, onLocationDraftChange, onRequestAddLocation, onOpenChange, onSubmit }: Props) {

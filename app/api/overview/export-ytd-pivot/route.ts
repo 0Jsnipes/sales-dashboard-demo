@@ -15,8 +15,8 @@ const weekStartFromDateId = (dateIdValue: string) => toDateId(startOfWeek(new Da
 
 function providerKey(value: unknown) {
   const source = String(value || "").toLowerCase().replace(/[^a-z]/g, "");
-  if (source === "att" || source.includes("att")) return "att";
-  if (source === "tfiber" || source.includes("tfiber")) return "tfiber";
+  if (source === "companya" || source.includes("companya")) return "companya";
+  if (source === "companyb" || source.includes("companyb")) return "companyb";
   return "other";
 }
 
@@ -33,15 +33,15 @@ export async function GET(request: Request) {
     const start = `${selectedYear}-01-01`;
     const end = `${selectedYear}-12-31`;
     const db = getAdminDb();
-    const getOrders = (provider: "att" | "tfiber") =>
+    const getOrders = (provider: "companya" | "companyb") =>
       db.collection("salesOrders").doc(provider).collection("orders")
         .where("orderDateId", ">=", start)
         .where("orderDateId", "<=", end)
         .get();
 
-    const [attSnapshot, tfiberSnapshot, repsSnapshot, assignmentsSnapshot] = await Promise.all([
-      getOrders("att"),
-      getOrders("tfiber"),
+    const [companyASnapshot, companyBSnapshot, repsSnapshot, assignmentsSnapshot] = await Promise.all([
+      getOrders("companya"),
+      getOrders("companyb"),
       db.collection("reps").get(),
       db.collection("repLocationAssignments").get(),
     ]);
@@ -55,16 +55,16 @@ export async function GET(request: Request) {
 
     const locationFor = (rep: Rep | undefined, orderDateId: string) => resolveRepLocation(rep, weekStartFromDateId(orderDateId), assignmentsByRep).locationName;
 
-    const toRow = (document: FirebaseFirestore.QueryDocumentSnapshot, fallbackProvider: "ATT" | "T-Fiber", originalRowNumber: number): YtdPivotInputRow => {
+    const toRow = (document: FirebaseFirestore.QueryDocumentSnapshot, fallbackProvider: "Company A" | "Company B", originalRowNumber: number): YtdPivotInputRow => {
       const order = document.data();
       const normalizedProviderKey = providerKey(order.provider);
-      const provider = normalizedProviderKey === "att" ? "ATT" : fallbackProvider;
+      const provider = normalizedProviderKey === "companya" ? "Company A" : fallbackProvider;
       const rep = order.matchedRepUid ? roster.get(String(order.matchedRepUid)) : undefined;
       return {
         orderDateId: String(order.orderDateId || ""),
         provider,
         providerKey: String(order.provider || provider),
-        representative: rep?.displayName ?? (provider === "ATT" ? formatImportedName(order.rawRepName) : String(order.rawRepName || "")),
+        representative: rep?.displayName ?? (provider === "Company A" ? formatImportedName(order.rawRepName) : String(order.rawRepName || "")),
         repName: rep?.displayName ?? String(order.rawRepName || ""),
         rawRepName: String(order.rawRepName || ""),
         location: locationFor(rep, String(order.orderDateId || "")),
@@ -80,8 +80,8 @@ export async function GET(request: Request) {
     };
 
     const rows = [
-      ...attSnapshot.docs.map((document, index) => toRow(document, "ATT", index + 1)),
-      ...tfiberSnapshot.docs.map((document, index) => toRow(document, "T-Fiber", attSnapshot.size + index + 1)),
+      ...companyASnapshot.docs.map((document, index) => toRow(document, "Company A", index + 1)),
+      ...companyBSnapshot.docs.map((document, index) => toRow(document, "Company B", companyASnapshot.size + index + 1)),
     ];
 
     const workbook = buildYtdWeeklySalesPivotWorkbook({

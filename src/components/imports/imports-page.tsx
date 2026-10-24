@@ -43,7 +43,7 @@ type UploadHistoryRow = {
 
 type ServerUploadRow = {
   uploadId: string;
-  type: "attSales" | "tfiberSales";
+  type: "companyASales" | "companyBSales";
   fileName: string;
   storagePath: string;
   uploadedBy: string;
@@ -321,7 +321,7 @@ export function ImportsPage() {
   }, [deleteTarget, loadUploads]);
 
   const summaryTiles = [
-    { label: "Sources available", value: sourcesAvailable, detail: "ATT, T-Fiber, and future intake workflows.", icon: Database, accentColor: "var(--primary)" },
+    { label: "Sources available", value: sourcesAvailable, detail: "Company A, Company B, and future intake workflows.", icon: Database, accentColor: "var(--primary)" },
     { label: "Last successful import", value: lastSuccessful ? lastSuccessful.fileName : "None yet", detail: lastSuccessful ? lastSuccessful.createdAt : "Upload a file to seed the queue.", icon: FileSpreadsheet, accentColor: "var(--success)" },
     { label: "Unmatched rows", value: totalUnmatched, detail: "Review before trusting reporting.", icon: AlertCircle, accentColor: "var(--warning)" },
     { label: "Warnings", value: warnings, detail: "Failed uploads and parsing issues.", icon: ShieldAlert, accentColor: "var(--destructive)" },
@@ -373,7 +373,7 @@ export function ImportsPage() {
           <CardContent className="space-y-3 text-sm">
             <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
               <p className="font-medium">{inboundEmail}</p>
-              <p className="mt-1 text-muted-foreground">ATT sales: `Sales_order`, T-Fiber sales: `AB Marketing Orders`, T-Fiber knocks: `Book1`, ATT knocks: `report` / `reports`.</p>
+              <p className="mt-1 text-muted-foreground">Company A sales: `Sales_order`, Company B sales: `AB Marketing Orders`, Company B knocks: `Book1`, Company A knocks: `report` / `reports`.</p>
             </div>
             <p className="text-muted-foreground">Delivery is automatic; no scheduled inbox scan is required.</p>
           </CardContent>
@@ -391,23 +391,23 @@ export function ImportsPage() {
 
       <section className="grid gap-4 xl:grid-cols-2">
         <SourceCard
-          title="AT&T Sales Report"
+          title="Company A Sales Report"
           description="CSV upload with audit retention and automatic row matching."
-          hint="Use the Sales_order naming format for ATT sales uploads."
-          acceptLabel="Sales_order - ATT (.csv)"
-          sourceKey="attSales"
-          endpoint="/api/imports/att"
+          hint="Use the Sales_order naming format for Company A sales uploads."
+          acceptLabel="Sales_order - Company A (.csv)"
+          sourceKey="companyASales"
+          endpoint="/api/imports/companya"
           accept={{ "text/csv": [".csv"] }}
           onComplete={addHistory}
           disabled={!allowed}
         />
         <SourceCard
-          title="T-Fiber Sales Report"
+          title="Company B Sales Report"
           description="Workbook upload with retained source files and match evaluation."
-          hint="Use the AB Marketing Orders naming format for T-Fiber sales uploads."
-          acceptLabel="AB Marketing Orders - T-fiber (.xlsx/.xls)"
-          sourceKey="tfiberSales"
-          endpoint="/api/imports/tfiber"
+          hint="Use the AB Marketing Orders naming format for Company B sales uploads."
+          acceptLabel="AB Marketing Orders - Company B (.xlsx/.xls)"
+          sourceKey="companyBSales"
+          endpoint="/api/imports/companyb"
           accept={{ "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx", ".xls"], "application/vnd.ms-excel": [".xls"] }}
           onComplete={addHistory}
           disabled={!allowed}
@@ -415,13 +415,13 @@ export function ImportsPage() {
         <Card className="border-border/70">
           <CardHeader>
             <CardTitle>Knock report</CardTitle>
-            <CardDescription>Use `Book1` for T-Fiber knocks and `report` for ATT knocks.</CardDescription>
+            <CardDescription>Use `Book1` for Company B knocks and `report` for Company A knocks.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-5 text-center">
               <PackageSearch className="mx-auto h-6 w-6 text-muted-foreground" />
               <p className="mt-3 font-medium">Knock upload naming is enforced</p>
-              <p className="mt-1 text-sm text-muted-foreground">T-Fiber knocks: `Book1`. ATT knocks: `report` / `reports`.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Company B knocks: `Book1`. Company A knocks: `report` / `reports`.</p>
             </div>
             <Button variant="outline" className="w-full" disabled>
               Coming soon
@@ -451,7 +451,7 @@ export function ImportsPage() {
           <CardHeader className="flex-row items-center justify-between gap-4">
             <div className="space-y-1">
               <CardTitle>Sales uploads</CardTitle>
-              <CardDescription>Delete a bad ATT or T-Fiber upload, or clear the full upload set and re-import.</CardDescription>
+              <CardDescription>Delete a bad Company A or Company B upload, or clear the full upload set and re-import.</CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button type="button" variant="outline" onClick={() => void loadUploads()} disabled={loadingUploads}>
@@ -491,7 +491,7 @@ export function ImportsPage() {
                   ) : uploads.length ? uploads.map((row) => (
                     <TableRow key={row.uploadId}>
                       <TableCell>
-                        <Badge variant="outline">{row.type === "attSales" ? "ATT" : "T-Fiber"}</Badge>
+                        <Badge variant="outline">{row.type === "companyASales" ? "Company A" : "Company B"}</Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant={row.ingestMethod === "email" ? "info" : "outline"}>
@@ -656,7 +656,7 @@ export function ImportsPage() {
             <DialogTitle>{deleteTarget?.kind === "all" ? "Delete all sales uploads" : "Delete sales upload"}</DialogTitle>
             <DialogDescription>
               {deleteTarget?.kind === "all"
-                ? "This removes every ATT and T-Fiber upload, their imported rows, their unmatched queue items, and their stored source files."
+                ? "This removes every Company A and Company B upload, their imported rows, their unmatched queue items, and their stored source files."
                 : deleteTarget?.upload
                   ? `This removes ${deleteTarget.upload.fileName}, the imported rows tied to this upload, the unmatched queue items, and the stored source file.`
                   : "Choose an upload first."}

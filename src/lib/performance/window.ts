@@ -11,7 +11,7 @@ import {
   resolveRepLocation,
   type RepLocationAssignment,
 } from "@/src/lib/reps/location-assignments";
-import { readFirstText, resolveTFiberPastDueAsOfDate, sanitizeOrderId } from "@/src/lib/sales/outcomes";
+import { readFirstText, resolveCompanyBPastDueAsOfDate, sanitizeOrderId } from "@/src/lib/sales/outcomes";
 import type { SaleOutcome, SalesOrderRecord } from "@/src/lib/sales/outcomes";
 import type { Rep } from "@/src/types/rep";
 
@@ -45,8 +45,8 @@ export type RepSummary = {
   vendorType: string;
   sales: number;
   knocks: number;
-  attKnocks: number;
-  tfiberKnocks: number;
+  companyAKnocks: number;
+  companyBKnocks: number;
   installed: number;
   pending: number;
   pastDue: number;
@@ -79,8 +79,8 @@ export type PerformanceResponse = {
   totals: {
     sales: number;
     knocks: number;
-    attKnocks: number;
-    tfiberKnocks: number;
+    companyAKnocks: number;
+    companyBKnocks: number;
     conversion: number;
     installed: number;
     pending: number;
@@ -119,8 +119,8 @@ export type PerformanceWindow = {
 
 function providerLabel(value: unknown) {
   const source = String(value || "").toLowerCase();
-  if (source === "att") return "ATT";
-  if (source === "tfiber" || source === "t-fiber") return "T-Fiber";
+  if (source === "companya" || source === "company a") return "Company A";
+  if (source === "companyb" || source === "company b") return "Company B";
   if (source === "frontier") return "Frontier";
   return "Manual";
 }
@@ -245,17 +245,17 @@ function dateIdFromUnknown(value: unknown) {
 }
 
 function resolveKnockBreakdown(row: Record<string, unknown>) {
-  const attKnocks = Number(row.attKnocks ?? 0);
-  const tfiberKnocks = Number(row.tfiberKnocks ?? 0);
-  const combined = Number(row.knocks ?? row.count ?? (attKnocks + tfiberKnocks));
-  if (attKnocks || tfiberKnocks) {
-    return { knocks: attKnocks + tfiberKnocks, attKnocks, tfiberKnocks };
+  const companyAKnocks = Number(row.companyAKnocks ?? 0);
+  const companyBKnocks = Number(row.companyBKnocks ?? 0);
+  const combined = Number(row.knocks ?? row.count ?? (companyAKnocks + companyBKnocks));
+  if (companyAKnocks || companyBKnocks) {
+    return { knocks: companyAKnocks + companyBKnocks, companyAKnocks, companyBKnocks };
   }
 
   const source = String(row.source ?? "").toLowerCase();
-  if (source.includes("att")) return { knocks: combined, attKnocks: combined, tfiberKnocks: 0 };
-  if (source.includes("tfiber") || source.includes("t-fiber")) return { knocks: combined, attKnocks: 0, tfiberKnocks: combined };
-  return { knocks: combined, attKnocks: 0, tfiberKnocks: 0 };
+  if (source.includes("companya")) return { knocks: combined, companyAKnocks: combined, companyBKnocks: 0 };
+  if (source.includes("companyb") || source.includes("company b")) return { knocks: combined, companyAKnocks: 0, companyBKnocks: combined };
+  return { knocks: combined, companyAKnocks: 0, companyBKnocks: 0 };
 }
 
 function resolveEstimatedInstallDateId(order: OrderDoc) {
@@ -263,7 +263,7 @@ function resolveEstimatedInstallDateId(order: OrderDoc) {
   return dateIdFromUnknown(
     order.estimatedInstallationDateId
       || readFirstText(raw, ["Est. Installation Date", "Estimated Installation Date", "ETA Installation Date", "Install ETA"])
-      || (order.providerKey === "tfiber" ? order.installationDateId : ""),
+      || (order.providerKey === "companyb" ? order.installationDateId : ""),
   ) || undefined;
 }
 
@@ -280,8 +280,8 @@ function initRepStat(rep: Rep): RepSummary {
     vendorType: rep.vendorType || "unassigned",
     sales: 0,
     knocks: 0,
-    attKnocks: 0,
-    tfiberKnocks: 0,
+    companyAKnocks: 0,
+    companyBKnocks: 0,
     installed: 0,
     pending: 0,
     pastDue: 0,
@@ -305,8 +305,8 @@ function initUnmatchedRepStat(name: string, managerName = "No manager", location
     vendorType: "unassigned",
     sales: 0,
     knocks: 0,
-    attKnocks: 0,
-    tfiberKnocks: 0,
+    companyAKnocks: 0,
+    companyBKnocks: 0,
     installed: 0,
     pending: 0,
     pastDue: 0,
@@ -336,8 +336,8 @@ export async function buildPerformanceWindow(range: { start: string; end: string
   const db = getAdminDb();
   const [salesSnapshots, repsSnapshot, assignmentsSnapshot] = await Promise.all([
     Promise.all([
-      db.collection("salesOrders").doc("att").collection("orders").where("orderDateId", ">=", range.start).where("orderDateId", "<=", range.end).get(),
-      db.collection("salesOrders").doc("tfiber").collection("orders").where("orderDateId", ">=", range.start).where("orderDateId", "<=", range.end).get(),
+      db.collection("salesOrders").doc("companya").collection("orders").where("orderDateId", ">=", range.start).where("orderDateId", "<=", range.end).get(),
+      db.collection("salesOrders").doc("companyb").collection("orders").where("orderDateId", ">=", range.start).where("orderDateId", "<=", range.end).get(),
       db.collection("salesOrders").doc("manual").collection("orders").where("orderDateId", ">=", range.start).where("orderDateId", "<=", range.end).get(),
     ]),
     db.collection("reps").get(),
@@ -354,11 +354,11 @@ export async function buildPerformanceWindow(range: { start: string; end: string
   const salesOrders = dedupeOrders(
     salesSnapshots.flatMap((snapshot, index) => snapshot.docs.map((document) => ({
       id: document.id,
-      providerKey: ["att", "tfiber", "manual"][index]!,
+      providerKey: ["companya", "companyb", "manual"][index]!,
       ...(document.data() as Record<string, unknown>),
     } as OrderDoc))),
   );
-  const tfiberPastDueAsOfDate = resolveTFiberPastDueAsOfDate(salesOrders);
+  const companyBPastDueAsOfDate = resolveCompanyBPastDueAsOfDate(salesOrders);
 
   const dailyDocs = await Promise.all(rangeDates(range.start, range.end).map(async (dateId) => {
     const snapshot = await db.collection("knockDaily").doc(dateId).collection("reps").get();
@@ -372,8 +372,8 @@ export async function buildPerformanceWindow(range: { start: string; end: string
   const providerSet = new Set<string>();
   let totalSales = 0;
   let totalKnocks = 0;
-  let totalAttKnocks = 0;
-  let totalTfiberKnocks = 0;
+  let totalCompanyAKnocks = 0;
+  let totalCompanyBKnocks = 0;
   let installed = 0;
   let pending = 0;
   let pastDue = 0;
@@ -392,7 +392,7 @@ export async function buildPerformanceWindow(range: { start: string; end: string
     const repUid = rep?.repUid ?? null;
     const estimatedInstallationDateId = resolveEstimatedInstallDateId(order);
     const rawRepName = String(order.rawRepName || order.displayName || order.orderId || "Unmatched / Not on roster");
-    const displayName = rep?.displayName || (String(order.provider || order.providerKey) === "att" ? formatImportedName(rawRepName) : rawRepName) || "Unmatched / Not on roster";
+    const displayName = rep?.displayName || (String(order.provider || order.providerKey) === "companya" ? formatImportedName(rawRepName) : rawRepName) || "Unmatched / Not on roster";
     const managerName = rep?.managerName || String(order.rawManagerName || "") || "No manager";
     const locationName = resolveLocation(rep, String(order.orderDateId || ""), assignmentsByRep) || rep?.locationName || "Not assigned";
     const provider = providerLabel(order.provider || order.providerKey);
@@ -411,7 +411,7 @@ export async function buildPerformanceWindow(range: { start: string; end: string
       matchedRepUid: repUid,
       saleCount,
     };
-    const outcome = normalizePerformanceOutcome(record, provider === "T-Fiber" ? { asOfDate: tfiberPastDueAsOfDate } : undefined);
+    const outcome = normalizePerformanceOutcome(record, provider === "Company B" ? { asOfDate: companyBPastDueAsOfDate } : undefined);
 
     totalSales += saleCount;
     if (outcome === "installed") installed += saleCount;
@@ -463,8 +463,8 @@ export async function buildPerformanceWindow(range: { start: string; end: string
       const locationName = rep ? resolveLocation(rep, dateId, assignmentsByRep) || rep.locationName || "Not assigned" : String(data.locationName || "") || "Not assigned";
 
       totalKnocks += knocks;
-      totalAttKnocks += breakdown.attKnocks;
-      totalTfiberKnocks += breakdown.tfiberKnocks;
+      totalCompanyAKnocks += breakdown.companyAKnocks;
+      totalCompanyBKnocks += breakdown.companyBKnocks;
       const trend = trendByDay.get(dateId) ?? { dateId, sales: 0, knocks: 0 };
       trend.knocks += knocks;
       trendByDay.set(dateId, trend);
@@ -476,8 +476,8 @@ export async function buildPerformanceWindow(range: { start: string; end: string
       stat.managerName = managerName;
       stat.locationName = locationName;
       stat.knocks += knocks;
-      stat.attKnocks += breakdown.attKnocks;
-      stat.tfiberKnocks += breakdown.tfiberKnocks;
+      stat.companyAKnocks += breakdown.companyAKnocks;
+      stat.companyBKnocks += breakdown.companyBKnocks;
       stat.total += knocks;
       stat.conversion = stat.knocks ? Math.round((stat.sales / stat.knocks) * 100) : 0;
       repStats.set(repUid ? repUid : statKey, stat);
@@ -507,7 +507,7 @@ export async function buildPerformanceWindow(range: { start: string; end: string
       const rep = resolveRepFromOrder(order, roster);
       const repUid = rep?.repUid ?? null;
       const estimatedInstallationDateId = resolveEstimatedInstallDateId(order);
-      const displayName = rep?.displayName || (String(order.provider || order.providerKey) === "att" ? formatImportedName(String(order.rawRepName || "")) : String(order.rawRepName || "Unmatched / Not on roster"));
+      const displayName = rep?.displayName || (String(order.provider || order.providerKey) === "companya" ? formatImportedName(String(order.rawRepName || "")) : String(order.rawRepName || "Unmatched / Not on roster"));
       const managerName = rep?.managerName || String(order.rawManagerName || "") || "No manager";
       const locationName = resolveLocation(rep, String(order.orderDateId || ""), assignmentsByRep) || rep?.locationName || "Not assigned";
       const provider = providerLabel(order.provider || order.providerKey);
@@ -526,7 +526,7 @@ export async function buildPerformanceWindow(range: { start: string; end: string
         matchedRepUid: repUid,
         saleCount: Number(order.saleCount || 1),
       };
-      const outcome = normalizePerformanceOutcome(record, provider === "T-Fiber" ? { asOfDate: tfiberPastDueAsOfDate } : undefined);
+      const outcome = normalizePerformanceOutcome(record, provider === "Company B" ? { asOfDate: companyBPastDueAsOfDate } : undefined);
       return {
         ...record,
         id: `${order.providerKey}:${order.id}`,
@@ -553,8 +553,8 @@ export async function buildPerformanceWindow(range: { start: string; end: string
   const totals = {
     sales: totalSales,
     knocks: totalKnocks,
-    attKnocks: totalAttKnocks,
-    tfiberKnocks: totalTfiberKnocks,
+    companyAKnocks: totalCompanyAKnocks,
+    companyBKnocks: totalCompanyBKnocks,
     conversion: totalKnocks ? Math.round((totalSales / totalKnocks) * 100) : 0,
     installed,
     pending,

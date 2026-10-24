@@ -51,7 +51,7 @@ type OverviewResponse = {
   comparison: { current: number; previous: number; currentStart: string; currentEnd: string; previousStart: string; previousEnd: string };
   alerts: { type: "pace" | "roster" | "upload"; title: string; detail: string }[];
   goalPacing: { repUid: string; displayName: string; sales: number; goal: number; expected: number; remaining: number; neededPerDay: number }[];
-  freshness: { att: { uploadedAt: string | null; rows: number; fileName: string } | null; tfiber: { uploadedAt: string | null; rows: number; fileName: string } | null };
+  freshness: { companya: { uploadedAt: string | null; rows: number; fileName: string } | null; companyb: { uploadedAt: string | null; rows: number; fileName: string } | null };
   statusFunnel: Record<string, OrderStatusTotals>;
   orderStatusTotals?: OrderStatusTotals;
   teamSnapshot: { manager: string; location: string; sales: number; goal: number }[];
@@ -81,13 +81,13 @@ const emptyOrderStatusTotals = (): OrderStatusTotals => ({ total: 0, installed: 
 
 // Categorical palette validated with the dataviz six-checks script (all-pairs, light + dark).
 const providerColors: Record<string, string> = {
-  ATT: "#2a78d6",
-  "T-Fiber": "#d55181",
+  "Company A": "#2a78d6",
+  "Company B": "#d55181",
   Frontier: "#c98500",
   Manual: "#008300",
 };
 
-const providerTokenMap: Record<string, string> = { att: "ATT", tfiber: "T-Fiber", manual: "Manual" };
+const providerTokenMap: Record<string, string> = { companya: "Company A", companyb: "Company B", manual: "Manual" };
 
 const accent = {
   blue: "var(--primary)",
@@ -551,8 +551,8 @@ export function DashboardPage() {
               <SelectTrigger id="dashboard-provider-filter"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All providers</SelectItem>
-                <SelectItem value="att">ATT</SelectItem>
-                <SelectItem value="tfiber">T-Fiber</SelectItem>
+                <SelectItem value="companya">Company A</SelectItem>
+                <SelectItem value="companyb">Company B</SelectItem>
                 <SelectItem value="manual">Manual</SelectItem>
               </SelectContent>
             </Select>
@@ -618,7 +618,7 @@ export function DashboardPage() {
         <StatTile label="Active reps" value={formatNumber(data.activeReps)} detail="Roster members with active status" icon={Users} accentColor={accent.sky} href={canUseOperationalActions ? "/roster" : undefined} />
       </section>
 
-      {canSeeKnockHours && (providerFilter === "all" || providerFilter === "tfiber") ? (
+      {canSeeKnockHours && (providerFilter === "all" || providerFilter === "companyb") ? (
         <section className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border">
           <StatTile label="Total hours worked" value={formatHoursAsDuration(totalHoursWorked)} detail="Summed first-to-last knock span, current scope" icon={Timer} accentColor={accent.violet} />
           <StatTile label="Avg sales per hour" value={avgSalesPerHour.toFixed(1)} detail="Total sales divided by total hours worked" icon={Zap} accentColor={accent.teal} />
@@ -748,10 +748,10 @@ export function DashboardPage() {
         </Panel>
       </section>
 
-      {canSeeKnockHours && (providerFilter === "all" || providerFilter === "tfiber") ? (
+      {canSeeKnockHours && (providerFilter === "all" || providerFilter === "companyb") ? (
         <Panel
           title="Knock hours worked"
-          description={`Each rep's first-to-last knock span per day, summed for ${weekLabel}. Based on T-Fiber knock activity.`}
+          description={`Each rep's first-to-last knock span per day, summed for ${weekLabel}. Based on Company B knock activity.`}
           meta={`${knockHoursRows.length} reps`}
           accentColor={accent.violet}
           bodyClassName="max-h-[560px] overflow-y-auto"
@@ -775,7 +775,7 @@ export function DashboardPage() {
               </ResponsiveContainer>
             </div>
           ) : (
-            <EmptyState title="No knock hours yet" description="Hours appear after T-Fiber knock exports are processed for this range." />
+            <EmptyState title="No knock hours yet" description="Hours appear after Company B knock exports are processed for this range." />
           )}
         </Panel>
       ) : null}

@@ -7,10 +7,10 @@ export function normalizeRepName(value: string) {
 }
 
 function repSourceIds(rep: Rep) {
-  const sourceIds = (rep as Rep & { sourceIds?: { tfiberExternalId?: string[] | string }; tfiberExternalId?: string[] | string; external_id?: string[] | string; externalId?: string[] | string }).sourceIds;
+  const sourceIds = (rep as Rep & { sourceIds?: { companyBExternalId?: string[] | string }; companyBExternalId?: string[] | string; external_id?: string[] | string; externalId?: string[] | string }).sourceIds;
   return [
-    ...(Array.isArray(sourceIds?.tfiberExternalId) ? sourceIds.tfiberExternalId : sourceIds?.tfiberExternalId ? [sourceIds.tfiberExternalId] : []),
-    ...((rep as { tfiberExternalId?: string[] | string }).tfiberExternalId ? Array.isArray((rep as { tfiberExternalId?: string[] | string }).tfiberExternalId) ? (rep as { tfiberExternalId?: string[] | string }).tfiberExternalId as string[] : [(rep as { tfiberExternalId?: string }).tfiberExternalId as string] : []),
+    ...(Array.isArray(sourceIds?.companyBExternalId) ? sourceIds.companyBExternalId : sourceIds?.companyBExternalId ? [sourceIds.companyBExternalId] : []),
+    ...((rep as { companyBExternalId?: string[] | string }).companyBExternalId ? Array.isArray((rep as { companyBExternalId?: string[] | string }).companyBExternalId) ? (rep as { companyBExternalId?: string[] | string }).companyBExternalId as string[] : [(rep as { companyBExternalId?: string }).companyBExternalId as string] : []),
     ...((rep as { external_id?: string[] | string }).external_id ? Array.isArray((rep as { external_id?: string[] | string }).external_id) ? (rep as { external_id?: string[] | string }).external_id as string[] : [(rep as { external_id?: string }).external_id as string] : []),
     ...((rep as { externalId?: string[] | string }).externalId ? Array.isArray((rep as { externalId?: string[] | string }).externalId) ? (rep as { externalId?: string[] | string }).externalId as string[] : [(rep as { externalId?: string }).externalId as string] : []),
   ].map((value) => normalizeSalesId(value));

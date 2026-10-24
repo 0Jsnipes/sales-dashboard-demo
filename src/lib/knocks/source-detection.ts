@@ -4,9 +4,9 @@ const normalize = (value: string) => value.trim().toLowerCase();
 
 export function detectKnockSource(headers: string[]): KnockSource | null {
   const set = new Set(headers.map(normalize));
-  const hasAtt = ["id", "name", "activity", "date", "salesrabbit lead id"].every((header) => set.has(header));
-  if (hasAtt) return "att_salesrabbit";
-  const hasTFiber = ["rep", "status", "disposition time (eastern)", "lead id", "external_id"].every((header) => set.has(header));
-  if (hasTFiber) return "tfiber";
+  const hasCompanyA = ["id", "name", "activity", "date", "salesrabbit lead id"].every((header) => set.has(header));
+  if (hasCompanyA) return "companya_salesrabbit";
+  const hasCompanyB = ["rep", "status", "disposition time (eastern)", "lead id", "external_id"].every((header) => set.has(header));
+  if (hasCompanyB) return "companyb";
   return null;
 }

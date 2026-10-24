@@ -5,7 +5,7 @@ import { getAdminDb } from "@/src/lib/firebase/admin";
 import { toDateId } from "@/src/lib/date/week";
 import type { Rep } from "@/src/types/rep";
 
-const salesProviders = ["att", "tfiber", "manual"] as const;
+const salesProviders = ["companya", "companyb", "manual"] as const;
 const lifecycleActor = "system:auto-no-sales-3-weeks";
 
 const chunks = <T,>(values: T[], size: number) =>

@@ -103,8 +103,8 @@ function buildRange(searchParams: URLSearchParams, rangeMode: string | null) {
 
 function normalizeProvider(value: unknown) {
   const source = String(value || "").trim().toLowerCase();
-  if (source === "att" || source === "at&t") return "att";
-  if (source === "tfiber" || source === "t-fiber" || source === "t-mobile fiber" || source === "tmobile fiber") return "tfiber";
+  if (source === "companya" || source === "company a") return "companya";
+  if (source === "companyb" || source === "company b") return "companyb";
   return source;
 }
 
@@ -136,10 +136,10 @@ export async function GET(request: Request) {
       const cursor = dailyCursors[dayOffset]!;
       for (const document of daily.docs) {
         const data = document.data() as Record<string, unknown>;
-        const count = selectedProvider === "att"
-          ? Number(data.attKnocks ?? 0)
-          : selectedProvider === "tfiber"
-            ? Number(data.tfiberKnocks ?? 0)
+        const count = selectedProvider === "companya"
+          ? Number(data.companyAKnocks ?? 0)
+          : selectedProvider === "companyb"
+            ? Number(data.companyBKnocks ?? 0)
             : Number(data.knocks ?? data.count ?? 0);
         if (!count) continue;
         const lcps = Array.isArray(data.lcps) ? data.lcps.map((value) => String(value).trim()).filter(Boolean) : [];
@@ -241,7 +241,7 @@ export async function POST(request: Request) {
       contentType: file.type,
     });
     const autoEmails = await safelyQueueAutomaticTeamReports({
-      trigger: result.source === "att_salesrabbit" ? "att-knocks" : "tfiber-knocks",
+      trigger: result.source === "companya_salesrabbit" ? "companya-knocks" : "companyb-knocks",
       uploadId: result.uploadId,
       actorUid: actor.token.uid,
     });

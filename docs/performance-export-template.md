@@ -5,8 +5,8 @@ The performance export now runs from `GET /api/performance/export`.
 That route is the correct place to support a real Excel PivotTable template later. Right now it generates the workbook server-side and includes the raw source tabs a template would need:
 
 - `All Sales`
-- `ATT Sales`
-- `T-Fiber Sales`
+- `Company A Sales`
+- `Company B Sales`
 - `Past Due`
 - `Canceled`
 

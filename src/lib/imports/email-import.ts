@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { getStorage } from "firebase-admin/storage";
-import { importATTRows, parseATTReport } from "@/src/lib/imports/att";
-import { importTFiberRows, parseTFiberWorkbook } from "@/src/lib/imports/tfiber";
+import { importCompanyARows, parseCompanyAReport } from "@/src/lib/imports/companya";
+import { importCompanyBRows, parseCompanyBWorkbook } from "@/src/lib/imports/companyb";
 import { expectedImportFileLabel, recognizedEmailImportKind, validateImportFileName } from "@/src/lib/imports/file-conventions";
 import { importKnockWorkbook } from "@/src/lib/knocks/import";
 import { getAdminApp, getAdminDb } from "@/src/lib/firebase/admin";
@@ -56,12 +56,12 @@ export async function importEmailAttachment(file: EmailAttachment, options: Impo
   });
 
   if (isCsv(file.fileName)) {
-    if (!validateImportFileName("attSales", file.fileName)) {
-      throw new Error(`ATT sales files must follow the ${expectedImportFileLabel("attSales")} naming format.`);
+    if (!validateImportFileName("companyASales", file.fileName)) {
+      throw new Error(`Company A sales files must follow the ${expectedImportFileLabel("companyASales")} naming format.`);
     }
     await getAdminDb().collection("uploadRuns").doc(uploadId).set({
       uploadId,
-      type: "attSales",
+      type: "companyASales",
       fileName: file.fileName,
       storagePath,
       uploadedBy: actorUid,
@@ -69,20 +69,20 @@ export async function importEmailAttachment(file: EmailAttachment, options: Impo
       status: "pending",
       ...emailAudit,
     });
-    const summary = await importATTRows({
-      rows: parseATTReport(file.buffer),
+    const summary = await importCompanyARows({
+      rows: parseCompanyAReport(file.buffer),
       uploadId,
       actorUid,
       fileName: file.fileName,
       storagePath,
     });
-    return { fileName: file.fileName, type: "attSales", summary, uploadId };
+    return { fileName: file.fileName, type: "companyASales", summary, uploadId };
   }
 
-  if (isSpreadsheet(file.fileName) && validateImportFileName("tfiberSales", file.fileName)) {
+  if (isSpreadsheet(file.fileName) && validateImportFileName("companyBSales", file.fileName)) {
     await getAdminDb().collection("uploadRuns").doc(uploadId).set({
       uploadId,
-      type: "tfiberSales",
+      type: "companyBSales",
       fileName: file.fileName,
       storagePath,
       uploadedBy: actorUid,
@@ -90,14 +90,14 @@ export async function importEmailAttachment(file: EmailAttachment, options: Impo
       status: "pending",
       ...emailAudit,
     });
-    const summary = await importTFiberRows({
-      rows: parseTFiberWorkbook(file.buffer),
+    const summary = await importCompanyBRows({
+      rows: parseCompanyBWorkbook(file.buffer),
       uploadId,
       actorUid,
       fileName: file.fileName,
       storagePath,
     });
-    return { fileName: file.fileName, type: "tfiberSales", summary, uploadId };
+    return { fileName: file.fileName, type: "companyBSales", summary, uploadId };
   }
 
   if (isSpreadsheet(file.fileName)) {

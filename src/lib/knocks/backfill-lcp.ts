@@ -33,7 +33,7 @@ export async function backfillKnockLcps() {
     const parsed = parseKnockWorkbook(buffer, reps);
     processedUploads += 1;
     for (const row of parsed.rows) {
-      if (row.provider !== "T-Fiber" || !row.lcp) continue;
+      if (row.provider !== "Company B" || !row.lcp) continue;
       const repUid = row.repId ?? `unmatched:${normalizeRepName(row.repName)}`;
       const byRep = updates.get(row.activityDateKey) ?? new Map<string, Set<string>>();
       const values = byRep.get(repUid) ?? new Set<string>();

@@ -8,8 +8,8 @@ import { buildSourceExportRows, buildSourceWorksheetData, EXCEL_DATE_FORMAT } fr
 import type { Team } from "@/src/types/team";
 
 type ExportRange = { start: string; end: string };
-type SourceRow = { provider: "ATT" | "T-Fiber"; rawData: Record<string, unknown> };
-export type TeamExportProvider = "att" | "tfiber";
+type SourceRow = { provider: "Company A" | "Company B"; rawData: Record<string, unknown> };
+export type TeamExportProvider = "companya" | "companyb";
 type TeamSalesExportOptions = { dateOrder?: "source" | "newest-first" };
 
 const DATE_ID = /^\d{4}-\d{2}-\d{2}$/;
@@ -41,7 +41,7 @@ export async function buildTeamSalesExport(team: Team, range: ExportRange, provi
     .where("orderDateId", ">=", range.start)
     .where("orderDateId", "<=", range.end)
     .get();
-  const providerLabel = provider === "att" ? "ATT" : "T-Fiber";
+  const providerLabel = provider === "companya" ? "Company A" : "Company B";
   const matchingOrders = snapshot.docs
     .map((document) => document.data())
     .filter((order) => members.has(String(order.matchedRepUid || "")));
@@ -60,7 +60,7 @@ export async function buildTeamSalesExport(team: Team, range: ExportRange, provi
 export async function buildTeamKnocksExport(team: Team, range: ExportRange, provider: TeamExportProvider) {
   const members = new Set(team.members);
   const cachedRows = await readKnockExportCacheRows(range.start, range.end, team.members);
-  const providerLabel = provider === "att" ? "ATT" : "T-Fiber";
+  const providerLabel = provider === "companya" ? "Company A" : "Company B";
   const matching = cachedRows
     .filter((row) => Boolean(row.repUid && members.has(row.repUid) && row.provider === providerLabel))
     .sort((left, right) => left.activityDateKey.localeCompare(right.activityDateKey) || left.rowIndex - right.rowIndex);

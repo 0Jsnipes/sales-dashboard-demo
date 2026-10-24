@@ -6,7 +6,7 @@ import type { Rep } from "@/src/types/rep";
 import { getAdminApp, getAdminDb } from "@/src/lib/firebase/admin";
 import { reactivateInactiveRepsForMatchedSales } from "@/src/lib/reps/lifecycle";
 import { detectKnockSource } from "@/src/lib/knocks/source-detection";
-import { parseAttSalesRabbitKnockRows, parseTFiberKnockRows } from "@/src/lib/knocks/parse";
+import { parseCompanyASalesRabbitKnockRows, parseCompanyBKnockRows } from "@/src/lib/knocks/parse";
 import { normalizeRepName } from "@/src/lib/knocks/matching";
 import { expectedKnockImportFileLabel, validateKnockImportFileName } from "@/src/lib/imports/file-conventions";
 import type { KnockSource } from "@/src/lib/knocks/types";
@@ -41,18 +41,18 @@ export async function importKnockWorkbook(buffer: Buffer, options: KnockImportOp
   const source = (sourceOverride === "auto" || !sourceOverride ? detectKnockSource(Object.keys(rows[0] ?? {})) : sourceOverride) as KnockSource | null;
   if (!source) throw new Error("Unable to detect knock source from workbook headers.");
   if (!validateKnockImportFileName(source, options.fileName)) {
-    throw new Error(`Knock files for ${source === "att_salesrabbit" ? "ATT" : "T-Fiber"} must follow the ${expectedKnockImportFileLabel(source)} naming format.`);
+    throw new Error(`Knock files for ${source === "companya_salesrabbit" ? "Company A" : "Company B"} must follow the ${expectedKnockImportFileLabel(source)} naming format.`);
   }
 
   const repsSnapshot = await getAdminDb().collection("reps").get();
   const reps = repsSnapshot.docs.map((document) => document.data() as Rep);
-  const parsed = source === "att_salesrabbit" ? parseAttSalesRabbitKnockRows(rows, reps) : parseTFiberKnockRows(rows, reps);
+  const parsed = source === "companya_salesrabbit" ? parseCompanyASalesRabbitKnockRows(rows, reps) : parseCompanyBKnockRows(rows, reps);
 
   const db = getAdminDb();
   const knockDaily = db.collection("knockDaily");
   const repMap = new Map(reps.map((rep) => [rep.repUid, rep]));
   const inactiveRepUids = new Set(reps.filter((rep) => rep.status === "inactive").map((rep) => rep.repUid));
-  const dayTotals = new Map<string, Map<string, { knocks: number; attKnocks: number; tfiberKnocks: number; source: string; rawRepName: string; rawSalesId: string; managerName: string; locationName: string; lcps: Set<string> }>>();
+  const dayTotals = new Map<string, Map<string, { knocks: number; companyAKnocks: number; companyBKnocks: number; source: string; rawRepName: string; rawSalesId: string; managerName: string; locationName: string; lcps: Set<string> }>>();
 
   for (const row of parsed.rows) {
     const day = row.activityDateKey;
@@ -61,8 +61,8 @@ export async function importKnockWorkbook(buffer: Buffer, options: KnockImportOp
     const byRep = dayTotals.get(day) ?? new Map();
     const current = byRep.get(repUid) ?? {
       knocks: 0,
-      attKnocks: 0,
-      tfiberKnocks: 0,
+      companyAKnocks: 0,
+      companyBKnocks: 0,
       source,
       rawRepName: row.repName,
       rawSalesId: row.sourceRepExternalId ?? "",
@@ -72,9 +72,9 @@ export async function importKnockWorkbook(buffer: Buffer, options: KnockImportOp
     };
     const count = Number(row.quantity || 1);
     current.knocks += count;
-    if (row.provider === "ATT") current.attKnocks += count;
-    if (row.provider === "T-Fiber") current.tfiberKnocks += count;
-    if (row.provider === "T-Fiber" && row.lcp) current.lcps.add(String(row.lcp).trim());
+    if (row.provider === "Company A") current.companyAKnocks += count;
+    if (row.provider === "Company B") current.companyBKnocks += count;
+    if (row.provider === "Company B" && row.lcp) current.lcps.add(String(row.lcp).trim());
     if (!rep && row.repName && row.repName.length < current.rawRepName.length) current.rawRepName = row.repName;
     byRep.set(repUid, current);
     dayTotals.set(day, byRep);
@@ -101,8 +101,8 @@ export async function importKnockWorkbook(buffer: Buffer, options: KnockImportOp
     for (const repUid of repUidsForDay) {
       const data = repsForDay.get(repUid) ?? {
         knocks: 0,
-        attKnocks: 0,
-        tfiberKnocks: 0,
+        companyAKnocks: 0,
+        companyBKnocks: 0,
         source,
         rawRepName: "",
         rawSalesId: "",
@@ -111,9 +111,9 @@ export async function importKnockWorkbook(buffer: Buffer, options: KnockImportOp
         lcps: new Set<string>(),
       };
       const existing = existingByRepUid.get(repUid)?.data() as Record<string, unknown> | undefined;
-      const nextAttKnocks = source === "att_salesrabbit" ? Number(data.attKnocks || 0) : Number(existing?.attKnocks ?? 0);
-      const nextTFiberKnocks = source === "tfiber" ? Number(data.tfiberKnocks || 0) : Number(existing?.tfiberKnocks ?? 0);
-      const nextKnocks = nextAttKnocks + nextTFiberKnocks;
+      const nextCompanyAKnocks = source === "companya_salesrabbit" ? Number(data.companyAKnocks || 0) : Number(existing?.companyAKnocks ?? 0);
+      const nextCompanyBKnocks = source === "companyb" ? Number(data.companyBKnocks || 0) : Number(existing?.companyBKnocks ?? 0);
+      const nextKnocks = nextCompanyAKnocks + nextCompanyBKnocks;
 
       if (inactiveRepUids.has(repUid) && nextKnocks > 0) {
         const repDayKey = `${repUid}::${day}`;
@@ -126,7 +126,7 @@ export async function importKnockWorkbook(buffer: Buffer, options: KnockImportOp
 
       const ref = knockDaily.doc(day).collection("reps").doc(repUid);
       const rep = repMap.get(repUid);
-      const nextLcps = source === "tfiber"
+      const nextLcps = source === "companyb"
         ? Array.from(data.lcps)
         : Array.isArray(existing?.lcps)
           ? existing.lcps.map((value) => String(value).trim()).filter(Boolean)
@@ -142,8 +142,8 @@ export async function importKnockWorkbook(buffer: Buffer, options: KnockImportOp
         managerName: rep?.managerName ?? data.managerName ?? String(existing?.managerName || ""),
         teamId: rep?.teamId ?? existing?.teamId ?? null,
         locationName: rep?.locationName ?? data.locationName ?? String(existing?.locationName || ""),
-        attKnocks: nextAttKnocks,
-        tfiberKnocks: nextTFiberKnocks,
+        companyAKnocks: nextCompanyAKnocks,
+        companyBKnocks: nextCompanyBKnocks,
         knocks: nextKnocks,
         count: nextKnocks,
         lcps: nextLcps,

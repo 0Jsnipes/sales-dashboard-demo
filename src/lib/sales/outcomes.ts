@@ -21,7 +21,7 @@ export type SalesOrderRecord = {
 export type SaleOutcomeOptions = {
   /**
    * Date used when deciding whether an estimated install is past due.
-   * For T-Fiber reports, pass the report-as-of date so the dashboard does not
+   * For Company B reports, pass the report-as-of date so the dashboard does not
    * mark orders past due before the source export has had a chance to update.
    */
   asOfDate?: Date | string;
@@ -50,18 +50,18 @@ function dateIdFromValue(value: unknown) {
 
 function providerKey(value: unknown) {
   const source = normalizedText(value).replace(/[^a-z]/g, "");
-  if (source === "tfiber" || source.includes("tfiber")) return "tfiber";
-  if (source === "att" || source.includes("att")) return "att";
+  if (source === "companyb" || source.includes("companyb")) return "companyb";
+  if (source === "companya" || source.includes("companya")) return "companya";
   if (source === "frontier" || source.includes("frontier")) return "frontier";
   return source || "manual";
 }
 
-// T-Fiber's exported report lags real-world installs, so "today" is not a fair
+// Company B's exported report lags real-world installs, so "today" is not a fair
 // cutoff for flagging its orders past due. Anchor instead to the day after the
-// most recent T-Fiber order actually seen in this batch — the report's own "now".
-export function resolveTFiberPastDueAsOfDate(orders: { provider?: unknown; providerKey?: unknown; orderDateId?: unknown }[]) {
+// most recent Company B order actually seen in this batch — the report's own "now".
+export function resolveCompanyBPastDueAsOfDate(orders: { provider?: unknown; providerKey?: unknown; orderDateId?: unknown }[]) {
   const latest = orders
-    .filter((order) => providerKey(order.provider ?? order.providerKey) === "tfiber")
+    .filter((order) => providerKey(order.provider ?? order.providerKey) === "companyb")
     .map((order) => text(order.orderDateId))
     .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))
     .sort()
@@ -70,8 +70,8 @@ export function resolveTFiberPastDueAsOfDate(orders: { provider?: unknown; provi
   return latest ? addDays(new Date(`${latest}T12:00:00`), 1) : new Date();
 }
 
-function isTFiberOrder(order: SalesOrderRecord) {
-  return providerKey(order.provider) === "tfiber";
+function isCompanyBOrder(order: SalesOrderRecord) {
+  return providerKey(order.provider) === "companyb";
 }
 
 function actualInstallDateId(order: SalesOrderRecord) {
@@ -79,9 +79,9 @@ function actualInstallDateId(order: SalesOrderRecord) {
   const explicit = dateIdFromValue(readFirstText(raw, ["Activation Date", "Installation Date", "Install Date", "Installed Date", "Actual Installation Date", "Actual Install Date"]));
   if (explicit) return explicit;
 
-  // T-Fiber's exported "Est. Installation Date" is not proof of an install.
+  // Company B's exported "Est. Installation Date" is not proof of an install.
   // Only Activation Date / a true actual install date should count as installed.
-  if (isTFiberOrder(order)) return "";
+  if (isCompanyBOrder(order)) return "";
 
   return dateIdFromValue(order.installationDateId);
 }
@@ -114,12 +114,12 @@ function isPreorderStatus(order: SalesOrderRecord, status = accountStatusText(or
   return false;
 }
 
-function normalizeTFiberSaleOutcome(order: SalesOrderRecord, status = accountStatusText(order)): SaleOutcome {
+function normalizeCompanyBSaleOutcome(order: SalesOrderRecord, status = accountStatusText(order)): SaleOutcome {
   if (status.includes("cancel")) return "canceled";
   if (status.includes("churn")) return "churned";
   if (isPreorderStatus(order, status)) return "preorder";
 
-  // T-Fiber status buckets should mirror the Excel export exactly.
+  // Company B status buckets should mirror the Excel export exactly.
   if (status === "active") return "installed";
   if (status === "pending installation") return "pending";
 
@@ -150,7 +150,7 @@ export function readFirstText(raw: Record<string, unknown> | undefined, keys: st
 export function normalizeSaleOutcome(order: SalesOrderRecord, _options?: SaleOutcomeOptions): SaleOutcome {
   const status = accountStatusText(order);
 
-  if (isTFiberOrder(order)) return normalizeTFiberSaleOutcome(order, status);
+  if (isCompanyBOrder(order)) return normalizeCompanyBSaleOutcome(order, status);
 
   if (status.includes("cancel")) return "canceled";
   if (status.includes("churn")) return "churned";
@@ -167,10 +167,10 @@ export function normalizeSaleOutcome(order: SalesOrderRecord, _options?: SaleOut
 export function isPastDue(order: SalesOrderRecord, options?: SaleOutcomeOptions) {
   const status = accountStatusText(order);
 
-  if (isTFiberOrder(order)) {
-    // For T-Fiber, only Pending Installation orders can be past due.
+  if (isCompanyBOrder(order)) {
+    // For Company B, only Pending Installation orders can be past due.
     // Active, canceled, churned, and preorders are never past due.
-    if (normalizeTFiberSaleOutcome(order, status) !== "pending") return false;
+    if (normalizeCompanyBSaleOutcome(order, status) !== "pending") return false;
   } else if (status.includes("cancel") || status.includes("churn") || isPreorderStatus(order, status)) {
     return false;
   }

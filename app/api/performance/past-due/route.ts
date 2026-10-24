@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminDb } from "@/src/lib/firebase/admin";
 import { requireActor } from "@/src/lib/firebase/server-auth";
 import { normalizePerformanceOutcome } from "@/src/lib/performance/performance-utils";
-import { readFirstText, resolveTFiberPastDueAsOfDate, sanitizeOrderId, type SalesOrderRecord } from "@/src/lib/sales/outcomes";
+import { readFirstText, resolveCompanyBPastDueAsOfDate, sanitizeOrderId, type SalesOrderRecord } from "@/src/lib/sales/outcomes";
 import { errorResponse } from "@/src/lib/api/error-response";
 
 export const runtime = "nodejs";
@@ -26,16 +26,16 @@ const saleKey = (order: Record<string, unknown>) => `${String(order.orderId || o
 
 function providerKey(value: unknown) {
   const source = String(value || "").toLowerCase().replace(/[^a-z]/g, "");
-  if (source === "att" || source.includes("att")) return "att";
-  if (source === "tfiber" || source.includes("tfiber")) return "tfiber";
+  if (source === "companya" || source.includes("companya")) return "companya";
+  if (source === "companyb" || source.includes("companyb")) return "companyb";
   if (source === "frontier" || source.includes("frontier")) return "frontier";
   return "manual";
 }
 
 function providerName(value: unknown) {
   const source = providerKey(value);
-  if (source === "att") return "ATT";
-  if (source === "tfiber") return "T-Fiber";
+  if (source === "companya") return "Company A";
+  if (source === "companyb") return "Company B";
   if (source === "frontier") return "Frontier";
   return "Manual";
 }
@@ -81,14 +81,14 @@ export async function GET(request: Request) {
     const repFilter = url.searchParams.get("rep") || "all";
     const providerFilter = url.searchParams.get("provider") || "both";
     const ordersFor = (provider: string) => db.collection("salesOrders").doc(provider).collection("orders").where("orderDateId", ">=", start!).where("orderDateId", "<=", end!).get();
-    const [att, tfiber, manual, repsSnapshot] = await Promise.all([ordersFor("att"), ordersFor("tfiber"), ordersFor("manual"), db.collection("reps").where("status", "==", "active").get()]);
+    const [companya, companyb, manual, repsSnapshot] = await Promise.all([ordersFor("companya"), ordersFor("companyb"), ordersFor("manual"), db.collection("reps").where("status", "==", "active").get()]);
     const reps = new Map(repsSnapshot.docs.map((document) => [document.id, document.data()]));
     const rows = dedupeOrders([
-      ...att.docs.map((document) => ({ id: document.id, providerKey: "att", ...(document.data() as Record<string, unknown>) })),
-      ...tfiber.docs.map((document) => ({ id: document.id, providerKey: "tfiber", ...(document.data() as Record<string, unknown>) })),
+      ...companya.docs.map((document) => ({ id: document.id, providerKey: "companya", ...(document.data() as Record<string, unknown>) })),
+      ...companyb.docs.map((document) => ({ id: document.id, providerKey: "companyb", ...(document.data() as Record<string, unknown>) })),
       ...manual.docs.map((document) => ({ id: document.id, providerKey: "manual", ...(document.data() as Record<string, unknown>) })),
     ]) as Order[];
-    const tfiberPastDueAsOfDate = resolveTFiberPastDueAsOfDate(rows);
+    const companyBPastDueAsOfDate = resolveCompanyBPastDueAsOfDate(rows);
     const filtered = rows
       .map((order) => {
         const rep = order.matchedRepUid ? reps.get(String(order.matchedRepUid)) : undefined;
@@ -108,7 +108,7 @@ export async function GET(request: Request) {
           matchedRepUid: order.matchedRepUid ?? null,
           saleCount: Number(order.saleCount || 1),
         };
-        const outcome = normalizePerformanceOutcome(record, rawProviderKey === "tfiber" ? { asOfDate: tfiberPastDueAsOfDate } : undefined);
+        const outcome = normalizePerformanceOutcome(record, rawProviderKey === "companyb" ? { asOfDate: companyBPastDueAsOfDate } : undefined);
         return {
           orderId: sanitizeOrderId(order.orderId || order.orderUid || order.id),
           orderDateId: String(order.orderDateId || ""),

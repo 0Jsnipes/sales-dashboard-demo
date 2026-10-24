@@ -8,8 +8,8 @@ export interface WeeklyReport {
   locationName: string;
   sales: number[];
   knocks: number[];
-  attSales: number[];
-  tfiberSales: number[];
+  companyASales: number[];
+  companyBSales: number[];
   manualSales: number[];
   salesGoal: number;
   knocksGoal: number;

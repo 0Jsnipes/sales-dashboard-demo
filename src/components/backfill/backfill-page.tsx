@@ -32,7 +32,7 @@ type Rep = {
 
 type BackfillDraft = {
   repUid: string;
-  provider: "att" | "tfiber" | "frontier";
+  provider: "companya" | "companyb" | "frontier";
   orderDateId: string;
   accountStatus: string;
   orderId: string;
@@ -44,14 +44,14 @@ type BackfillDraft = {
 };
 
 const providerOptions = [
-  { value: "att", label: "AT&T" },
-  { value: "tfiber", label: "T-Fiber" },
+  { value: "companya", label: "Company A" },
+  { value: "companyb", label: "Company B" },
   { value: "frontier", label: "Frontier" },
 ] as const;
 
 const initialDraft: BackfillDraft = {
   repUid: "",
-  provider: "att",
+  provider: "companya",
   orderDateId: "",
   accountStatus: "Manual entry",
   orderId: "",
@@ -438,7 +438,7 @@ export function BackfillPage() {
           <Card className="border-border/70">
             <CardHeader>
               <CardTitle>Knock LCP pull</CardTitle>
-              <CardDescription>Temporary tool to repopulate T-Fiber LCPs from historical knock uploads stored in Firebase.</CardDescription>
+              <CardDescription>Temporary tool to repopulate Company B LCPs from historical knock uploads stored in Firebase.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="rounded-2xl border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">

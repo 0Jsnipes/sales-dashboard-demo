@@ -990,7 +990,7 @@ export function RosterPage() {
                   <SelectContent>{REP_ACCESS_ROLE_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
                 </Select>
               </Field>
-              <Field label="Programs"><Input placeholder="ATT, T-Fiber" value={form.programIds} onChange={(event) => setForm({ ...form, programIds: event.target.value })} /></Field>
+              <Field label="Programs"><Input placeholder="Company A, Company B" value={form.programIds} onChange={(event) => setForm({ ...form, programIds: event.target.value })} /></Field>
               <Field label="Contact email"><Input type="email" placeholder="name@example.com" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></Field>
               <Field label="Phone"><Input type="tel" placeholder="(555) 555-5555" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></Field>
               <Field label="Manager">
